@@ -1,0 +1,4 @@
+interface:
+  display_name: "NVL Activity"
+  short_description: "Build safe localized audits and timelines"
+  default_prompt: "Use $nvl-activity to implement or review generic activity capture, localized timeline mappings, typed API data, scoped errors, retention, and authorization."
