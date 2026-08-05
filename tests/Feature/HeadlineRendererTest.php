@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Nvl\Activity\Data\Display\ActivityChangeDetail;
+use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\HeadlineSegmentType;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\HeadlineRenderer;
@@ -129,3 +130,30 @@ test('shared templates remain canonical when a mapping declares the same event',
 
     expect($headline->headline)->toBe('Nicolas created this mapped entity.');
 });
+
+test('package owned activity events render through shared headline templates', function (ActivityEvent $event): void {
+    $activity = headline_test_activity(
+        subjectType: 'Consumer\\Models\\Record',
+        event: $event->value,
+    );
+
+    $headline = headline_test_renderer()->resolveHeadline(
+        event: $event->value,
+        activity: $activity,
+        actorName: 'Nicolas',
+        causerId: 'operator-2',
+        changeDetails: collect(),
+    );
+    $templateEvent = $event === ActivityEvent::DetailsUpdated
+        ? ActivityEvent::Updated
+        : $event;
+    $template = (string) trans("activity::activity/general.templates.{$templateEvent->value}");
+    $expectedHeadline = strtr($template, [
+        ':actor' => 'Nicolas',
+        ':subject' => 'record',
+    ]);
+
+    expect($headline->headline)->toBe($expectedHeadline);
+})->with(collect(ActivityEvent::cases())->mapWithKeys(
+    static fn (ActivityEvent $event): array => [$event->name => [$event]],
+)->all());

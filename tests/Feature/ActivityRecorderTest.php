@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
@@ -36,6 +37,36 @@ test('the canonical writer records structured scalar actors and caller owned bat
         ->and($activity?->properties?->get('source'))->toBe(ActivitySource::User->value)
         ->and($activity?->properties?->get('actor_id'))->toBe('operator-1')
         ->and($activity?->properties?->get('context'))->toBe(['reason' => 'manual review']);
+});
+
+test('the canonical writer accepts package owned activity events', function (): void {
+    $activity = app(ActivityRecorder::class)->record(
+        subject: null,
+        event: ActivityEvent::Triggered,
+    );
+
+    expect($activity?->event)->toBe(ActivityEvent::Triggered->value)
+        ->and($activity?->description)->toBe(ActivityEvent::Triggered->value);
+});
+
+test('package owned update events infer saved model changes without a description', function (): void {
+    $subject = ActivityLog::query()->create([
+        'log_name' => 'recording-subject',
+        'description' => 'Before',
+        'event' => ActivityEvent::Created,
+    ]);
+    $subject->timestamps = false;
+    $subject->forceFill(['description' => 'After'])->save();
+
+    $activity = app(ActivityRecorder::class)->record(
+        subject: $subject,
+        event: ActivityEvent::Updated,
+    );
+
+    expect($activity?->event)->toBe(ActivityEvent::Updated->value)
+        ->and($activity?->description)->toBe(ActivityEvent::Updated->value)
+        ->and($activity?->properties?->get('attributes'))->toBe(['description' => 'After'])
+        ->and($activity?->properties?->get('old'))->toBe(['description' => 'Before']);
 });
 
 test('the canonical writer normalizes caller supplied log names and descriptions', function (): void {

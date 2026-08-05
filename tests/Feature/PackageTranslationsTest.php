@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Nvl\Activity\Enums\ActivityDoctorSeverity;
+use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivityResponseCode;
 use Nvl\Activity\Enums\ActivitySource;
@@ -51,6 +52,21 @@ test('activity headlines and source labels ship with standalone English translat
     foreach (ActivityResponseCode::cases() as $responseCode) {
         expect($responseCode->getMessage())->not->toContain('activity::');
     }
+});
+
+test('standard activity events provide localized labels and headline templates', function (): void {
+    foreach (['en', 'bg'] as $locale) {
+        app()->setLocale($locale);
+
+        foreach (ActivityEvent::cases() as $event) {
+            $templateKey = "activity::activity/general.templates.{$event->value}";
+
+            expect($event->getLabel())->not->toContain('activity::')
+                ->and(trans($templateKey))->not->toBe($templateKey);
+        }
+    }
+
+    app()->setLocale('en');
 });
 
 test('bundled English and Bulgarian catalogs have key parity', function (): void {

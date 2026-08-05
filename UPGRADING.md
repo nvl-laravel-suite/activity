@@ -15,16 +15,17 @@ Version 1.0 remains unreleased. It removes consumer-specific mappings and model 
 5. Run `php artisan nvl:activity:doctor --strict --format=json`. Resolve connection, UUID key, string morph identifier, JSON, index, binding, queue, and scheduling failures before cutover.
 6. Keep application-specific adoption reversible until row counts, identifiers, representative structured properties, checksums, and rendered timelines match. A matching table name is not proof of schema compatibility.
 7. Register every auto-logged model through a complete nine-method `ActivityMapping`; unmapped `HasModelActivity` models intentionally remain silent.
-8. Replace the removed compatibility `entry()` writer with `ActivityLog::record(...)`.
-9. Send only canonical `ActivitySource`, `ActivityVisibility`, and `ActivityImportance` values. Unknown non-blank metadata now throws `ActivityRecordingException` with `invalid_activity_metadata` instead of being stored.
-10. Move extra timeline sources to `MergeableActivityData` and host-owned `MergesActivityTimeline` composition. Preserve the read contract: `null` means complete, and finite limits apply after source filtering and final merge ordering.
-11. Enable routes only after configuring non-empty management middleware, real named `view` / `timeline` / `purge` Gate definitions, and an explicit allowlist of models implementing `MergesActivity`. Re-run Doctor after `config:cache`.
-12. Preview retention with `php artisan nvl:activity:purge --dry-run`; automatic system retention remains disabled by default.
-13. Configure a real maintenance queue. Purge attempts time out at 900 seconds; a time-based window keeps lock-contention releases valid for at least one configured lock lifetime, while five unhandled execution exceptions remain the failure bound. The queue connection's `retry_after` must be greater than 900 seconds. Configure one canonical LockProvider-backed default cache shared by every worker and scheduler; file is single-host only, and array/null/failover are not production-safe.
-14. Read purge response codes from top-level `code`; `message` is translated copy and purge metadata is represented by `ActivityPurgeQueuedResult` under `data`.
-15. Treat `HeadlineSegment::type` and `ActivityDoctorCheckData::severity` as backed enums in PHP. Their JSON and generated TypeScript values remain the same strings.
-16. If the application overrides package copy, republish or merge `activity-translations`; validation, operational enum, Doctor, API, and scoped error keys are package-owned.
-17. Republish `activity-skills` with `--force`, or manually merge the updated bundled skill when the consumer has customized its published copy. Review local changes before overwriting.
-18. Regenerate and check `Nvl.Activity.*` TypeScript declarations, then run the isolated package quality gate and a clean consumer installation rehearsal.
+8. Replace the removed compatibility `entry()` writer with `ActivityLog::record(...)`. Use `ActivityEvent` for package-wide meanings, omit `description` when the event key is sufficient, and define a domain string-backed enum for application-specific events.
+9. No schema migration is required for `ActivityEvent`; it uses the existing `event` and `description` columns. For ordinary update and status events, let the recorder infer `attributes` and `old` from the saved subject. Keep explicit arrays for domain-specific or multi-model flows.
+10. Send only canonical `ActivitySource`, `ActivityVisibility`, and `ActivityImportance` values. Unknown non-blank metadata now throws `ActivityRecordingException` with `invalid_activity_metadata` instead of being stored.
+11. Move extra timeline sources to `MergeableActivityData` and host-owned `MergesActivityTimeline` composition. Preserve the read contract: `null` means complete, and finite limits apply after source filtering and final merge ordering.
+12. Enable routes only after configuring non-empty management middleware, real named `view` / `timeline` / `purge` Gate definitions, and an explicit allowlist of models implementing `MergesActivity`. Re-run Doctor after `config:cache`.
+13. Preview retention with `php artisan nvl:activity:purge --dry-run`; automatic system retention remains disabled by default.
+14. Configure a real maintenance queue. Purge attempts time out at 900 seconds; a time-based window keeps lock-contention releases valid for at least one configured lock lifetime, while five unhandled execution exceptions remain the failure bound. The queue connection's `retry_after` must be greater than 900 seconds. Configure one canonical LockProvider-backed default cache shared by every worker and scheduler; file is single-host only, and array/null/failover are not production-safe.
+15. Read purge response codes from top-level `code`; `message` is translated copy and purge metadata is represented by `ActivityPurgeQueuedResult` under `data`.
+16. Treat `ActivityEvent`, `HeadlineSegment::type`, and `ActivityDoctorCheckData::severity` as backed enums in PHP. Their JSON and generated TypeScript values remain stable strings.
+17. If the application overrides package copy, republish or merge `activity-translations`; validation, operational enum, Doctor, API, and scoped error keys are package-owned.
+18. Republish `activity-skills` with `--force`, or manually merge the updated bundled skill when the consumer has customized its published copy. Review local changes before overwriting.
+19. Regenerate and check `Nvl.Activity.*` TypeScript declarations, then run the isolated package quality gate and a clean consumer installation rehearsal.
 
 Do not edit already-deployed package or application migrations. Add a new reversible application migration for every later schema change.

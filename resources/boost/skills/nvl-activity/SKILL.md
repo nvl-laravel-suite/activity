@@ -28,9 +28,12 @@ Use this package for generic structured audit capture and semantic timelines on 
 ## Capture activity
 
 - Use `ActivityLog::record(...)` or the underlying `ActivityRecorder` as the canonical writer.
+- Use `ActivityEvent` for package-wide meanings shared across domains. Define a domain-owned string-backed enum for business-specific events rather than adding application vocabulary to the package enum.
+- Omit `description` for normal writes; it defaults to the stable event key. Never use it to persist translated labels or final timeline sentences.
+- Let `ActivityEvent::Updated`, `ActivityEvent::DetailsUpdated`, and status-change events infer `attributes` and `old` from the saved subject. Supply explicit arrays only for domain-specific or multi-model changes, and pair a complete explicit payload with `resolveChanges=false`.
 - Use `HasModelActivity` only with a registered `ActivityMapping`; unmapped models intentionally remain silent.
 - Each mapping implements all nine methods: model class, entity label, subject label, log name, Spatie options, field label, field value, event display value, and event templates.
-- Store stable event keys and safe structured properties. Never store secrets, credentials, access tokens, full request payloads, or unredacted sensitive values.
+- Store stable event keys and safe structured properties. `ActivityEvent` uses the existing event/description columns and requires no schema migration. Never store secrets, credentials, access tokens, full request payloads, or unredacted sensitive values.
 - Integer, UUID, ULID, and string subject or causer identifiers are supported.
 - `source`, `visibility`, and `importance` accept backed enums or exact canonical values. Unknown non-blank metadata raises `ActivityRecordingException` with `invalid_activity_metadata`/422; do not coerce or silently store it.
 - Blank overrides use canonical defaults. Historical absent/blank visibility remains compatible, while every unknown non-blank visibility is excluded from signal timelines so reads fail closed.
@@ -65,6 +68,7 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 - Store canonical event keys, enum values, response codes, and structured context; translate only at display, API, and console boundaries.
 - Use `activity::activity/general.*` for package-owned server copy and keep English/Bulgarian keys and placeholders in exact parity.
 - Shared templates precede consumer mapping templates; do not let an application replace package-wide semantics accidentally.
+- Treat `ActivityEvent::Sent` and `ActivityEvent::Resent` as business actions on the subject. Keep mail transport delivery, opening, and retry lifecycle in `nvl/mail-notifications`.
 - Treat response codes as opaque machine values. Regenerate and check `Nvl.Activity.*` declarations after changing a DTO or enum.
 - Publish translations only for application copy overrides. Never store translated headlines or exception messages.
 
@@ -78,7 +82,7 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 
 ## Verify and upgrade
 
-Run `composer quality --working-dir=packages/nvl/activity`, Composer validation, dependency analysis, package distribution/clean-consumer checks, `nvl:activity:doctor --strict --format=json`, and `nvl:data:types:check` as applicable. Root consumer automation proves source and relocated-artifact installation, direct-versus-transitive package provenance, discovery, cached configuration/routes, canonical and custom-connection migration lifecycles, mapping registration, exact CRUD and structured capture, visibility filtering, complete and finite merged timelines, all five authenticated API endpoints, serialized purge scopes, and execution on a real database queue worker. Treat that smoke as a required production contract rather than replacing it with installation-only checks.
+Run package-local `composer quality` from a standalone checkout with development dependencies installed. From the monorepo root, use the root quality gate or its package-aware Pest command rather than a root-vendor symlink, then run Composer validation, dependency analysis, package distribution/clean-consumer checks, `nvl:activity:doctor --strict --format=json`, and `nvl:data:types:check` as applicable. Root consumer automation proves source and relocated-artifact installation, direct-versus-transitive package provenance, discovery, cached configuration/routes, canonical and custom-connection migration lifecycles, mapping registration, exact CRUD and structured capture, visibility filtering, complete and finite merged timelines, all five authenticated API endpoints, serialized purge scopes, and execution on a real database queue worker. Treat that smoke as a required production contract rather than replacing it with installation-only checks.
 
 Coverage must include canonical model binding; literal migration up/down behavior; custom/adopted storage rejection; mapped create/update/delete; structured and batch writes; identifier/actor variants; invalid metadata; complete and finite post-filter timelines across keyset batches; real Gates and allowlists; JSON/API/error contracts; EN/BG parity; retention scopes and dry runs; job locking/retry/backoff/timeout; and after-commit dispatch.
 

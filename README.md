@@ -108,23 +108,29 @@ For an adopted table, replace `create()` with reversible alteration steps agains
 
 ```php
 use Nvl\Activity\Enums\ActivityImportance;
+use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Facades\ActivityLog;
 
+$article->forceFill(['status' => 'published'])->save();
+
 $activity = ActivityLog::record(
     subject: $article,
-    event: 'article.published',
-    description: 'Article published',
+    event: ActivityEvent::StatusChanged,
     context: ['channel' => 'website'],
-    attributes: ['status' => 'published'],
-    old: ['status' => 'draft'],
     actor: auth()->user(),
     visibility: ActivityVisibility::Timeline,
     importance: ActivityImportance::Important,
 );
 ```
 
-Stable event keys and structured data belong in storage. Mutable labels and headlines belong in mappings. A blank event key records nothing and returns `null`. Avoid secrets, credentials, full request payloads, and unredacted personal data.
+`ActivityEvent` exposes the package-wide vocabulary for meanings that stay consistent across domains: `Created`, `Updated`, `Deleted`, `Restored`, `Assigned`, `DetailsUpdated`, `StatusChanged`, `StatusTransition`, `StatusOverride`, `Viewed`, `Activated`, `Deactivated`, `Enabled`, `Disabled`, `Archived`, `Unarchived`, `Triggered`, `Retried`, `Sent`, and `Resent`. Use a domain-owned string-backed enum for business-specific events that do not belong in that shared vocabulary.
+
+The recorder stores only the enum's stable value, such as `status_changed`. The optional `description` defaults to that same machine key; do not persist translated labels or final sentences there. English and Bulgarian labels and headlines are resolved from the package catalogs when the activity is read.
+
+For `Updated`, `DetailsUpdated`, and status-change events, the recorder derives `attributes` and `old` from the saved subject's Eloquent changes. Pass explicit arrays only for domain-specific or multi-model flows where the subject cannot provide the correct diff, and set `resolveChanges: false` when deliberately supplying the complete payload yourself.
+
+Adding or adopting `ActivityEvent` requires no migration and no additional column. It uses the existing `event` and `description` fields. A blank event key records nothing and returns `null`. Avoid secrets, credentials, full request payloads, and unredacted personal data.
 
 `source`, `visibility`, and `importance` accept their backed enums or exact canonical values. Unknown non-blank values are rejected with `ActivityRecordingException`, response code `invalid_activity_metadata`, and suggested HTTP status `422`; they are never stored and made visible accidentally. Blank overrides use canonical defaults. Historical rows with absent or blank visibility remain readable for compatibility, but any non-blank visibility other than exact lowercase `timeline` is excluded from signal timelines.
 
@@ -524,7 +530,7 @@ php artisan nvl:data:types:check
 
 Return display DTOs rather than raw Spatie models or properties.
 
-Public value domains use backed enums: capture origin, visibility, importance, timeline entry source, headline segment type, doctor severity, and API response code. Displayable operational enums expose localized labels while their persisted values remain stable. `ActivityPurgeQueuedResult`, `ActivityItem`, and related display DTOs are the public data contracts; controllers should not return raw Eloquent or Spatie objects.
+Public value domains use backed enums: shared activity event, capture origin, visibility, importance, timeline entry source, headline segment type, doctor severity, and API response code. `ActivityEvent` provides localized labels and package-owned headline templates while its persisted values remain stable. `ActivityPurgeQueuedResult`, `ActivityItem`, and related display DTOs are the public data contracts; controllers should not return raw Eloquent or Spatie objects.
 
 ## Localization and string ownership
 
@@ -538,7 +544,7 @@ The package owns English and Bulgarian catalogs under the `activity` translation
 
 Publish `activity-translations` to override copy in `lang/vendor/activity/{locale}`. Keep event keys, enum values, response codes, validation field keys, and stored structured properties locale-neutral. Translate only at display, API, or console boundaries. Every new English key must have a Bulgarian counterpart with identical placeholders.
 
-Do not store translated headlines or exception messages in `activity_log`. Store canonical event keys and structured context, then let mappings and the package catalog render the active locale.
+Do not store translated headlines, labels, or exception messages in `activity_log`. Store canonical enum values and structured context, then let mappings and the package catalog render the active locale. `ActivityEvent::Sent` and `ActivityEvent::Resent` describe business actions on the subject; mail transport delivery, opening, and retry lifecycle remains owned by `nvl/mail-notifications`.
 
 ## Database adoption
 
@@ -554,14 +560,23 @@ The recorder does not open its own transaction. When activity and the business m
 
 ## Verification
 
-Run the isolated package gate and the monorepo gate before release:
+Run the package-local gate from a standalone package checkout with its development dependencies installed. From this monorepo, use the root gate; it supplies the package-aware Pest bootstrap and also runs the family-wide checks:
 
 ```bash
-composer quality --working-dir=packages/nvl/activity
+# Standalone nvl/activity checkout
+composer quality
+
+# NVL Laravel Suite monorepo root
 composer quality
 composer validate --strict packages/nvl/activity/composer.json
 php artisan nvl:activity:doctor --strict --format=json
 php artisan nvl:data:types:check
+```
+
+For a fast isolated package test from the monorepo root, run:
+
+```bash
+vendor/bin/pest --test-directory=packages/nvl/activity/tests --configuration=packages/nvl/activity/phpunit.xml.dist --bootstrap=vendor/autoload.php --compact packages/nvl/activity/tests
 ```
 
 The package gate covers Pint, PHPStan at maximum strictness, and Pest. Root clean-consumer automation verifies source-path installs on supported Laravel lines and a relocated release ZIP that directly requires only `nvl/activity`. It proves transitive artifact provenance for `nvl/data` and `nvl/support`, package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker. Keep this production smoke green together with dependency analysis, package-family distribution validation, and frozen contract checks.

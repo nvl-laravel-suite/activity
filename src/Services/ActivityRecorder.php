@@ -7,6 +7,7 @@ namespace Nvl\Activity\Services;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
@@ -26,6 +27,7 @@ final class ActivityRecorder
      * Record an activity with the canonical structured payload contract.
      *
      * @param  string|BackedEnum  $event  Canonical event key or backed enum
+     * @param  string  $description  Optional machine description; defaults to the event key
      * @param  array<string, mixed>  $context  Event-specific business context
      * @param  array<string, mixed>|null  $attributes  Explicit changed attribute values
      * @param  array<string, mixed>|null  $old  Explicit previous attribute values
@@ -40,7 +42,7 @@ final class ActivityRecorder
     public function record(
         ?Model $subject,
         string|BackedEnum $event,
-        string $description,
+        string $description = '',
         array $context = [],
         ?array $attributes = null,
         ?array $old = null,
@@ -270,11 +272,11 @@ final class ActivityRecorder
     private function shouldAutoResolveChanges(string $event): bool
     {
         return in_array($event, [
-            'updated',
-            'details_updated',
-            'status_changed',
-            'status_transition',
-            'status_override',
+            ActivityEvent::Updated->value,
+            ActivityEvent::DetailsUpdated->value,
+            ActivityEvent::StatusChanged->value,
+            ActivityEvent::StatusTransition->value,
+            ActivityEvent::StatusOverride->value,
         ], true);
     }
 }

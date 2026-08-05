@@ -2,7 +2,7 @@
 
 Changes must remain generic, standalone, and compatible with PHP 8.3–8.5 and Laravel 12–13. Do not add consumer models, event vocabulary, authorization assumptions, or presentation rules to the package.
 
-Add or update Pest coverage for every behavior. Run `composer quality --working-dir=packages/nvl/activity` plus Composer validation, dependency analysis, package distribution validation, and the relevant monorepo checks before submitting a change. Exercise installation and documented integration paths in a clean consumer when public package wiring changes.
+Add or update Pest coverage for every behavior. In a standalone package checkout with development dependencies installed, run `composer quality`. From the monorepo root, run the root quality gate or the documented package-aware Pest command; do not invoke package Pest through a root-vendor symlink because Pest will discover the wrong project bootstrap. Also run Composer validation, dependency analysis, package distribution validation, and the relevant monorepo checks before submitting a change. Exercise installation and documented integration paths in a clean consumer when public package wiring changes.
 
 The canonical activity model and package-managed migration are invariants. Keep `Nvl\Activity\Models\ActivityLog` as Spatie's activity model; do not restore an `activity.model` option. The vendor migration may own only the literal `activity_log` table on the default connection. Custom storage, adopted schemas, and published migrations belong to the application, require `activity.migrations.enabled=false`, and must use frozen literal connection and table targets. Never edit a migration that consumers may already have deployed.
 
