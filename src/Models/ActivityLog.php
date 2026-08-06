@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
@@ -50,6 +51,29 @@ final class ActivityLog extends Activity
      * @var bool
      */
     public $incrementing = false;
+
+    /**
+     * Read tracked changes from the version-specific Spatie storage column.
+     *
+     * Spatie v4 stores model changes in `properties`; v5 stores them in the
+     * dedicated `attribute_changes` column. Expose one stable package-owned
+     * attribute across both supported dependency lines.
+     *
+     * @return Attribute<Collection<int|string, mixed>|null, never>
+     */
+    protected function attributeChanges(): Attribute
+    {
+        return Attribute::get(function (mixed $value): ?Collection {
+            $changes = $this->collectionValue($value);
+
+            if ($changes !== null) {
+                return $changes;
+            }
+
+            return $this->collectionValue($this->getAttribute('properties'))
+                ?->only(['attributes', 'old']);
+        });
+    }
 
     /**
      * Resolve the package-owned activity storage table.
@@ -109,5 +133,27 @@ final class ActivityLog extends Activity
     public static function forSubjectTimeline(string $subjectType, string|int|array $subjectId): ActivityLogBuilder
     {
         return self::forDisplay()->forSubject($subjectType, $subjectId);
+    }
+
+    /**
+     * @return Collection<int|string, mixed>|null
+     */
+    private function collectionValue(mixed $value): ?Collection
+    {
+        if ($value instanceof Collection) {
+            return $value;
+        }
+
+        if (is_array($value)) {
+            return collect($value);
+        }
+
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
+
+        return is_array($decoded) ? collect($decoded) : null;
     }
 }

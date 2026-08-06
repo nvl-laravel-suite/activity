@@ -44,6 +44,23 @@ test('registered mappings own automatic model capture options and log names', fu
         ->toBe(['name' => 'Initial name']);
 });
 
+test('tracked changes remain readable from the Spatie v4 properties layout', function (): void {
+    $activity = new ActivityLog;
+    $activity->forceFill([
+        'attribute_changes' => null,
+        'properties' => [
+            'attributes' => ['name' => 'Updated name'],
+            'old' => ['name' => 'Initial name'],
+            'consumer_context' => ['source' => 'test'],
+        ],
+    ]);
+
+    expect($activity->attribute_changes?->all())->toBe([
+        'attributes' => ['name' => 'Updated name'],
+        'old' => ['name' => 'Initial name'],
+    ]);
+});
+
 test('registered mappings capture the complete create update and delete lifecycle', function (): void {
     app(MappingRegistry::class)->register(
         new TestActivityMapping(TestActivitySubjectWithHasModelActivity::class),
