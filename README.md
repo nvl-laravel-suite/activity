@@ -11,7 +11,7 @@ Activity depends on `nvl/data` and `nvl/support`. It supports compatible Spatie 
 Version 1.0 is currently unreleased. This monorepo consumes `dev-main` through a Composer path repository. After 1.0 is published, applications can install the stable release with:
 
 ```bash
-composer require nvl/activity:^1.0
+composer require nvl/laravel-suite:^1.0
 php artisan migrate
 ```
 
@@ -560,13 +560,9 @@ The recorder does not open its own transaction. When activity and the business m
 
 ## Verification
 
-Run the package-local gate from a standalone package checkout with its development dependencies installed. From this monorepo, use the root gate; it supplies the package-aware Pest bootstrap and also runs the family-wide checks:
+Run the suite root gate; it supplies the module-aware Pest bootstrap and all family-wide checks:
 
 ```bash
-# Standalone nvl/activity checkout
-composer quality
-
-# NVL Laravel Suite monorepo root
 composer quality
 composer validate --strict packages/nvl/activity/composer.json
 php artisan nvl:activity:doctor --strict --format=json
@@ -579,7 +575,7 @@ For a fast isolated package test from the monorepo root, run:
 vendor/bin/pest --test-directory=packages/nvl/activity/tests --configuration=packages/nvl/activity/phpunit.xml.dist --bootstrap=vendor/autoload.php --compact packages/nvl/activity/tests
 ```
 
-The package gate covers Pint, PHPStan at maximum strictness, and Pest. Root clean-consumer automation verifies source-path installs on supported Laravel lines and a relocated release ZIP that directly requires only `nvl/activity`. It proves transitive artifact provenance for `nvl/data` and `nvl/support`, package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker. Keep this production smoke green together with dependency analysis, package-family distribution validation, and frozen contract checks.
+The suite gate covers Pint, PHPStan at maximum strictness, Pest, module boundaries, and one clean-consumer installation of the tagged `nvl/laravel-suite` archive. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker. Keep this production smoke green together with dependency analysis, suite distribution validation, and frozen contract checks.
 
 Current tests exercise canonical model binding; immutable migration rollback; custom/adopted schema rejection; mapped create, update, and delete capture; structured writers and batches; anonymous, scalar, integer, UUID, and soft-deleted actors; invalid metadata rejection; complete and finite post-filter timelines across keyset batches; bilingual translations and validation; stable API/error envelopes; real named Gate abilities; subject allowlisting; JSON negotiation; dry-run eligibility; system-origin retention; lock contention; retry/backoff/timeout settings; and after-commit dispatch.
 
