@@ -2,6 +2,16 @@
 
 [← NVL Laravel Suite](../../../README.md)
 
+## Quick reference
+
+| Item | Value |
+|---|---|
+| Installed through | `composer require nvl/laravel-suite:^1.0` |
+| Module identifier | `nvl/activity` |
+| PHP namespace | `Nvl\Activity` |
+| Service provider | `Nvl\Activity\Providers\ActivityServiceProvider` |
+| Configuration | `config/activity.php` |
+
 ## Purpose
 
 `nvl/activity` provides generic structured audit capture and readable semantic timelines for Laravel 12–13 on PHP 8.3–8.5. It builds on Spatie Activitylog without embedding application event names, models, labels, or business rules.
