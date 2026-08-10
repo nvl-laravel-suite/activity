@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Nvl\Activity\Data\ActivityIndexFilter;
@@ -219,6 +220,53 @@ test('malformed integer and uuid morph identifiers are excluded before eager loa
         ->and($validUuid)->toBeInstanceOf(TestUuidActivitySubject::class)
         ->and($validUuid?->is($uuidSubject))->toBeTrue()
         ->and($activities->get('invalid uuid')?->getRelation('subject'))->toBeNull();
+});
+
+test('relation hydration query count is independent of activity fixture size', function (): void {
+    $measure = function (): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $activities = ActivityLog::query()
+            ->where('log_name', 'query-budget')
+            ->get();
+        app(ActivityRelationLoader::class)->load($activities);
+        $queryCount = count(DB::getQueryLog());
+
+        foreach ($activities as $activity) {
+            $activity->getRelation('subject');
+        }
+
+        expect(DB::getQueryLog())->toHaveCount($queryCount);
+        DB::disableQueryLog();
+
+        return $queryCount;
+    };
+
+    $create = static function (int $index): void {
+        $subject = TestActivityTimelineSubject::query()->create([
+            'name' => "Query subject {$index}",
+        ]);
+        ActivityLog::query()->create([
+            'log_name' => 'query-budget',
+            'description' => "Query activity {$index}",
+            'event' => 'created',
+            'subject_type' => $subject->getMorphClass(),
+            'subject_id' => (string) $subject->getKey(),
+        ]);
+    };
+
+    $create(1);
+    $singleQueryCount = $measure();
+
+    foreach (range(2, 25) as $index) {
+        $create($index);
+    }
+
+    $populatedQueryCount = $measure();
+
+    expect($singleQueryCount)->toBeLessThanOrEqual(10)
+        ->and($populatedQueryCount)->toBe($singleQueryCount);
 });
 
 test('read service paginators remain transport neutral', function (): void {
