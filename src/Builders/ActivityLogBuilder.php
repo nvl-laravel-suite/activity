@@ -7,6 +7,7 @@ namespace Nvl\Activity\Builders;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Nvl\Activity\Data\ActivityIndexFilter;
+use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
@@ -100,6 +101,20 @@ final class ActivityLogBuilder extends Builder
                         ->whereNull('properties->source')
                         ->whereNull('properties->actor_id');
                 });
+        });
+    }
+
+    /**
+     * Exclude evidence carrying the package's protected importance classification.
+     */
+    public function withoutImportant(): static
+    {
+        return $this->where(function (Builder $query): void {
+            $query->whereNull('properties->importance')
+                ->orWhereJsonDoesntContain(
+                    'properties->importance',
+                    ActivityImportance::Important->value,
+                );
         });
     }
 
@@ -201,6 +216,10 @@ final class ActivityLogBuilder extends Builder
 
         if ($criteria->systemOnly) {
             $this->whereSystemGenerated();
+        }
+
+        if (! $criteria->includeImportant) {
+            $this->withoutImportant();
         }
 
         return $this

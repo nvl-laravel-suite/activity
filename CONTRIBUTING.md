@@ -1,6 +1,6 @@
 # Contributing to NVL Activity
 
-Changes must remain generic, internally isolated, and compatible with PHP 8.3–8.5 and Laravel 12–13. Do not add consumer models, event vocabulary, authorization assumptions, or presentation rules to the module.
+Changes must remain generic, internally isolated, and compatible with PHP 8.4–8.5, Laravel 12–13, and Spatie Activitylog 5.x. Do not add consumer models, event vocabulary, authorization assumptions, or presentation rules to the module.
 
 Add or update Pest coverage for every behavior. From the suite root, run `composer quality` or the documented package-aware Pest command. Also run Composer validation, dependency analysis, suite distribution validation, and the relevant integration checks before submitting a change. Exercise installation and documented integration paths in a clean consumer when public module wiring changes.
 

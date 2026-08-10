@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Nvl\Activity\Traits;
 
 use Nvl\Activity\Data\Display\ActivityItem;
-use Nvl\Activity\Support\LogOptionsCompatibility;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Activity\Support\ModelActivityTimelineResolver;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
@@ -37,9 +36,9 @@ trait HasModelActivity
         $mapping = ModelActivityMappingResolver::forModel($this);
 
         if ($mapping === null) {
-            return LogOptionsCompatibility::dontLogEmptyChanges(
-                LogOptions::defaults()->logOnly([]),
-            );
+            return LogOptions::defaults()
+                ->logOnly([])
+                ->dontLogEmptyChanges();
         }
 
         $options = $mapping->logOptions();
@@ -49,7 +48,7 @@ trait HasModelActivity
             $options->useLogName($logName);
         }
 
-        return LogOptionsCompatibility::dontLogEmptyChanges($options);
+        return $options->dontLogEmptyChanges();
     }
 
     /**

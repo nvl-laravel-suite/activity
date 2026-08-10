@@ -138,6 +138,7 @@ return [
     'api' => [
         'parameters' => [
             'purge_days' => 'Период за съхранение в дни. Допустимите стойности се задават чрез activity.retention.allowed_purge_options.',
+            'include_important' => 'Изрично включва защитените важни доказателства. По подразбиране е false.',
         ],
     ],
     'errors' => [
@@ -192,7 +193,8 @@ return [
             'activity_model_compatible' => 'Spatie Activitylog използва каноничния NVL модел за активност.',
             'activity_model_incompatible' => 'Spatie Activitylog трябва да използва каноничния NVL модел за активност; премахнете старите настройки activity.model.',
             'spatie_supported' => 'Spatie Activitylog [:version] се поддържа.',
-            'spatie_unsupported' => 'Spatie Activitylog [:version] не се поддържа.',
+            'spatie_unsupported' => 'Spatie Activitylog [:version] не се поддържа; nvl/activity изисква основна версия 5.',
+            'retention_importance_protected' => 'Важните доказателства за активност са изключени от почистването, освен ако include-important не е изрично включено и записано в критериите на задачата.',
             'routes_disabled' => 'Маршрутите за управление са изключени.',
             'routes_safe' => 'Маршрутите за управление имат middleware, дефинирани именувани права и изричен списък с допустими обекти за хронология.',
             'routes_unsafe' => 'Включените маршрути изискват middleware, дефинирани права view/timeline/purge и обекти за хронология.',
@@ -213,6 +215,7 @@ return [
         'criteria' => [
             'before' => 'преди: :value',
             'system_only' => 'само системни: :value',
+            'include_important' => 'включи важните: :value',
             'after' => 'след: :value',
             'events' => 'събития: :value',
             'log_names' => 'имена на дневници: :value',

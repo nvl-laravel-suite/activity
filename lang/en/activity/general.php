@@ -138,6 +138,7 @@ return [
     'api' => [
         'parameters' => [
             'purge_days' => 'Retention window in days. Accepted values are configured by activity.retention.allowed_purge_options.',
+            'include_important' => 'Explicitly include protected important evidence. Defaults to false.',
         ],
     ],
     'errors' => [
@@ -192,7 +193,8 @@ return [
             'activity_model_compatible' => 'Spatie Activitylog uses the canonical NVL activity model.',
             'activity_model_incompatible' => 'Spatie Activitylog must use the canonical NVL activity model; remove legacy activity.model overrides.',
             'spatie_supported' => 'Spatie Activitylog [:version] is supported.',
-            'spatie_unsupported' => 'Spatie Activitylog [:version] is not supported.',
+            'spatie_unsupported' => 'Spatie Activitylog [:version] is not supported; nvl/activity requires major version 5.',
+            'retention_importance_protected' => 'Important activity evidence is excluded from purge operations unless include-important is explicitly enabled and recorded in the queued criteria.',
             'routes_disabled' => 'Management routes are disabled.',
             'routes_safe' => 'Management routes have middleware, defined named abilities, and an explicit timeline subject allowlist.',
             'routes_unsafe' => 'Enabled routes require middleware, defined view/timeline/purge abilities, and timeline subjects.',
@@ -213,6 +215,7 @@ return [
         'criteria' => [
             'before' => 'before: :value',
             'system_only' => 'system-only: :value',
+            'include_important' => 'include important: :value',
             'after' => 'after: :value',
             'events' => 'events: :value',
             'log_names' => 'log names: :value',

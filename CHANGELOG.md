@@ -4,11 +4,14 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+- Enforced Spatie Activitylog 5.x as the only supported major, raised the suite and Activity PHP floor to 8.4, removed the v4 namespace shim, required the v5 `attribute_changes` schema in Doctor, and documented the explicit consumer namespace/schema upgrade.
+- Made the package migration certify and baseline a compatible existing canonical `activity_log` table without destructive rollback, with a forward-only v5 bridge that adds `attribute_changes` when absent.
+- Protected important activity from every purge by default and added explicit, auditable API and CLI opt-ins that propagate through criteria, queued DTOs, events, and job logs.
 - Registered migration publication through Laravel's timestamp-aware API and made Doctor warn when automatic vendor loading overlaps a published host copy.
 - Added the package-owned `ActivityEvent` enum with localized English/Bulgarian labels and shared headline templates, made recorder descriptions optional machine-key fallbacks, and kept ordinary update/status diffs automatic without a schema migration.
-- Extended the supported PHP range through PHP 8.5 while retaining Laravel 12–13 compatibility.
+- Supported PHP 8.4–8.5 and Laravel 12–13.
 - Made `Nvl\Activity\Models\ActivityLog` the canonical non-configurable Spatie activity model and removed the legacy `activity.model` override.
-- Froze the package-managed migration to literal `activity_log` storage on the default connection; custom storage, published migrations, and schema adoption now require disabled package migrations plus application-owned migrations with immutable targets.
+- Froze package-managed migrations to literal `activity_log` storage on the default connection; custom or incompatible storage requires disabled package migrations plus application-owned migrations with immutable targets.
 - Tightened Doctor to reject stringly typed switches, unavailable connections, mutable managed storage, legacy model overrides, undefined Gate abilities, and invalid timeline hosts.
 - Made nested consumer configuration preserve missing map defaults while replacing numeric list settings atomically instead of retaining default entries by index.
 - Made complete subject reads use deterministic keyset batches and apply finite limits only after visibility and signal filtering.
@@ -26,7 +29,7 @@ All notable changes to `nvl/activity` are documented here.
 - Made the purge timeout a public runtime contract and made Doctor reject non-durable queues, short `retry_after` values, undeclared external visibility windows, and unsafe failover targets.
 - Expanded consumer documentation and the bundled skill with complete mappings, merged-source composition, configuration, migration ownership, authorization, operations, and verification contracts.
 - Added source and relocated-artifact consumer smokes for canonical and custom-connection storage, exact capture semantics, all management APIs, queue payloads, and real worker execution.
-- Prevented package migrations from silently adopting and later dropping pre-existing activity tables.
+- Prevented package migrations from silently adopting incompatible pre-existing activity tables or dropping created/adopted audit evidence during rollback.
 - Made automatic system retention opt-in and separated system origin from audit visibility.
 - Wired `ActivityMapping` into `HasModelActivity` capture with safe silent defaults for unmapped models.
 - Expanded Doctor to validate identifiers, JSON storage, indexes, Spatie compatibility, routes, queue, and scheduling.

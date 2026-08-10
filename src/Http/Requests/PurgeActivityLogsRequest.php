@@ -23,7 +23,7 @@ final class PurgeActivityLogsRequest extends ActivityFormRequest
     /**
      * Define Scribe documentation metadata for the purge payload.
      *
-     * @return array<string, array{description: string, example: int}>
+     * @return array<string, array{description: string, example: int|bool}>
      */
     public function bodyParameters(): array
     {
@@ -33,6 +33,12 @@ final class PurgeActivityLogsRequest extends ActivityFormRequest
                     'activity::activity/general.api.parameters.purge_days',
                 ),
                 'example' => $this->allowedPurgeOptions()[0] ?? 90,
+            ],
+            'include_important' => [
+                'description' => (string) trans(
+                    'activity::activity/general.api.parameters.include_important',
+                ),
+                'example' => false,
             ],
         ];
     }
@@ -46,6 +52,7 @@ final class PurgeActivityLogsRequest extends ActivityFormRequest
     {
         return [
             'days' => ['required', 'integer', 'in:'.implode(',', $this->allowedPurgeOptions())],
+            'include_important' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -55,6 +62,14 @@ final class PurgeActivityLogsRequest extends ActivityFormRequest
     public function days(): int
     {
         return $this->integer('days');
+    }
+
+    /**
+     * Determine whether protected important evidence was explicitly included.
+     */
+    public function includeImportant(): bool
+    {
+        return $this->boolean('include_important');
     }
 
     /**

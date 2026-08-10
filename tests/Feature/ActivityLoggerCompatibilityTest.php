@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Models\ActivityLog;
-use Nvl\Activity\Support\LogOptionsCompatibility;
 use Spatie\Activitylog\Support\ActivityLogger;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -17,12 +16,12 @@ test('the canonical activity logger exposes no per-write table override', functi
     expect($loggerClass::hasMacro('onTable'))->toBeFalse();
 });
 
-test('the Composer compatibility bridge is idempotent after package discovery', function (): void {
-    require dirname(__DIR__, 2).'/src/Support/activitylog_compatibility.php';
-
+test('Activitylog v5 namespaces are the only supported source contract', function (): void {
     expect(trait_exists('Spatie\\Activitylog\\Models\\Concerns\\LogsActivity'))->toBeTrue()
         ->and(class_exists(ActivityLogger::class))->toBeTrue()
-        ->and(class_exists(LogOptions::class))->toBeTrue();
+        ->and(class_exists(LogOptions::class))->toBeTrue()
+        ->and(trait_exists('Spatie\\Activitylog\\Traits\\LogsActivity'))->toBeFalse()
+        ->and(class_exists('Spatie\\Activitylog\\LogOptions'))->toBeFalse();
 });
 
 test('the canonical activity model rejects an empty configured table', function (): void {
@@ -34,14 +33,9 @@ test('the canonical activity model rejects an empty configured table', function 
 test('empty activity logs are disabled for the installed log options version', function (): void {
     $logOptions = LogOptions::defaults();
 
-    expect(LogOptionsCompatibility::dontLogEmptyChanges($logOptions))
+    expect($logOptions->dontLogEmptyChanges())
         ->toBe($logOptions);
-
-    $emptyLogProperty = property_exists($logOptions, 'logEmptyChanges')
-        ? 'logEmptyChanges'
-        : 'submitEmptyLogs';
-
-    expect($logOptions->{$emptyLogProperty})->toBeFalse();
+    expect($logOptions->logEmptyChanges)->toBeFalse();
 });
 
 test('the activity schema supports batched activity logs', function (): void {

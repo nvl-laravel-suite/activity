@@ -1,18 +1,18 @@
 ---
 name: nvl-activity
-description: Implement, integrate, test, or review nvl/activity on PHP 8.3–8.5 and Laravel 12–13. Use for generic audit capture, Spatie Activitylog adoption, semantic timelines, activity mappings, value formatters, retention, purge operations, API authorization, or activity DTOs.
+description: Implement, integrate, test, or review nvl/activity on PHP 8.4–8.5, Laravel 12–13, and Spatie Activitylog 5.x. Use for generic audit capture, Spatie Activitylog adoption, semantic timelines, activity mappings, value formatters, retention, purge operations, API authorization, or activity DTOs.
 ---
 
 # NVL Activity
 
-Use this package for generic structured audit capture and semantic timelines on PHP 8.3–8.5 and Laravel 12–13. Keep raw audit storage separate from presentation, and never infer a consumer domain from event names, payload keys, models, or authorization conventions.
+Use this package for generic structured audit capture and semantic timelines on PHP 8.4–8.5, Laravel 12–13, and Spatie Activitylog 5.x. Keep raw audit storage separate from presentation, and never infer a consumer domain from event names, payload keys, models, or authorization conventions.
 
 ## Own the model and schema correctly
 
 - `Nvl\Activity\Models\ActivityLog` is the canonical, non-configurable activity model. The provider binds it to Spatie; never add `activity.model` or override `activitylog.activity_model`.
-- With `activity.migrations.enabled=true`, the package vendor migration owns only the literal `activity_log` table on the default connection. Its `up()` and `down()` targets are immutable and do not follow runtime storage configuration.
+- With `activity.migrations.enabled=true`, package migrations own only the literal `activity_log` table on the default connection. The baseline certifies a compatible existing canonical table before adopting it, the v5 bridge adds `attribute_changes`, and rollback never drops activity evidence.
 - Publishing `activity-migrations` transfers ownership to the application. Set `activity.migrations.enabled` to the boolean `false`, maintain the copied migration in the application, and never edit it after deployment.
-- A custom table, custom connection, or existing Spatie-table adoption also requires `activity.migrations.enabled=false` and an application-owned reversible migration with frozen literal table and connection names.
+- A custom table, custom connection, or existing table that fails canonical certification requires `activity.migrations.enabled=false` and an application-owned migration with frozen literal table and connection names.
 - A matching table name does not prove schema compatibility. Run `nvl:activity:doctor --strict --format=json` before altering an adopted table. For a brand-new custom schema, migrate the application-owned schema first because Doctor requires the configured table to exist. Run Doctor after migration and before cutover in both cases, then compare identifiers, columns, JSON properties, indexes, row counts, and representative timelines.
 
 ## Configure deliberately
@@ -75,7 +75,7 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 ## Purge and operate safely
 
 - Doctor is read-only. Run it in strict JSON mode after storage, authorization, queue, schedule, or cached-configuration changes.
-- Preview retention with `nvl:activity:purge --dry-run`; use queued deletion for mutation. `nvl:activity:purge-system` and its schedule are opt-in.
+- Preview retention with `nvl:activity:purge --dry-run`; use queued deletion for mutation. Important rows are protected by default, including system retention, and require explicit `include_important=true` API input or `--include-important` CLI opt-in. `nvl:activity:purge-system` and its schedule are opt-in.
 - `PurgeActivityLogsJob` runs after commit, deletes in chunks of 1,000, and holds a distributed lock. Lock contention releases it for 60 seconds.
 - All workers and schedulers must use the same canonical LockProvider-backed default cache. Use Redis, database, Memcached, DynamoDB, or another shared atomic-lock backend for multi-node operation; file is single-host only, and array/null are never production-safe. Cache failover cannot preserve one lock domain across partial failures, so strict Doctor rejects it outright.
 - The time-based retry window covers one configured lock lifetime plus bounded execution retries, so repeated 60-second contention releases remain valid; five unhandled execution exceptions fail the job. Each attempt has a public 900-second timeout contract with failure-on-timeout and exception backoff of 60, 300, 900, and 1,800 seconds. Configure database, Redis, or Beanstalkd `retry_after` above 900 seconds. For SQS or a custom driver without `retry_after`, declare the externally configured value through `retention.external_visibility_timeout_seconds`. Doctor validates every target behind failover connections. Allow sufficient worker shutdown time.
@@ -86,4 +86,4 @@ From the suite root, run `composer quality` or its module-aware Pest command, th
 
 Coverage must include canonical model binding; literal migration up/down behavior; custom/adopted storage rejection; mapped create/update/delete; structured and batch writes; identifier/actor variants; invalid metadata; complete and finite post-filter timelines across keyset batches; real Gates and allowlists; JSON/API/error contracts; EN/BG parity; retention scopes and dry runs; job locking/retry/backoff/timeout; and after-commit dispatch.
 
-When upgrading a consumer that published this skill, republish `activity-skills` with `--force` only after reviewing local changes, or manually merge the newer bundled skill into the customized application copy. Review `CHANGELOG.md` and `UPGRADING.md` before changing storage or public contracts.
+Activitylog 4 is not a supported runtime. Before enabling v5 writes, explicitly require Activitylog 5, move host imports to the v5 namespaces, add the nullable JSON `attribute_changes` column, run strict Doctor, and verify historical `properties` fallback reads. When upgrading a consumer that published this skill, republish `activity-skills` with `--force` only after reviewing local changes, or manually merge the newer bundled skill into the customized application copy. Review `CHANGELOG.md` and `UPGRADING.md` before changing storage or public contracts.

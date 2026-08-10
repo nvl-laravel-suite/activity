@@ -14,6 +14,11 @@ interface QueueActivityLogPurgeContract
      *
      * @param  int  $days  Delete logs older than this many days
      * @param  bool  $systemOnly  Only purge system-generated logs
+     * @param  bool  $includeImportant  Explicitly include protected important evidence
      */
-    public function execute(int $days, bool $systemOnly = false): void;
+    public function execute(
+        int $days,
+        bool $systemOnly = false,
+        bool $includeImportant = false,
+    ): void;
 }

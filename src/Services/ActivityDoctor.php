@@ -73,6 +73,7 @@ final class ActivityDoctor
             $this->activityModelCheck(),
             $this->spatieVersionCheck(),
             $this->routeCheck(),
+            $this->retentionImportanceCheck(),
             $this->queueCheck(),
             $this->cacheLockCheck(),
             $this->scheduleCheck(),
@@ -220,9 +221,7 @@ final class ActivityDoctor
             'updated_at',
         ];
 
-        if ($this->spatieMajorVersion() >= 5) {
-            $columns[] = 'attribute_changes';
-        }
+        $columns[] = 'attribute_changes';
 
         $missing = $exists
             ? array_values(array_filter(
@@ -296,11 +295,7 @@ final class ActivityDoctor
         bool $exists,
         string $driver,
     ): ActivityDoctorCheckData {
-        $columns = ['properties'];
-
-        if ($this->spatieMajorVersion() >= 5) {
-            $columns[] = 'attribute_changes';
-        }
+        $columns = ['properties', 'attribute_changes'];
 
         if (! $exists || ! $this->hasColumns($schema, $table, $columns)) {
             return new ActivityDoctorCheckData(
@@ -402,7 +397,7 @@ final class ActivityDoctor
     private function spatieVersionCheck(): ActivityDoctorCheckData
     {
         $major = $this->spatieMajorVersion();
-        $passed = in_array($major, [4, 5], true);
+        $passed = $major === 5;
         $version = InstalledVersions::getPrettyVersion('spatie/laravel-activitylog') ?? 'unknown';
 
         return new ActivityDoctorCheckData(
@@ -412,6 +407,19 @@ final class ActivityDoctor
             message: $passed
                 ? $this->translated('spatie_supported', ['version' => $version])
                 : $this->translated('spatie_unsupported', ['version' => $version]),
+        );
+    }
+
+    /**
+     * Report the fail-safe retention policy for important activity evidence.
+     */
+    private function retentionImportanceCheck(): ActivityDoctorCheckData
+    {
+        return new ActivityDoctorCheckData(
+            key: 'retention.importance',
+            severity: ActivityDoctorSeverity::Error,
+            passed: true,
+            message: $this->translated('retention_importance_protected'),
         );
     }
 

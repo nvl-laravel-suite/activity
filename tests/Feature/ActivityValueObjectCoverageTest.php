@@ -21,6 +21,7 @@ test('purge criteria normalize console values and summarize every active filter'
         'before' => '2026-03-01 10:00:00 UTC',
         'after' => '2026-02-01 10:00:00 UTC',
         'system-only' => true,
+        'include-important' => true,
         'event' => [' created ', 'created', '', null, ['nested']],
         'log-name' => ' audit ',
         'subject-type' => [' App\\Models\\Order '],
@@ -33,6 +34,7 @@ test('purge criteria normalize console values and summarize every active filter'
         ->and($criteria->before)->toBe('2026-03-01T10:00:00+00:00')
         ->and($criteria->after)->toBe('2026-02-01T10:00:00+00:00')
         ->and($criteria->systemOnly)->toBeTrue()
+        ->and($criteria->includeImportant)->toBeTrue()
         ->and($criteria->events)->toBe(['created'])
         ->and($criteria->logNames)->toBe(['audit'])
         ->and($criteria->subjectTypes)->toBe(['App\\Models\\Order'])
@@ -41,7 +43,7 @@ test('purge criteria normalize console values and summarize every active filter'
         ->and($criteria->causerIds)->toBe(['7'])
         ->and($criteria->cutoff()->toIso8601String())->toBe('2026-03-01T10:00:00+00:00')
         ->and($criteria->afterCutoff()?->toIso8601String())->toBe('2026-02-01T10:00:00+00:00')
-        ->and($criteria->summaryParts())->toHaveCount(9);
+        ->and($criteria->summaryParts())->toHaveCount(10);
 });
 
 test('days criteria resolve relative cutoffs and ignore non-list filter input', function (): void {
@@ -55,7 +57,8 @@ test('days criteria resolve relative cutoffs and ignore non-list filter input', 
     expect($criteria->cutoff()->toDateTimeString())->toBe('2026-03-31 12:00:00')
         ->and($criteria->afterCutoff())->toBeNull()
         ->and($criteria->events)->toBe([])
-        ->and(ActivityPurgeCriteria::fromDays(5, true)->systemOnly)->toBeTrue();
+        ->and(ActivityPurgeCriteria::fromDays(5, true, true)->systemOnly)->toBeTrue()
+        ->and(ActivityPurgeCriteria::fromDays(5, true, true)->includeImportant)->toBeTrue();
 });
 
 test('purge criteria reject ambiguous, absent, inverted, and malformed cutoffs', function (Closure $operation, string $message): void {

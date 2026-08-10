@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\ServiceProvider;
+use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
@@ -114,6 +115,32 @@ test('purge dry runs normalize every filter and leave matching activity untouche
         ->assertSuccessful();
 
     expect($activity->fresh())->not->toBeNull();
+});
+
+test('purge command requires explicit inclusion before counting important evidence', function (): void {
+    $createdAt = now()->subDays(400);
+    ActivityLog::query()->create([
+        'log_name' => 'consumer',
+        'description' => 'Protected evidence',
+        'event' => 'verified',
+        'properties' => ['importance' => ActivityImportance::Important->value],
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt,
+    ]);
+
+    $this->artisan('nvl:activity:purge', ['--days' => 365, '--dry-run' => true])
+        ->expectsOutputToContain('include important: no')
+        ->expectsOutputToContain('Dry run: 0 activity log entries would be deleted.')
+        ->assertSuccessful();
+
+    $this->artisan('nvl:activity:purge', [
+        '--days' => 365,
+        '--include-important' => true,
+        '--dry-run' => true,
+    ])
+        ->expectsOutputToContain('include important: yes')
+        ->expectsOutputToContain('Dry run: 1 activity log entries would be deleted.')
+        ->assertSuccessful();
 });
 
 test('purge commands dispatch their normalized default retention criteria', function (): void {

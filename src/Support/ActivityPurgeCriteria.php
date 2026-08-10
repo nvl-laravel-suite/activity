@@ -26,6 +26,7 @@ final readonly class ActivityPurgeCriteria
         public ?string $before = null,
         public ?string $after = null,
         public bool $systemOnly = false,
+        public bool $includeImportant = false,
         public array $events = [],
         public array $logNames = [],
         public array $subjectTypes = [],
@@ -37,13 +38,20 @@ final readonly class ActivityPurgeCriteria
     /**
      * Build days-based purge criteria.
      */
-    public static function fromDays(int $days, bool $systemOnly = false): self
-    {
+    public static function fromDays(
+        int $days,
+        bool $systemOnly = false,
+        bool $includeImportant = false,
+    ): self {
         if ($days < 1) {
             throw ActivityPurgeCriteriaException::positiveDaysRequired();
         }
 
-        return new self(days: $days, systemOnly: $systemOnly);
+        return new self(
+            days: $days,
+            systemOnly: $systemOnly,
+            includeImportant: $includeImportant,
+        );
     }
 
     /**
@@ -74,6 +82,7 @@ final readonly class ActivityPurgeCriteria
             before: $before,
             after: $after,
             systemOnly: $forceSystemOnly || (bool) ($options['system-only'] ?? false),
+            includeImportant: (bool) ($options['include-important'] ?? false),
             events: self::normalizeArrayOption($options['event'] ?? []),
             logNames: self::normalizeArrayOption($options['log-name'] ?? []),
             subjectTypes: self::normalizeArrayOption($options['subject-type'] ?? []),
@@ -131,6 +140,11 @@ final readonly class ActivityPurgeCriteria
             (string) trans('activity::activity/general.console.criteria.system_only', [
                 'value' => trans(
                     'activity::activity/general.console.boolean.'.($this->systemOnly ? 'yes' : 'no'),
+                ),
+            ]),
+            (string) trans('activity::activity/general.console.criteria.include_important', [
+                'value' => trans(
+                    'activity::activity/general.console.boolean.'.($this->includeImportant ? 'yes' : 'no'),
                 ),
             ]),
         ];

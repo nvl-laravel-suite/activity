@@ -59,6 +59,7 @@ final class PurgeActivityLogsJob implements ShouldQueue
      *
      * @param  int  $days  Delete entries older than this many days
      * @param  bool  $systemOnly  Only delete system-originated entries
+     * @param  ActivityPurgeCriteria|null  $criteria  Immutable serialized purge filters
      */
     public function __construct(
         public readonly int $days,
@@ -130,6 +131,9 @@ final class PurgeActivityLogsJob implements ShouldQueue
         Log::error('Activity log purge failed.', [
             'days' => $this->days,
             'system_only' => $this->systemOnly,
+            'include_important' => $this->criteria instanceof ActivityPurgeCriteria
+                ? $this->criteria->includeImportant
+                : false,
             'exception' => $exception?->getMessage(),
         ]);
     }
@@ -175,6 +179,7 @@ final class PurgeActivityLogsJob implements ShouldQueue
             'before' => $criteria->cutoff()->toIso8601String(),
             'after' => $criteria->afterCutoff()?->toIso8601String(),
             'system_only' => $criteria->systemOnly,
+            'include_important' => $criteria->includeImportant,
             'events' => $criteria->events,
             'log_names' => $criteria->logNames,
             'subject_types' => $criteria->subjectTypes,

@@ -111,9 +111,10 @@ final class ActivityLogsApiController extends Controller
         QueueActivityLogPurgeContract $action,
     ): JsonResponse {
         $days = $request->days();
-        $action->execute($days, false);
+        $includeImportant = $request->includeImportant();
+        $action->execute($days, false, $includeImportant);
 
-        return $this->purgeQueuedResponse($days, false);
+        return $this->purgeQueuedResponse($days, false, $includeImportant);
     }
 
     /**
@@ -128,16 +129,20 @@ final class ActivityLogsApiController extends Controller
         QueueActivityLogPurgeContract $action,
     ): JsonResponse {
         $days = $request->days();
-        $action->execute($days, true);
+        $includeImportant = $request->includeImportant();
+        $action->execute($days, true, $includeImportant);
 
-        return $this->purgeQueuedResponse($days, true);
+        return $this->purgeQueuedResponse($days, true, $includeImportant);
     }
 
     /**
      * Build the canonical translated response for a queued purge operation.
      */
-    private function purgeQueuedResponse(int $days, bool $systemOnly): JsonResponse
-    {
+    private function purgeQueuedResponse(
+        int $days,
+        bool $systemOnly,
+        bool $includeImportant,
+    ): JsonResponse {
         $responseCode = $systemOnly
             ? ActivityResponseCode::PurgeSystemQueued
             : ActivityResponseCode::PurgeQueued;
@@ -147,6 +152,7 @@ final class ActivityLogsApiController extends Controller
                 queued: true,
                 days: $days,
                 systemOnly: $systemOnly,
+                includeImportant: $includeImportant,
             ))->toArray(),
             'code' => $responseCode->value,
             'message' => $responseCode->getMessage(),

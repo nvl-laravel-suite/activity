@@ -178,6 +178,7 @@ test('purge requests authorize once through the form request and dispatch the co
         ->assertJsonPath('data.queued', true)
         ->assertJsonPath('data.days', 90)
         ->assertJsonPath('data.systemOnly', false)
+        ->assertJsonPath('data.includeImportant', false)
         ->assertJsonPath('code', 'purge_queued')
         ->assertJsonPath('message', 'The activity log purge has been queued.');
 
@@ -188,7 +189,33 @@ test('purge requests authorize once through the form request and dispatch the co
     Event::assertDispatched(
         ActivityLogPurgeQueuedEvent::class,
         static fn (ActivityLogPurgeQueuedEvent $event): bool => $event->days === 90
-            && $event->systemOnly === false,
+            && $event->systemOnly === false
+            && $event->includeImportant === false,
+    );
+});
+
+test('purge requests expose and audit explicit important-evidence inclusion', function (): void {
+    Bus::fake();
+    Event::fake([ActivityLogPurgeQueuedEvent::class]);
+    config()->set('activity.authorization.abilities.purge', 'activity.purge');
+    Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
+    enable_activity_test_routes();
+
+    $this->actingAs(activity_test_user())
+        ->postJson('/api/v1/activities/purge', [
+            'days' => 90,
+            'include_important' => true,
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.includeImportant', true);
+
+    Bus::assertDispatched(
+        PurgeActivityLogsJob::class,
+        static fn (PurgeActivityLogsJob $job): bool => $job->criteria?->includeImportant === true,
+    );
+    Event::assertDispatched(
+        ActivityLogPurgeQueuedEvent::class,
+        static fn (ActivityLogPurgeQueuedEvent $event): bool => $event->includeImportant,
     );
 });
 

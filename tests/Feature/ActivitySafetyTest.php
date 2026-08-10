@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
+use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
@@ -24,7 +25,7 @@ use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 
-test('the package migration never adopts ownership of an existing activity table', function (): void {
+test('the package migration rejects an incompatible existing activity table', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
 
     Schema::drop('activity_log');
@@ -35,11 +36,61 @@ test('the package migration never adopts ownership of an existing activity table
 
     try {
         expect(fn () => DB::transaction(static fn () => $migration->up()))
-            ->toThrow('PDOException')
+            ->toThrow(LogicException::class, 'cannot be baselined; missing columns')
             ->and(Schema::hasColumn('activity_log', 'legacy_marker'))->toBeTrue();
     } finally {
         Schema::drop('activity_log');
         $migration->up();
+    }
+});
+
+test('the package baselines compatible canonical storage and bridges v5 changes non destructively', function (): void {
+    $baseline = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
+    $versionFiveBridge = require dirname(__DIR__, 2).'/database/migrations/2026_08_10_123558_add_activitylog_v5_attribute_changes.php';
+
+    Schema::drop('activity_log');
+    Schema::create('activity_log', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('log_name')->nullable()->index();
+        $table->text('description');
+        $table->string('subject_type')->nullable();
+        $table->string('subject_id')->nullable();
+        $table->string('event')->nullable();
+        $table->string('causer_type')->nullable();
+        $table->string('causer_id')->nullable();
+        $table->json('properties')->nullable();
+        $table->uuid('batch_uuid')->nullable();
+        $table->timestamps();
+
+        $table->index(['subject_type', 'subject_id']);
+        $table->index(['causer_type', 'causer_id']);
+        $table->index(['created_at', 'id']);
+        $table->index(['event', 'created_at']);
+    });
+    DB::table('activity_log')->insert([
+        'id' => '019c46ed-4f77-71a8-a741-216bad57d93c',
+        'description' => 'Preserved historical evidence',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    try {
+        $baseline->up();
+        $versionFiveBridge->up();
+
+        expect(Schema::hasColumn('activity_log', 'attribute_changes'))->toBeTrue()
+            ->and(DB::table('activity_log')->count())->toBe(1);
+
+        $versionFiveBridge->down();
+        $baseline->down();
+
+        expect(Schema::hasTable('activity_log'))->toBeTrue()
+            ->and(Schema::hasColumn('activity_log', 'attribute_changes'))->toBeTrue()
+            ->and(DB::table('activity_log')->count())->toBe(1);
+    } finally {
+        Schema::drop('activity_log');
+        $baseline->up();
+        $versionFiveBridge->up();
     }
 });
 
@@ -100,7 +151,7 @@ test('the activity model rejects malformed runtime storage instead of falling ba
     );
 });
 
-test('rollback always reverses the immutable managed target after storage config changes', function (): void {
+test('rollback never destroys the immutable managed activity target after storage config changes', function (): void {
     $migrationPath = dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
     $migration = require $migrationPath;
 
@@ -117,7 +168,7 @@ test('rollback always reverses the immutable managed target after storage config
         $rollbackMigration = require $migrationPath;
         $rollbackMigration->down();
 
-        expect(Schema::hasTable('activity_log'))->toBeFalse()
+        expect(Schema::hasTable('activity_log'))->toBeTrue()
             ->and(Schema::hasColumn('custom_activity_log', 'decoy'))->toBeTrue();
     } finally {
         config()->set('activity.storage.table', 'activity_log');
@@ -175,6 +226,18 @@ test('system-only retention preserves user-originated audit rows', function (): 
 
     ActivityLog::query()->create([
         'log_name' => 'test',
+        'description' => 'Important system evidence',
+        'event' => 'security_synchronized',
+        'properties' => [
+            'source' => ActivitySource::System->value,
+            'importance' => ActivityImportance::Important->value,
+        ],
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt,
+    ]);
+
+    ActivityLog::query()->create([
+        'log_name' => 'test',
         'description' => 'Scalar actor audit event',
         'event' => 'reviewed',
         'properties' => [
@@ -201,6 +264,44 @@ test('system-only retention preserves user-originated audit rows', function (): 
     expect(PurgeActivityLogsJob::countPurgeableForCriteria(
         ActivityPurgeCriteria::fromDays(90, systemOnly: true),
     ))->toBe(1);
+});
+
+test('purge preserves important evidence by default and deletes it only after explicit opt in', function (): void {
+    $createdAt = now()->subDays(120);
+    $normal = ActivityLog::query()->create([
+        'log_name' => 'test',
+        'description' => 'Normal maintenance evidence',
+        'event' => 'synchronized',
+        'properties' => ['importance' => ActivityImportance::Normal->value],
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt,
+    ]);
+    $important = ActivityLog::query()->create([
+        'log_name' => 'test',
+        'description' => 'Protected compliance evidence',
+        'event' => 'verified',
+        'properties' => ['importance' => ActivityImportance::Important->value],
+        'created_at' => $createdAt,
+        'updated_at' => $createdAt,
+    ]);
+
+    (new PurgeActivityLogsJob(days: 90))->handle();
+
+    expect($normal->fresh())->toBeNull()
+        ->and($important->fresh())->not->toBeNull()
+        ->and(PurgeActivityLogsJob::countPurgeableForCriteria(
+            ActivityPurgeCriteria::fromDays(90),
+        ))->toBe(0)
+        ->and(PurgeActivityLogsJob::countPurgeableForCriteria(
+            ActivityPurgeCriteria::fromDays(90, includeImportant: true),
+        ))->toBe(1);
+
+    (new PurgeActivityLogsJob(
+        days: 90,
+        criteria: ActivityPurgeCriteria::fromDays(90, includeImportant: true),
+    ))->handle();
+
+    expect($important->fresh())->toBeNull();
 });
 
 test('configured retention becomes the command default only when no cutoff is supplied', function (): void {

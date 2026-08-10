@@ -21,5 +21,6 @@ final class ActivityLogPurgeQueuedEvent
     public function __construct(
         public readonly int $days,
         public readonly bool $systemOnly,
+        public readonly bool $includeImportant = false,
     ) {}
 }

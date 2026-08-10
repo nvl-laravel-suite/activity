@@ -27,6 +27,7 @@ final class PurgeSystemActivityLogsCommand extends Command
         {--subject-id=* : Restrict purge to one or more subject identifiers}
         {--causer-type=* : Restrict purge to one or more causer class names}
         {--causer-id=* : Restrict purge to one or more causer identifiers}
+        {--include-important : Explicitly include protected important evidence}
         {--dry-run : Report count without deleting}';
 
     /**

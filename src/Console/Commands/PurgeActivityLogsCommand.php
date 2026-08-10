@@ -28,6 +28,7 @@ final class PurgeActivityLogsCommand extends Command
         {--causer-type=* : Restrict purge to one or more causer class names}
         {--causer-id=* : Restrict purge to one or more causer identifiers}
         {--system-only : Only purge system-generated logs (no causer)}
+        {--include-important : Explicitly include protected important evidence}
         {--dry-run : Report count without deleting}';
 
     /**

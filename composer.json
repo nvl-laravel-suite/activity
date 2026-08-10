@@ -5,14 +5,14 @@
     "license": "MIT",
     "keywords": ["laravel", "activity", "audit-log", "timeline"],
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "ext-filter": "*",
         "ext-mbstring": "*",
         "laravel/framework": "^12.0 || ^13.0",
         "nesbot/carbon": "^2.72 || ^3.0",
         "nvl/data": "^1.0",
         "nvl/support": "^1.0",
-        "spatie/laravel-activitylog": "^4.0 || ^5.0",
+        "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.23",
         "spatie/typescript-transformer": "^3.3",
         "symfony/http-foundation": "^7.2 || ^8.0"
@@ -26,9 +26,6 @@
         "pestphp/pest-plugin-laravel": "^4.0"
     },
     "autoload": {
-        "files": [
-            "src/Support/activitylog_compatibility.php"
-        ],
         "psr-4": {
             "Nvl\\Activity\\": "src/",
             "Nvl\\Activity\\Database\\Factories\\": "database/factories/",

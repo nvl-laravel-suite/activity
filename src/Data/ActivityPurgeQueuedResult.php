@@ -32,5 +32,7 @@ final class ActivityPurgeQueuedResult extends Data
         public readonly int $days,
         #[LiteralTypeScriptType('boolean')]
         public readonly bool $systemOnly,
+        #[LiteralTypeScriptType('boolean')]
+        public readonly bool $includeImportant = false,
     ) {}
 }

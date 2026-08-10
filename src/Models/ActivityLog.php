@@ -55,9 +55,8 @@ final class ActivityLog extends Activity
     /**
      * Read tracked changes from the version-specific Spatie storage column.
      *
-     * Spatie v4 stores model changes in `properties`; v5 stores them in the
-     * dedicated `attribute_changes` column. Expose one stable package-owned
-     * attribute across both supported dependency lines.
+     * Spatie v5 stores changes in `attribute_changes`; historical v4 rows may
+     * still carry them inside `properties`, so reads preserve that legacy data.
      *
      * @return Attribute<Collection<int|string, mixed>|null, never>
      */

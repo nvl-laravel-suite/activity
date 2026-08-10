@@ -44,7 +44,7 @@ test('registered mappings own automatic model capture options and log names', fu
         ->toBe(['name' => 'Initial name']);
 });
 
-test('tracked changes remain readable from the Spatie v4 properties layout', function (): void {
+test('historical tracked changes remain readable from the legacy v4 properties layout', function (): void {
     $activity = new ActivityLog;
     $activity->forceFill([
         'attribute_changes' => null,

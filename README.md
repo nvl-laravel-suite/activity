@@ -14,9 +14,9 @@
 
 ## Purpose
 
-`nvl/activity` provides generic structured audit capture and readable semantic timelines for Laravel 12–13 on PHP 8.3–8.5. It builds on Spatie Activitylog without embedding application event names, models, labels, or business rules.
+`nvl/activity` provides generic structured audit capture and readable semantic timelines for Laravel 12–13 on PHP 8.4–8.5. It builds on Spatie Activitylog without embedding application event names, models, labels, or business rules.
 
-Activity depends on `nvl/data` and `nvl/support`. It supports compatible Spatie Activitylog 4.x and 5.x schemas. It is not event sourcing, workflow orchestration, authorization policy, or a domain event replacement.
+Activity depends on `nvl/data`, `nvl/support`, and Spatie Activitylog 5.x. Activitylog 4.x is not a supported runtime. Historical v4 rows remain readable after the documented schema and namespace upgrade. The package is not event sourcing, workflow orchestration, authorization policy, or a domain event replacement.
 
 ## Requirements and installation
 
@@ -40,20 +40,40 @@ php artisan vendor:publish --tag=activity-skills
 
 Publishing is an ownership transfer:
 
-1. **Automatic vendor loading (default):** do not publish `activity-migrations`; leave `activity.migrations.enabled=true`. The package maintains the migration and owns the canonical `activity_log` table on the default connection.
+1. **Automatic vendor loading (default):** do not publish `activity-migrations`; leave `activity.migrations.enabled=true`. The package maintains the migrations and owns the canonical `activity_log` table on the default connection. An existing table may be baselined only when the package migration certifies its columns, identifiers, primary key, JSON storage, and indexes; rollback never drops created or adopted audit evidence.
 2. **Host-owned published migrations:** publish `activity-migrations`, set `activity.migrations.enabled=false` before migrating, and maintain the published file as an application migration. Do not edit it after deployment.
 
-- Custom tables, custom connections, and pre-existing Spatie tables always require `activity.migrations.enabled=false` plus an application-owned migration whose `up()` and `down()` methods use frozen literal table and connection names. Never resolve a migration target from mutable runtime configuration.
+- Custom tables, custom connections, and existing canonical tables that fail package certification require `activity.migrations.enabled=false` plus an application-owned migration whose `up()` and `down()` methods use frozen literal table and connection names. Never resolve a migration target from mutable runtime configuration.
 
 Never run both migration sources. Laravel retimestamps files published through the migration tag. Doctor reports a warning when automatic loading remains enabled and `database/migrations` contains a timestamp-independent name matching the package migration; `--strict` promotes that warning to failure.
 
-Run the read-only Doctor before altering an adopted table so it can inventory the existing compatibility gaps. For a brand-new custom schema, create and migrate the application-owned schema first because Doctor cannot report healthy until the configured table exists. Run Doctor after migration and before cutover in both cases:
+Run the read-only Doctor without `--strict` before altering an adopted table so it can inventory compatibility gaps. For a brand-new custom schema, create and migrate the application-owned schema first because Doctor cannot report healthy until the configured table exists. Run Doctor in strict mode after migration and before cutover:
 
 ```bash
 php artisan nvl:activity:doctor --strict --format=json
 ```
 
 The `Nvl\Activity\Models\ActivityLog` model is canonical and non-configurable. The provider always binds it to `activitylog.activity_model`; do not define the removed `activity.model` key or override Spatie's activity model binding.
+
+### Upgrade from Spatie Activitylog 4 to 5
+
+The suite enforces Activitylog 5.x and PHP 8.4+. Treat this as an explicit consumer upgrade:
+
+1. Require the new major deliberately, then update dependencies:
+
+   ```bash
+   composer require spatie/laravel-activitylog:^5.0 --no-update
+   composer update nvl/laravel-suite spatie/laravel-activitylog --with-all-dependencies
+   ```
+
+2. Replace v4 imports in application code:
+   - `Spatie\Activitylog\Traits\LogsActivity` becomes `Spatie\Activitylog\Models\Concerns\LogsActivity`.
+   - `Spatie\Activitylog\LogOptions` becomes `Spatie\Activitylog\Support\LogOptions`.
+   - `Spatie\Activitylog\ActivityLogger` becomes `Spatie\Activitylog\Support\ActivityLogger`.
+   - Prefer `Nvl\Activity\Traits\HasModelActivity` for mapped package capture.
+3. Add the nullable JSON `activity_log.attribute_changes` column before any v5 write. With package-managed canonical storage, `php artisan migrate` certifies or creates the base table and the following bridge migration adds the column. With published or custom storage, add it in a new application-owned migration.
+4. Run `php artisan nvl:activity:doctor --strict --format=json` and resolve every failure before workers or web traffic can write activity.
+5. Verify representative historical timelines. The model reads v5 `attribute_changes` first and falls back to v4 change payloads retained in `properties`; the fallback does not make a v4 runtime or v4 schema writable.
 
 ### Custom storage or existing-table adoption
 
@@ -446,8 +466,8 @@ Every path below is relative to the configured route prefix, which is `/api/v1` 
 | `GET /activities` | Optional `search` and `event` strings up to 100 characters; `causer_id` / `causerId` up to 100; `subject_type` / `subjectType` up to 255; `subject_id` / `subjectId` up to 100; valid inclusive dates in `created_at_from` / `createdAtFrom` and `created_at_to` / `createdAtTo`, with the upper bound on or after the lower bound; `per_page` / `perPage` or its `limit` alias from 1 to 100 (default 20); and `page` from 1. A date-only upper bound includes the complete day. |
 | `GET /activities/timeline` | Required `subject_type` / `subjectType` string up to 255 characters and `subject_id` / `subjectId` string up to 100; optional `limit` from 1 to 100 (default 100). The subject type must resolve through `activity.routes.timeline_subjects`. |
 | `GET /activities/causers/suggestions` | Optional `search` or `q`, at most 50 characters; a one-character search intentionally returns no suggestions. Optional `limit` is from 1 to 50 (default 10). |
-| `POST /activities/purge` | Request body requires integer `days` from `activity.retention.allowed_purge_options`; defaults are 90, 365, or 730. Queues a general purge. |
-| `POST /activities/purge-system` | Same required `days` contract; queues a system-origin-only purge. |
+| `POST /activities/purge` | Request body requires integer `days` from `activity.retention.allowed_purge_options`; defaults are 90, 365, or 730. Optional boolean `include_important` defaults to `false`. Queues a general purge. |
+| `POST /activities/purge-system` | Same `days` and `include_important` contract; queues a system-origin-only purge. |
 
 The index `limit` parameter is an alias for page size, not an unpaginated result cap. Timeline and causer limits are independent bounded result counts.
 
@@ -463,7 +483,7 @@ All boolean switches must be actual booleans so cached configuration preserves t
 | `activity.routes.management_middleware` | `['auth', 'throttle:60,1']` | Required management protection; an empty list fails Doctor. |
 | `activity.routes.timeline_subjects` | `[]` | Explicit model or morph-alias allowlist for merged timelines. |
 | `activity.authorization.abilities.*` | `null` | Real Gate names for `view`, `timeline`, and `purge`; missing or undefined abilities fail closed. |
-| `activity.migrations.enabled` | `true` | Loads the immutable vendor migration only for `activity_log` on the default connection. Must be boolean `false` for published, custom, or adopted migrations. |
+| `activity.migrations.enabled` | `true` | Loads forward-only vendor migrations only for `activity_log` on the default connection. Compatible canonical tables are certified and baselined; published, custom, or incompatible adopted storage requires boolean `false`. |
 | `activity.storage.connection` | `null` | Runtime model/query connection. A custom value requires application-owned migrations. |
 | `activity.storage.table` | `activity_log` | Runtime model/query table. A custom value requires application-owned migrations. |
 | `activity.causer_suggestions.model` | `null` | Explicit Eloquent causer model, or the configured Eloquent `users` auth-provider model. |
@@ -495,7 +515,8 @@ Purge endpoints return a typed `ActivityPurgeQueuedResult`, a stable response co
   "data": {
     "queued": true,
     "days": 90,
-    "systemOnly": false
+    "systemOnly": false,
+    "includeImportant": false
   },
   "code": "purge_queued",
   "message": "The activity log purge has been queued."
@@ -511,11 +532,12 @@ php artisan nvl:activity:doctor --strict --format=json
 php artisan nvl:activity:purge --dry-run --days=365
 php artisan nvl:activity:purge --days=365
 php artisan nvl:activity:purge-system --dry-run
+php artisan nvl:activity:purge --days=365 --include-important
 ```
 
-Doctor is read-only. It checks strict configuration values, connection availability, the configured table, columns, morph identifiers, JSON properties, indexes, the canonical Activity model, Spatie version, defined Gate abilities, subject allowlists, queue safety, and scheduling.
+Doctor is read-only. It checks strict configuration values, connection availability, the configured table, columns including required v5 `attribute_changes`, morph identifiers, JSON properties, indexes, the canonical Activity model, Activitylog major version 5, defined Gate abilities, subject allowlists, the important-record retention policy, queue safety, and scheduling.
 
-Purge supports date, event, log, subject, causer, and system-origin scopes. `audit_only` visibility does not make a user event system-originated. Dry run counts rows. Mutation dispatches locked, chunked queue work and reports failures.
+Purge supports date, event, log, subject, causer, and system-origin scopes. Important rows are excluded by default from general, system-only, API, CLI, and scheduled retention. Deleting them requires the explicit, auditable API input `include_important=true` or CLI flag `--include-important`; the queued DTO, event, job logs, and criteria summary retain that decision. `audit_only` visibility does not make a user event system-originated. Dry run counts rows. Mutation dispatches locked, chunked queue work and reports failures.
 
 Automatic system retention is disabled by default. Configure the maintenance queue, run a worker, and explicitly enable it only after previewing the result:
 
@@ -563,7 +585,9 @@ Do not store translated headlines, labels, or exception messages in `activity_lo
 
 ## Database adoption
 
-Existing Spatie installations may differ in primary key type, morph columns, indexes, table name, or package version. Set the boolean `activity.migrations.enabled=false`, run Doctor, and resolve differences in an application-owned reversible migration with frozen literal targets. Do not assume a table-name match is schema compatibility.
+An existing canonical `activity_log` table on the default connection can remain package-managed only when the baseline migration certifies the required columns, string-compatible identifiers, UUID/string primary key, JSON storage, and indexes. Laravel then records the baseline as executed without recreating the table, and the v5 bridge adds `attribute_changes` when missing. Both package migration rollbacks are intentionally non-destructive because created or adopted audit evidence is forward-only.
+
+Other Spatie installations may differ in primary key type, morph columns, indexes, table name, connection, or package version. Set the boolean `activity.migrations.enabled=false`, run Doctor, and resolve differences in an application-owned migration with frozen literal targets. Do not assume a table-name match is schema compatibility, and never edit an already-deployed migration.
 
 Preserve identifiers where possible and compare row counts, checksums, representative properties, and rendered timelines before cutover.
 
