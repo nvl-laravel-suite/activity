@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\ServiceProvider;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
 
@@ -31,6 +33,36 @@ test('doctor renders text and json while strict mode promotes warnings to failur
     $this->artisan('nvl:activity:doctor', ['--strict' => true, '--format' => 'json'])
         ->expectsOutputToContain('"healthy": true')
         ->assertSuccessful();
+});
+
+test('migration publishing is timestamp-aware and doctor detects duplicate ownership', function (): void {
+    $migrationPath = realpath(dirname(__DIR__, 2).'/database/migrations');
+    $publishableMigrationPaths = array_map(
+        static fn (string $path): string|false => realpath($path),
+        ServiceProvider::publishableMigrationPaths(),
+    );
+
+    expect(ActivityServiceProvider::pathsToPublish(
+        ActivityServiceProvider::class,
+        'activity-migrations',
+    ))->not->toBeEmpty()
+        ->and($publishableMigrationPaths)->toContain($migrationPath);
+
+    $published = database_path(
+        'migrations/2099_01_01_000000_create_activity_log_table.php',
+    );
+    file_put_contents($published, "<?php\n");
+
+    try {
+        $this->artisan('nvl:activity:doctor')
+            ->expectsOutputToContain('create_activity_log_table')
+            ->assertSuccessful();
+        $this->artisan('nvl:activity:doctor', ['--strict' => true])
+            ->expectsOutputToContain('create_activity_log_table')
+            ->assertFailed();
+    } finally {
+        unlink($published);
+    }
 });
 
 test('purge commands report invalid criteria instead of dispatching work', function (): void {

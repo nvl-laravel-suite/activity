@@ -69,6 +69,7 @@ final class ActivityDoctor
         return [
             ...$schemaChecks,
             $this->configurationCheck(),
+            $this->migrationOwnershipCheck(),
             $this->activityModelCheck(),
             $this->spatieVersionCheck(),
             $this->routeCheck(),
@@ -76,6 +77,63 @@ final class ActivityDoctor
             $this->cacheLockCheck(),
             $this->scheduleCheck(),
         ];
+    }
+
+    /**
+     * Warn when automatic vendor loading overlaps a published migration copy.
+     */
+    private function migrationOwnershipCheck(): ActivityDoctorCheckData
+    {
+        $duplicates = config('activity.migrations.enabled') === true
+            ? $this->publishedMigrationDuplicates(dirname(__DIR__, 2).'/database/migrations')
+            : [];
+
+        return new ActivityDoctorCheckData(
+            key: 'migrations.ownership',
+            severity: ActivityDoctorSeverity::Warning,
+            passed: $duplicates === [],
+            message: $this->translated(
+                $duplicates === [] ? 'migration_ownership_clear' : 'migration_ownership_conflict',
+                ['migrations' => implode(', ', $duplicates)],
+            ),
+        );
+    }
+
+    /**
+     * Find host migrations whose timestamp-independent names match package migrations.
+     *
+     * @return list<string>
+     */
+    private function publishedMigrationDuplicates(string $packagePath): array
+    {
+        $packageMigrations = glob($packagePath.'/*.php') ?: [];
+        $hostMigrations = glob(database_path('migrations/*.php')) ?: [];
+        $packageNames = array_map($this->migrationName(...), $packageMigrations);
+        $duplicates = [];
+
+        foreach ($hostMigrations as $migration) {
+            $name = $this->migrationName($migration);
+
+            if (in_array($name, $packageNames, true)) {
+                $duplicates[] = $name;
+            }
+        }
+
+        sort($duplicates);
+
+        return array_values(array_unique($duplicates));
+    }
+
+    /**
+     * Remove Laravel's timestamp prefix from a migration filename.
+     */
+    private function migrationName(string $path): string
+    {
+        return (string) preg_replace(
+            '/^\d{4}_\d{2}_\d{2}_\d{6}_/',
+            '',
+            pathinfo($path, PATHINFO_FILENAME),
+        );
     }
 
     /**

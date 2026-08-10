@@ -172,6 +172,8 @@ return [
         'messages' => [
             'configuration_values_valid' => 'Package switches, storage, and queue visibility configuration use valid value types.',
             'configuration_values_invalid' => 'Package switches must be booleans; custom storage requires disabled package migrations and an application-owned migration; external queue visibility must be null or a positive integer.',
+            'migration_ownership_clear' => 'Automatic vendor migration loading does not overlap a published host copy.',
+            'migration_ownership_conflict' => 'Automatic vendor migration loading overlaps published host migration(s): :migrations. Disable activity.migrations.enabled before running host-owned copies.',
             'schema_connection_available' => 'The configured activity storage connection is available.',
             'schema_connection_unavailable' => 'The configured activity storage connection is unavailable.',
             'schema_table_exists' => 'Table [:table] exists.',

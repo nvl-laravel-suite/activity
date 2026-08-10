@@ -117,7 +117,7 @@ final class ActivityServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../../resources/boost/skills' => base_path('.agents/skills'),
         ], 'activity-skills');
-        $this->publishes([
+        $this->publishesMigrations([
             __DIR__.'/../../database/migrations' => database_path('migrations'),
         ], 'activity-migrations');
 

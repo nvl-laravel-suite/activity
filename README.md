@@ -40,9 +40,12 @@ php artisan vendor:publish --tag=activity-skills
 
 Publishing is an ownership transfer:
 
-- The package-loaded vendor migration is maintained by the package and must remain enabled only for the canonical `activity_log` table on the default connection.
-- A migration copied with `activity-migrations` becomes application-owned. Set `activity.migrations.enabled` to the boolean `false` so the package does not also load its vendor copy, and do not edit the published migration after it has been deployed.
+1. **Automatic vendor loading (default):** do not publish `activity-migrations`; leave `activity.migrations.enabled=true`. The package maintains the migration and owns the canonical `activity_log` table on the default connection.
+2. **Host-owned published migrations:** publish `activity-migrations`, set `activity.migrations.enabled=false` before migrating, and maintain the published file as an application migration. Do not edit it after deployment.
+
 - Custom tables, custom connections, and pre-existing Spatie tables always require `activity.migrations.enabled=false` plus an application-owned migration whose `up()` and `down()` methods use frozen literal table and connection names. Never resolve a migration target from mutable runtime configuration.
+
+Never run both migration sources. Laravel retimestamps files published through the migration tag. Doctor reports a warning when automatic loading remains enabled and `database/migrations` contains a timestamp-independent name matching the package migration; `--strict` promotes that warning to failure.
 
 Run the read-only Doctor before altering an adopted table so it can inventory the existing compatibility gaps. For a brand-new custom schema, create and migrate the application-owned schema first because Doctor cannot report healthy until the configured table exists. Run Doctor after migration and before cutover in both cases:
 

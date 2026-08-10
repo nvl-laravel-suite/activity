@@ -4,6 +4,7 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+- Registered migration publication through Laravel's timestamp-aware API and made Doctor warn when automatic vendor loading overlaps a published host copy.
 - Added the package-owned `ActivityEvent` enum with localized English/Bulgarian labels and shared headline templates, made recorder descriptions optional machine-key fallbacks, and kept ordinary update/status diffs automatic without a schema migration.
 - Extended the supported PHP range through PHP 8.5 while retaining Laravel 12–13 compatibility.
 - Made `Nvl\Activity\Models\ActivityLog` the canonical non-configurable Spatie activity model and removed the legacy `activity.model` override.
