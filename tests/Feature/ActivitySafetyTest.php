@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
+use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
@@ -28,8 +29,8 @@ use Nvl\Activity\Support\ActivityPurgeCriteria;
 test('the package migration rejects an incompatible existing activity table', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
 
-    Schema::drop('activity_log');
-    Schema::create('activity_log', function (Blueprint $table): void {
+    Schema::drop(ActivityTables::ActivityLog);
+    Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
         $table->uuid('id')->primary();
         $table->string('legacy_marker');
     });
@@ -37,9 +38,9 @@ test('the package migration rejects an incompatible existing activity table', fu
     try {
         expect(fn () => DB::transaction(static fn () => $migration->up()))
             ->toThrow(LogicException::class, 'cannot be baselined; missing columns')
-            ->and(Schema::hasColumn('activity_log', 'legacy_marker'))->toBeTrue();
+            ->and(Schema::hasColumn(ActivityTables::ActivityLog, 'legacy_marker'))->toBeTrue();
     } finally {
-        Schema::drop('activity_log');
+        Schema::drop(ActivityTables::ActivityLog);
         $migration->up();
     }
 });
@@ -48,8 +49,8 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
     $baseline = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
     $versionFiveBridge = require dirname(__DIR__, 2).'/database/migrations/2026_08_10_123558_add_activitylog_v5_attribute_changes.php';
 
-    Schema::drop('activity_log');
-    Schema::create('activity_log', function (Blueprint $table): void {
+    Schema::drop(ActivityTables::ActivityLog);
+    Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
         $table->uuid('id')->primary();
         $table->string('log_name')->nullable()->index();
         $table->text('description');
@@ -67,7 +68,7 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
         $table->index(['created_at', 'id']);
         $table->index(['event', 'created_at']);
     });
-    DB::table('activity_log')->insert([
+    DB::table(ActivityTables::ActivityLog)->insert([
         'id' => '019c46ed-4f77-71a8-a741-216bad57d93c',
         'description' => 'Preserved historical evidence',
         'created_at' => now(),
@@ -78,17 +79,17 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
         $baseline->up();
         $versionFiveBridge->up();
 
-        expect(Schema::hasColumn('activity_log', 'attribute_changes'))->toBeTrue()
-            ->and(DB::table('activity_log')->count())->toBe(1);
+        expect(Schema::hasColumn(ActivityTables::ActivityLog, 'attribute_changes'))->toBeTrue()
+            ->and(DB::table(ActivityTables::ActivityLog)->count())->toBe(1);
 
         $versionFiveBridge->down();
         $baseline->down();
 
-        expect(Schema::hasTable('activity_log'))->toBeTrue()
-            ->and(Schema::hasColumn('activity_log', 'attribute_changes'))->toBeTrue()
-            ->and(DB::table('activity_log')->count())->toBe(1);
+        expect(Schema::hasTable(ActivityTables::ActivityLog))->toBeTrue()
+            ->and(Schema::hasColumn(ActivityTables::ActivityLog, 'attribute_changes'))->toBeTrue()
+            ->and(DB::table(ActivityTables::ActivityLog)->count())->toBe(1);
     } finally {
-        Schema::drop('activity_log');
+        Schema::drop(ActivityTables::ActivityLog);
         $baseline->up();
         $versionFiveBridge->up();
     }
@@ -106,7 +107,7 @@ test('package managed migrations reject mutable custom storage targets before dd
             ->and(collect(app(ActivityDoctor::class)->inspect())
                 ->firstWhere('key', 'configuration.values')?->passed)->toBeFalse();
     } finally {
-        config()->set('activity.storage.table', 'activity_log');
+        config()->set('activity.storage.table', ActivityTables::ActivityLog);
     }
 });
 
@@ -114,14 +115,14 @@ test('package managed migrations reject malformed storage settings before ddl', 
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
     $originalValue = config($key);
 
-    Schema::drop('activity_log');
+    Schema::drop(ActivityTables::ActivityLog);
     config()->set($key, $value);
 
     try {
         expect(fn () => $migration->up())->toThrow(
             LogicException::class,
             'use an application-owned migration for custom storage',
-        )->and(Schema::hasTable('activity_log'))->toBeFalse();
+        )->and(Schema::hasTable(ActivityTables::ActivityLog))->toBeFalse();
     } finally {
         config()->set($key, $originalValue);
         $migration->up();
@@ -155,7 +156,7 @@ test('rollback never destroys the immutable managed activity target after storag
     $migrationPath = dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
     $migration = require $migrationPath;
 
-    Schema::drop('activity_log');
+    Schema::drop(ActivityTables::ActivityLog);
     Schema::create('custom_activity_log', function (Blueprint $table): void {
         $table->id();
         $table->string('decoy');
@@ -168,13 +169,13 @@ test('rollback never destroys the immutable managed activity target after storag
         $rollbackMigration = require $migrationPath;
         $rollbackMigration->down();
 
-        expect(Schema::hasTable('activity_log'))->toBeTrue()
+        expect(Schema::hasTable(ActivityTables::ActivityLog))->toBeTrue()
             ->and(Schema::hasColumn('custom_activity_log', 'decoy'))->toBeTrue();
     } finally {
-        config()->set('activity.storage.table', 'activity_log');
+        config()->set('activity.storage.table', ActivityTables::ActivityLog);
         Schema::dropIfExists('custom_activity_log');
 
-        if (! Schema::hasTable('activity_log')) {
+        if (! Schema::hasTable(ActivityTables::ActivityLog)) {
             $migration->up();
         }
     }
@@ -335,8 +336,8 @@ test('purge queue actions reject invalid retention before dispatch', function ()
 test('doctor rejects incompatible adopted schemas instead of reporting a false healthy state', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
 
-    Schema::drop('activity_log');
-    Schema::create('activity_log', function (Blueprint $table): void {
+    Schema::drop(ActivityTables::ActivityLog);
+    Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
         $table->id();
         $table->string('log_name')->nullable();
         $table->text('description');
@@ -358,7 +359,7 @@ test('doctor rejects incompatible adopted schemas instead of reporting a false h
             ->and($checks->get('schema.json')?->passed)->toBeFalse()
             ->and($checks->get('schema.indexes')?->passed)->toBeFalse();
     } finally {
-        Schema::drop('activity_log');
+        Schema::drop(ActivityTables::ActivityLog);
         $migration->up();
     }
 });
@@ -366,8 +367,8 @@ test('doctor rejects incompatible adopted schemas instead of reporting a false h
 test('doctor requires a primary activity id and compatible batch identifier storage', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
 
-    Schema::drop('activity_log');
-    Schema::create('activity_log', function (Blueprint $table): void {
+    Schema::drop(ActivityTables::ActivityLog);
+    Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
         $table->string('id');
         $table->string('log_name')->nullable()->index();
         $table->text('description');
@@ -392,7 +393,7 @@ test('doctor requires a primary activity id and compatible batch identifier stor
 
         expect($check?->passed)->toBeFalse();
     } finally {
-        Schema::drop('activity_log');
+        Schema::drop(ActivityTables::ActivityLog);
         $migration->up();
     }
 });
@@ -428,7 +429,7 @@ test('doctor rejects text json storage on PostgreSQL connections', function (): 
     config()->set('activity.storage.connection', $connectionName);
 
     try {
-        Schema::connection($connectionName)->create('activity_log', function (Blueprint $table): void {
+        Schema::connection($connectionName)->create(ActivityTables::ActivityLog, function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('log_name')->nullable();
             $table->text('description');

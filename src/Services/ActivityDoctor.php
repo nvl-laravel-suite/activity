@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Contracts\MergesActivity;
 use Nvl\Activity\Data\ActivityDoctorCheckData;
+use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityDoctorSeverity;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
@@ -149,7 +150,7 @@ final class ActivityDoctor
             'activity.retention.external_visibility_timeout_seconds',
         );
         $usesCanonicalManagedStorage = $migrationsEnabled !== true
-            || ($connection === null && $table === ActivityLog::DEFAULT_TABLE);
+            || ($connection === null && $table === ActivityTables::ActivityLog);
         $passed = is_bool($migrationsEnabled)
             && is_bool(config('activity.routes.enabled'))
             && is_bool(config('activity.retention.schedule.enabled'))

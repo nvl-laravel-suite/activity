@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Nvl\Activity\Definitions\Tables\ActivityTables;
+
 return [
     'name' => 'Activity',
 
@@ -27,7 +29,7 @@ return [
 
     'storage' => [
         'connection' => null,
-        'table' => 'activity_log',
+        'table' => ActivityTables::ActivityLog,
     ],
 
     'causer_suggestions' => [

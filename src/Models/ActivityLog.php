@@ -10,6 +10,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Nvl\Activity\Builders\ActivityLogBuilder;
+use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Spatie\Activitylog\Models\Activity;
 
@@ -36,7 +37,7 @@ final class ActivityLog extends Activity
 {
     use HasUuids;
 
-    public const string DEFAULT_TABLE = 'activity_log';
+    public const string DEFAULT_TABLE = ActivityTables::ActivityLog;
 
     /**
      * The primary key type.
@@ -79,7 +80,7 @@ final class ActivityLog extends Activity
      */
     public function getTable(): string
     {
-        $table = config('activity.storage.table', self::DEFAULT_TABLE);
+        $table = config('activity.storage.table', ActivityTables::ActivityLog);
 
         if (! is_string($table) || trim($table) === '') {
             throw ActivityConfigurationException::emptyTableName();

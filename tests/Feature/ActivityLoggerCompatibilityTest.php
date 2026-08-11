@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Schema;
+use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Models\ActivityLog;
 use Spatie\Activitylog\Support\ActivityLogger;
@@ -39,5 +40,5 @@ test('empty activity logs are disabled for the installed log options version', f
 });
 
 test('the activity schema supports batched activity logs', function (): void {
-    expect(Schema::hasColumn('activity_log', 'batch_uuid'))->toBeTrue();
+    expect(Schema::hasColumn(ActivityTables::ActivityLog, 'batch_uuid'))->toBeTrue();
 });
