@@ -207,7 +207,9 @@ test('system retention scheduling requires explicit enablement', function (): vo
 
     expect($event)->not->toBeNull()
         ->and($event->command)->toContain('--days=45')
-        ->and($event->expression)->toBe('15 3 * * *');
+        ->and($event->expression)->toBe('15 3 * * *')
+        ->and($event->onOneServer)->toBeTrue()
+        ->and($event->withoutOverlapping)->toBeTrue();
 });
 
 test('system-only retention preserves user-originated audit rows', function (): void {

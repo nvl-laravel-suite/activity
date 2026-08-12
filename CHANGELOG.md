@@ -4,9 +4,12 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-08-12
+
 ### Changed
 
-- Clarified package-owned retention scheduling and feature-gated readiness.
+- Clarified and verified package-owned retention scheduling, distributed
+  overlap guards, and feature-gated readiness.
 
 ## [1.0.2] - 2026-08-12
 
