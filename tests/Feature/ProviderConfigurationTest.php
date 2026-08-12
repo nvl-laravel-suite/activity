@@ -80,10 +80,14 @@ test('management routes are disabled and doctor reports the clean schema', funct
 
     $this->getJson('/api/v1/activities')->assertNotFound();
 
+    $failedChecks = collect(app(ActivityDoctor::class)->inspect())
+        ->reject(static fn ($check): bool => $check->passed)
+        ->map(static fn ($check): string => $check->key)
+        ->values()
+        ->all();
+
     expect(config('activity.routes.enabled'))->toBeFalse()
-        ->and(collect(app(ActivityDoctor::class)->inspect())->every(
-            static fn ($check): bool => $check->passed,
-        ))->toBeTrue();
+        ->and($failedChecks)->toBe([]);
 });
 
 test('doctor rejects stringly typed switches that would be unsafe after config caching', function (): void {

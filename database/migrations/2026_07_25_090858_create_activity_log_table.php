@@ -135,7 +135,7 @@ return new class extends Migration
 
         $compatibleJsonTypes = $schema->getConnection()->getDriverName() === 'pgsql'
             ? ['json', 'jsonb']
-            : ['json', 'jsonb', 'text'];
+            : ['json', 'jsonb', 'longtext', 'text'];
         $invalidJsonColumns = array_values(array_filter(
             $jsonColumns,
             static fn (string $column): bool => ! in_array(

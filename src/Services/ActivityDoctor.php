@@ -309,7 +309,7 @@ final class ActivityDoctor
 
         $compatibleTypes = $driver === 'pgsql'
             ? ['json', 'jsonb']
-            : ['json', 'jsonb', 'text'];
+            : ['json', 'jsonb', 'longtext', 'text'];
         $invalid = array_values(array_filter(
             $columns,
             fn (string $column): bool => ! in_array(

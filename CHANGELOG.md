@@ -4,6 +4,8 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+- Recognized MariaDB's native `longtext` JSON schema metadata in Doctor and
+  canonical-table adoption checks.
 - Enforced Spatie Activitylog 5.x as the only supported major, raised the suite and Activity PHP floor to 8.4, removed the v4 namespace shim, required the v5 `attribute_changes` schema in Doctor, and documented the explicit consumer namespace/schema upgrade.
 - Made the package migration certify and baseline a compatible existing canonical `activity_log` table without destructive rollback, with a forward-only v5 bridge that adds `attribute_changes` when absent.
 - Protected important activity from every purge by default and added explicit, auditable API and CLI opt-ins that propagate through criteria, queued DTOs, events, and job logs.
