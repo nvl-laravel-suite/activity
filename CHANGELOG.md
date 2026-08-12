@@ -4,6 +4,12 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Clarified package-owned retention scheduling and feature-gated readiness.
+
+## [1.0.2] - 2026-08-12
+
 - Recognized MariaDB's native `longtext` JSON schema metadata in Doctor and
   canonical-table adoption checks.
 - Enforced Spatie Activitylog 5.x as the only supported major, raised the suite and Activity PHP floor to 8.4, removed the v4 namespace shim, required the v5 `attribute_changes` schema in Doctor, and documented the explicit consumer namespace/schema upgrade.
@@ -48,7 +54,7 @@ All notable changes to `nvl/activity` are documented here.
 - Forced JSON negotiation across package routes before validation and authorization failures are rendered.
 - Expanded the README and bundled agent skill with localization, error, enum, DTO, and API-boundary doctrine.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-08-08
 
 - Added generic structured audit capture and semantic timeline registries.
 - Added safe Spatie Activitylog schema adoption diagnostics.

@@ -550,6 +550,10 @@ Automatic system retention is disabled by default. Configure the maintenance que
 ],
 ```
 
+When enabled, Activity registers `nvl:activity:purge-system` with Laravel's
+scheduler at the configured time. The host must not register a duplicate entry.
+When disabled, schedule-specific readiness is not required.
+
 `PurgeActivityLogsJob` runs after commit, deletes in chunks of 1,000, and uses one distributed lock. Lock contention releases the job for 60 seconds instead of silently succeeding. Its time-based retry window covers one complete configured lock lifetime plus bounded execution retries, so legitimate contention cannot exhaust a small attempt count; five unhandled execution exceptions fail the job. Each attempt has a public 900-second timeout contract with failure-on-timeout and exception backoff delays of 60, 300, 900, and 1,800 seconds. Configure database, Redis, or Beanstalkd `retry_after` to a value **greater than 900 seconds** so another worker cannot receive the same job while a valid attempt is still running. SQS and custom drivers without `retry_after` require `activity.retention.external_visibility_timeout_seconds` to declare the backend value configured outside Laravel; Doctor fails until that declared value also exceeds 900. Failover connections are safe only when every target passes the same rule. Supervisors must also allow the worker enough shutdown time for the 900-second job timeout.
 
 The default cache must provide Laravel atomic locks. In multi-worker or multi-node deployments, every worker and scheduler must use the same canonical shared lock backend, such as Redis, database, Memcached, or DynamoDB. File locks are suitable only when every process runs on one host and shares the same filesystem. `array` and `null` stores are not production-safe. Cache failover is also unsafe for mutual exclusion because different nodes can acquire locks in different backend domains; strict Doctor rejects all three drivers.
