@@ -113,6 +113,7 @@ return [
         'attributes' => [
             'search' => 'search',
             'event' => 'event',
+            'events' => 'events',
             'causer_id' => 'causer',
             'subject_type' => 'subject type',
             'subject_id' => 'subject',
@@ -134,6 +135,7 @@ return [
             'in' => 'The selected :attribute is invalid.',
         ],
         'unsupported_timeline_subject' => 'The selected subject type does not support merged activity timelines.',
+        'invalid_events' => 'The events must contain at most 10 unique names of at most 100 characters each.',
     ],
     'api' => [
         'parameters' => [

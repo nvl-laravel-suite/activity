@@ -4,6 +4,32 @@ declare(strict_types=1);
 
 use Nvl\Activity\Data\ActivityIndexFilter;
 
+test('activity index filters normalize legacy array and comma separated events', function (): void {
+    $arrayFilters = ActivityIndexFilter::fromInput([
+        'events' => [' created ', 'updated', '', 'updated'],
+    ]);
+    $commaFilters = ActivityIndexFilter::fromInput([
+        'event' => 'deleted',
+        'events' => 'created, updated,created,  ',
+    ]);
+    $legacyFilters = ActivityIndexFilter::fromInput(['event' => 'created']);
+
+    expect($arrayFilters->events)->toBe(['created', 'updated'])
+        ->and($commaFilters->event)->toBe('deleted')
+        ->and($commaFilters->events)->toBe(['created', 'updated', 'deleted'])
+        ->and($legacyFilters->event)->toBe('created')
+        ->and($legacyFilters->events)->toBe(['created']);
+});
+
+test('activity index filters reject more than ten unique events', function (): void {
+    ActivityIndexFilter::fromInput([
+        'events' => array_map(
+            static fn (int $index): string => "event-{$index}",
+            range(1, 11),
+        ),
+    ]);
+})->throws(InvalidArgumentException::class, 'at most 10');
+
 test('activity index filters clamp per page request values', function (int $requested, int $expected): void {
     $filters = ActivityIndexFilter::fromInput(['per_page' => $requested]);
 

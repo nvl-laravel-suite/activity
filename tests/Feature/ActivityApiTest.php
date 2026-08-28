@@ -56,6 +56,45 @@ test('activity index aliases are normalized by the request contract', function (
         ->assertJsonPath('data.activities.meta.perPage', 1);
 });
 
+test('activity index accepts bounded multi-event and legacy event filters', function (): void {
+    config()->set('activity.authorization.abilities.view', 'activity.view');
+    Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
+    enable_activity_test_routes();
+
+    foreach (['created', 'updated', 'deleted'] as $event) {
+        ActivityLog::query()->create([
+            'log_name' => 'event-filter',
+            'description' => $event,
+            'event' => $event,
+        ]);
+    }
+
+    $this->actingAs(activity_test_user())
+        ->getJson('/api/v1/activities?events=created,updated')
+        ->assertSuccessful()
+        ->assertJsonCount(2, 'data.activities.items');
+
+    $this->actingAs(activity_test_user())
+        ->getJson('/api/v1/activities?events[]=updated&events[]=deleted')
+        ->assertSuccessful()
+        ->assertJsonCount(2, 'data.activities.items');
+
+    $this->actingAs(activity_test_user())
+        ->getJson('/api/v1/activities?event=created')
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data.activities.items');
+
+    $events = implode(',', array_map(
+        static fn (int $index): string => "event-{$index}",
+        range(1, 11),
+    ));
+
+    $this->actingAs(activity_test_user())
+        ->getJson('/api/v1/activities?events='.$events)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('events');
+});
+
 test('activity index authorization fails closed without a configured ability', function (): void {
     enable_activity_test_routes();
 

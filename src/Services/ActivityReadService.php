@@ -9,9 +9,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
+use InvalidArgumentException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Support\ActivitySubjectReference;
 
 /**
  * Use-case oriented read service for Activity log retrieval.
@@ -153,7 +155,75 @@ final class ActivityReadService
         int $perPage = 20,
     ): LengthAwarePaginator {
         return $this->subjectQuery($subjectType, $subjectId)
-            ->paginate($perPage);
+            ->paginate($this->clampPerPage($perPage));
+    }
+
+    /**
+     * Paginate activity rows for exact subject type and identifier pairs.
+     *
+     * @param  list<ActivitySubjectReference>  $subjects
+     * @return LengthAwarePaginator<int, ActivityLog>
+     */
+    public function paginateForSubjectReferences(
+        array $subjects,
+        int $perPage = 20,
+    ): LengthAwarePaginator {
+        $perPage = $this->clampPerPage($perPage);
+
+        $subjects = $this->normalizeSubjectReferences($subjects);
+
+        $grouped = [];
+        $seen = [];
+
+        foreach ($subjects as $subject) {
+            $identifier = (string) $subject->id;
+            $deduplicationKey = mb_strlen($subject->type).':'.$subject->type.$identifier;
+
+            if (isset($seen[$deduplicationKey])) {
+                continue;
+            }
+
+            $seen[$deduplicationKey] = true;
+            $groupKey = 'type:'.$subject->type;
+            $grouped[$groupKey] ??= [
+                'type' => $subject->type,
+                'ids' => [],
+            ];
+            $grouped[$groupKey]['ids'][] = $identifier;
+        }
+
+        if ($grouped === []) {
+            return new LengthAwarePaginator(
+                items: [],
+                total: 0,
+                perPage: $perPage,
+                currentPage: max(1, LengthAwarePaginator::resolveCurrentPage()),
+                options: ['path' => LengthAwarePaginator::resolveCurrentPath()],
+            );
+        }
+
+        $query = ActivityLog::query()->where(function (ActivityLogBuilder $subjectsQuery) use ($grouped): void {
+            $first = true;
+
+            foreach ($grouped as $subjectGroup) {
+                $subjectType = $subjectGroup['type'];
+                $subjectIds = $subjectGroup['ids'];
+                $constraint = static function (ActivityLogBuilder $subjectQuery) use ($subjectType, $subjectIds): void {
+                    $subjectQuery
+                        ->where('subject_type', $subjectType)
+                        ->whereIn('subject_id', $subjectIds);
+                };
+
+                if ($first) {
+                    $subjectsQuery->where($constraint);
+                    $first = false;
+                } else {
+                    $subjectsQuery->orWhere($constraint);
+                }
+            }
+        });
+
+        return $this->newestSubjectQuery($query)->paginate($perPage);
     }
 
     /**
@@ -188,11 +258,49 @@ final class ActivityReadService
      */
     private function subjectQuery(string $subjectType, string|int $subjectId): ActivityLogBuilder
     {
-        return ActivityLog::query()
-            ->forSubject($subjectType, $subjectId)
+        return $this->newestSubjectQuery(
+            ActivityLog::query()->forSubject($subjectType, $subjectId),
+        );
+    }
+
+    /** Apply the canonical null-safe subject timeline ordering. */
+    private function newestSubjectQuery(ActivityLogBuilder $query): ActivityLogBuilder
+    {
+        return $query
             ->orderByRaw('CASE WHEN created_at IS NULL THEN 1 ELSE 0 END')
             ->orderByDesc('created_at')
             ->orderByDesc('id');
+    }
+
+    /** Clamp a consumer-controlled subject page size to the package boundary. */
+    private function clampPerPage(int $perPage): int
+    {
+        return min(100, max(1, $perPage));
+    }
+
+    /**
+     * Validate untrusted runtime array values while preserving a precise public contract.
+     *
+     * @param  array<int, mixed>  $subjects
+     * @return list<ActivitySubjectReference>
+     */
+    private function normalizeSubjectReferences(array $subjects): array
+    {
+        if (count($subjects) > 100) {
+            throw new InvalidArgumentException('Activity subject reads may contain at most 100 references.');
+        }
+
+        $references = [];
+
+        foreach ($subjects as $subject) {
+            if (! $subject instanceof ActivitySubjectReference) {
+                throw new InvalidArgumentException('Activity subject reads require ActivitySubjectReference values.');
+            }
+
+            $references[] = $subject;
+        }
+
+        return $references;
     }
 
     /**

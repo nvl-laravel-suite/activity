@@ -415,6 +415,45 @@ Omit `mergedActivitySupersededBaseEvents()` when no richer source replaces a bas
 
 Use `ListActivitiesAction`, `ActivityReadService`, `ActivityTransformService`, or `ModelActivityTimelineService` for read paths. Eager-loading and bounded pagination avoid subject and causer N+1 queries.
 
+### Bounded subject references and event filters
+
+`ActivityIndexFilter` accepts the legacy single `event` and a new `events`
+array or comma-separated string. Event names are trimmed, blank values are
+discarded, duplicates preserve first occurrence order, and at most ten unique
+names are accepted. When both inputs are present, `events` is followed by the
+legacy event if it is not already included.
+
+Use value-only references when a consumer already owns stable subject identity
+and must not reload another package's model:
+
+```php
+use Nvl\Activity\Facades\ActivityLog;
+use Nvl\Activity\Services\ActivityReadService;
+use Nvl\Activity\Support\ActivitySubjectReference;
+
+$subjects = [
+    new ActivitySubjectReference('registration', $registrationId),
+    new ActivitySubjectReference('participation', $participationId),
+];
+
+$activity = app(ActivityReadService::class)
+    ->paginateForSubjectReferences($subjects, perPage: 50);
+
+ActivityLog::recordForSubjectReference(
+    subject: new ActivitySubjectReference('setting', $settingKey),
+    event: 'setting_changed',
+    context: ['namespace' => $namespace],
+    actor: $actor,
+);
+```
+
+Single- and multi-subject pagination clamp page size to 1–100. Multi-subject
+reads accept at most 100 references, deduplicate exact type/ID pairs, group each
+type with only its own IDs, and use the canonical null-safe newest-first order.
+An empty reference list returns an empty paginator without querying storage.
+Reference recording validates the normal Activity metadata, performs one insert,
+does not instantiate or query the subject model, and never infers model diffs.
+
 ## Routes and authorization
 
 Management routes are disabled by default:
@@ -463,7 +502,7 @@ Every path below is relative to the configured route prefix, which is `/api/v1` 
 
 | Method and path | Request contract |
 | --- | --- |
-| `GET /activities` | Optional `search` and `event` strings up to 100 characters; `causer_id` / `causerId` up to 100; `subject_type` / `subjectType` up to 255; `subject_id` / `subjectId` up to 100; valid inclusive dates in `created_at_from` / `createdAtFrom` and `created_at_to` / `createdAtTo`, with the upper bound on or after the lower bound; `per_page` / `perPage` or its `limit` alias from 1 to 100 (default 20); and `page` from 1. A date-only upper bound includes the complete day. |
+| `GET /activities` | Optional `search` and legacy `event` strings up to 100 characters; optional `events` array or comma-separated string with at most ten unique event names up to 100 characters each; `causer_id` / `causerId` up to 100; `subject_type` / `subjectType` up to 255; `subject_id` / `subjectId` up to 100; valid inclusive dates in `created_at_from` / `createdAtFrom` and `created_at_to` / `createdAtTo`, with the upper bound on or after the lower bound; `per_page` / `perPage` or its `limit` alias from 1 to 100 (default 20); and `page` from 1. A date-only upper bound includes the complete day. |
 | `GET /activities/timeline` | Required `subject_type` / `subjectType` string up to 255 characters and `subject_id` / `subjectId` string up to 100; optional `limit` from 1 to 100 (default 100). The subject type must resolve through `activity.routes.timeline_subjects`. |
 | `GET /activities/causers/suggestions` | Optional `search` or `q`, at most 50 characters; a one-character search intentionally returns no suggestions. Optional `limit` is from 1 to 50 (default 10). |
 | `POST /activities/purge` | Request body requires integer `days` from `activity.retention.allowed_purge_options`; defaults are 90, 365, or 730. Optional boolean `include_important` defaults to `false`. Queues a general purge. |

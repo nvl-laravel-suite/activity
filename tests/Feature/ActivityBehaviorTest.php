@@ -23,6 +23,7 @@ use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\HeadlineRenderer;
 use Nvl\Activity\Services\LabelResolver;
 use Nvl\Activity\Services\MappingRegistry;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
 use Nvl\Activity\Tests\Stubs\TestActivitySubjectWithHasModelActivity;
@@ -107,6 +108,13 @@ test('activity queries compose every index and subject filter without leaking tr
     ]);
 
     $filtered = ActivityLog::query()->forIndex($filters)->get();
+    $legacyDirectFilter = ActivityLog::query()->forIndex(new ActivityIndexFilter(
+        search: null,
+        event: 'created',
+        causerId: null,
+        createdAtFrom: null,
+        createdAtTo: null,
+    ))->get();
     $subjects = ActivityLog::query()
         ->forSubject('App\\Models\\Order', ['42', '43'])
         ->withinDateRange(
@@ -117,6 +125,7 @@ test('activity queries compose every index and subject filter without leaking tr
 
     expect($filtered)->toHaveCount(1)
         ->and($filtered->first()?->is($target))->toBeTrue()
+        ->and($legacyDirectFilter->modelKeys())->toBe([$secondSubject->getKey()])
         ->and($subjects)->toHaveCount(2)
         ->and($subjects->modelKeys())->toContain($target->getKey(), $secondSubject->getKey());
 });
@@ -209,6 +218,109 @@ test('read services support complete feeds, bounded dates, cursor ties, and subj
     } finally {
         Schema::dropIfExists('activity_timeline_subjects');
     }
+});
+
+test('subject history reads clamp page size and preserve type and identifier pairs', function (): void {
+    $rows = [
+        ['type-a', '1', 'A1', '2026-07-11 12:00:00'],
+        ['type-a', '2', 'A2', '2026-07-12 12:00:00'],
+        ['type-b', '1', 'B1', '2026-07-13 12:00:00'],
+        ['type-b', '2', 'B2', '2026-07-14 12:00:00'],
+    ];
+
+    foreach ($rows as [$type, $id, $description, $createdAt]) {
+        ActivityLog::query()->create([
+            'log_name' => 'multi-subject',
+            'description' => $description,
+            'event' => 'created',
+            'subject_type' => $type,
+            'subject_id' => $id,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+    }
+
+    $service = app(ActivityReadService::class);
+    $single = $service->paginateForSubjectKey('type-a', '1', 1000);
+    $multiple = $service->paginateForSubjectReferences([
+        new ActivitySubjectReference(' type-a ', '1'),
+        new ActivitySubjectReference('type-b', 2),
+        new ActivitySubjectReference('type-a', 1),
+    ], 1000);
+
+    expect($single->perPage())->toBe(100)
+        ->and($multiple->perPage())->toBe(100)
+        ->and($multiple->total())->toBe(2)
+        ->and($multiple->getCollection()->pluck('description')->all())->toBe(['B2', 'A1']);
+});
+
+test('numeric-looking subject types remain string-bound in multi-subject reads', function (): void {
+    ActivityLog::query()->create([
+        'log_name' => 'numeric-subject-type',
+        'description' => 'Numeric type',
+        'event' => 'created',
+        'subject_type' => '1',
+        'subject_id' => 'resource-1',
+    ]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $page = app(ActivityReadService::class)->paginateForSubjectReferences([
+        new ActivitySubjectReference('1', 'resource-1'),
+    ]);
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($page->total())->toBe(1)
+        ->and($queries)->not->toBeEmpty();
+
+    foreach ($queries as $query) {
+        expect($query['bindings'][0] ?? null)->toBeString()->toBe('1');
+    }
+});
+
+test('subject references reject nul bytes before read or record storage access', function (Closure $operation): void {
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    expect($operation)->toThrow(InvalidArgumentException::class, 'NUL');
+
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($queries)->toBe([]);
+})->with([
+    'read type boundary' => fn () => app(ActivityReadService::class)
+        ->paginateForSubjectReferences([new ActivitySubjectReference("type\0", 'resource-1')]),
+    'record identifier body' => fn () => app(ActivityRecorder::class)
+        ->recordForSubjectReference(
+            new ActivitySubjectReference('type', "resource\0-1"),
+            'updated',
+        ),
+]);
+
+test('multi-subject history rejects oversized inputs and returns an empty paginator without querying', function (): void {
+    $service = app(ActivityReadService::class);
+    $subjects = array_map(
+        static fn (int $index): ActivitySubjectReference => new ActivitySubjectReference('type-a', $index),
+        range(1, 101),
+    );
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    expect(fn () => $service->paginateForSubjectReferences($subjects))
+        ->toThrow(InvalidArgumentException::class, 'at most 100')
+        ->and(DB::getQueryLog())->toBe([]);
+
+    DB::flushQueryLog();
+    $empty = $service->paginateForSubjectReferences([], 0);
+    $emptyQueries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($empty->total())->toBe(0)
+        ->and($empty->perPage())->toBe(1)
+        ->and($emptyQueries)->toBe([]);
 });
 
 test('model identifiers are accepted only when they match integer uuid ulid or declared string storage', function (): void {

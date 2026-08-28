@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Http\Requests;
 
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
+use InvalidArgumentException;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Models\ActivityLog;
 
@@ -31,6 +33,19 @@ final class ListActivityLogsRequest extends ActivityFormRequest
         return [
             'search' => ['nullable', 'string', 'max:100'],
             'event' => ['nullable', 'string', 'max:100'],
+            'events' => [
+                'nullable',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    try {
+                        ActivityIndexFilter::fromInput([
+                            'event' => $this->input('event'),
+                            'events' => $value,
+                        ]);
+                    } catch (InvalidArgumentException) {
+                        $fail((string) trans('activity::activity/general.validation.invalid_events'));
+                    }
+                },
+            ],
             'causer_id' => ['nullable', 'string', 'max:100'],
             'subject_type' => ['nullable', 'string', 'max:255'],
             'subject_id' => ['nullable', 'string', 'max:100'],
@@ -50,6 +65,7 @@ final class ListActivityLogsRequest extends ActivityFormRequest
         return ActivityIndexFilter::fromInput([
             'search' => $this->input('search'),
             'event' => $this->input('event'),
+            'events' => $this->input('events'),
             'causer_id' => $this->input('causer_id'),
             'created_at_from' => $this->input('created_at_from'),
             'created_at_to' => $this->input('created_at_to'),

@@ -37,6 +37,7 @@ final class ActivityLogsApiController extends Controller
      *
      * @queryParam search string Optional search text matched against description, event, log, and subject type.
      * @queryParam event string Optional exact event key filter.
+     * @queryParam events string[] Optional array or comma-separated list of up to ten exact event keys.
      * @queryParam causer_id string Optional stored causer identifier value from activity rows.
      * @queryParam causerId string Optional generated DTO alias for causer_id.
      * @queryParam subject_type string Optional stored subject type value from activity rows.

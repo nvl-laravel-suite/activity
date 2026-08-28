@@ -27,7 +27,8 @@ Use this package for generic structured audit capture and semantic timelines on 
 
 ## Capture activity
 
-- Use `ActivityLog::record(...)` or the underlying `ActivityRecorder` as the canonical writer.
+- Use `ActivityLog::record(...)` or the underlying `ActivityRecorder` as the canonical model-backed writer.
+- When only stable subject identity is available, use `ActivityLog::recordForSubjectReference(new ActivitySubjectReference($type, $id), ...)`. It inserts without instantiating or querying the subject and never infers model diffs. This value-only seam accepts `context`, `actor`, and `importance`, but not `attributes`, `old`, or `resolveChanges`; keep value-only change metadata in `context`, or use the model-backed writer when Eloquent diffs are required.
 - Use `ActivityEvent` for package-wide meanings shared across domains. Define a domain-owned string-backed enum for business-specific events rather than adding application vocabulary to the package enum.
 - Omit `description` for normal writes; it defaults to the stable event key. Never use it to persist translated labels or final timeline sentences.
 - Let `ActivityEvent::Updated`, `ActivityEvent::DetailsUpdated`, and status-change events infer `attributes` and `old` from the saved subject. Supply explicit arrays only for domain-specific or multi-model changes, and pair a complete explicit payload with `resolveChanges=false`.
@@ -46,7 +47,32 @@ Use this package for generic structured audit capture and semantic timelines on 
 - Source DTOs collect and translate their own records; the host owns source composition and optional supersession; controllers return the finished DTOs.
 - `null` means a complete subject timeline. A finite limit means the newest requested rows after visibility/signal filtering. Base reads use deterministic `(created_at, id)` keyset batches of 100 until the limit is satisfied or storage is exhausted.
 - The merged host applies supersession, newest-first ordering, and the final finite limit. Extra collectors must implement the same null/finite contract.
-- Return `ActivityItem` and related `Nvl.Activity.*` DTOs, not raw Spatie models or ad-hoc payloads. Use `HeadlineSegmentType` for backend segments; never return HTML or frontend presentation flags.
+- For raw history across existing value-only identities, call `ActivityReadService::paginateForSubjectReferences($references, $perPage)`. Pass at most 100 `ActivitySubjectReference` values; exact type/ID pairs are deduplicated, page size clamps to 1–100, and an empty list returns an empty paginator without querying. `paginateForSubjectKey()` uses the same page-size clamp.
+- At transport boundaries, return `ActivityItem` and related `Nvl.Activity.*` DTOs rather than exposing the raw `ActivityLog` rows returned by low-level read services. Use `HeadlineSegmentType` for backend segments; never return HTML or frontend presentation flags.
+
+```php
+use Nvl\Activity\Actions\Activity\ListActivitiesAction;
+use Nvl\Activity\Data\ActivityIndexFilter;
+use Nvl\Activity\Facades\ActivityLog;
+use Nvl\Activity\Services\ActivityReadService;
+use Nvl\Activity\Support\ActivitySubjectReference;
+
+$filters = ActivityIndexFilter::fromInput(['events' => ['created', 'updated']]);
+$page = app(ListActivitiesAction::class)->execute($filters);
+
+$references = [
+    new ActivitySubjectReference('registration', $registrationId),
+    new ActivitySubjectReference('participation', $participationId),
+];
+$history = app(ActivityReadService::class)->paginateForSubjectReferences($references, 50);
+
+ActivityLog::recordForSubjectReference(
+    new ActivitySubjectReference('setting', $settingKey),
+    'setting_changed',
+    context: ['namespace' => $namespace],
+    actor: $actor,
+);
+```
 
 ## Authorize and expose safely
 
@@ -60,8 +86,9 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 
 - Doctor verifies configured names have real Gate definitions. A timeline subject must also resolve through the explicit model/morph-alias allowlist and implement `MergesActivity`.
 - Keep `ForceActivityJsonResponse` on package routes. Return DTO data under `data`, stable machine codes under `code`, and localized safe copy under `message`.
+- The index endpoint is `GET /api/v1/activities` with the default `routes.prefix`; use the configured prefix when the consumer changes it.
 - Use snake-case validation fields and camelCase mapped DTO output. Do not expose model classes, identifiers, SQL, or configuration internals in public error context.
-- API inputs are bounded: index accepts optional search/event/causer/subject/date filters plus page size 1–100; timeline requires an allowlisted subject type and identifier with an optional 1–100 limit; causer suggestions accept search plus a 1–50 limit; both purge endpoints require `days` from `retention.allowed_purge_options`. Treat index `limit` as a page-size alias, not an unpaginated cap.
+- API inputs are bounded: index accepts optional search, legacy `event`, `events`, causer, subject, and date filters plus page size 1–100. Send `events` as repeated array values or one comma-separated string; normalization trims blanks, preserves first occurrence order, and accepts at most ten unique names of at most 100 characters. Timeline requires an allowlisted subject type and identifier with an optional 1–100 limit; causer suggestions accept search plus a 1–50 limit; both purge endpoints require `days` from `retention.allowed_purge_options`. Treat index `limit` as a page-size alias, not an unpaginated cap.
 
 ## Own strings and public contracts
 

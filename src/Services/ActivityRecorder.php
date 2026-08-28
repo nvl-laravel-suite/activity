@@ -12,6 +12,7 @@ use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\TimelineActivityRules;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 
@@ -41,6 +42,74 @@ final class ActivityRecorder
      */
     public function record(
         ?Model $subject,
+        string|BackedEnum $event,
+        string $description = '',
+        array $context = [],
+        ?array $attributes = null,
+        ?array $old = null,
+        Model|string|int|null $actor = null,
+        ?string $logName = null,
+        string|BackedEnum|null $source = null,
+        string|BackedEnum|null $visibility = null,
+        string|BackedEnum|null $importance = null,
+        bool $resolveChanges = true,
+        ?string $batchUuid = null,
+    ): ?ActivityContract {
+        return $this->persist(
+            subject: $subject,
+            subjectReference: null,
+            event: $event,
+            description: $description,
+            context: $context,
+            attributes: $attributes,
+            old: $old,
+            actor: $actor,
+            logName: $logName,
+            source: $source,
+            visibility: $visibility,
+            importance: $importance,
+            resolveChanges: $resolveChanges,
+            batchUuid: $batchUuid,
+        );
+    }
+
+    /**
+     * Record activity for a stable subject identity without loading its model.
+     *
+     * @param  string|BackedEnum  $event  Canonical event key or backed enum
+     * @param  array<string, mixed>  $context  Event-specific business context
+     * @param  Model|string|int|null  $actor  Causing actor model, scalar ID, or null
+     */
+    public function recordForSubjectReference(
+        ActivitySubjectReference $subject,
+        string|BackedEnum $event,
+        string $description = '',
+        array $context = [],
+        Model|string|int|null $actor = null,
+        string|BackedEnum|null $importance = null,
+    ): ?ActivityContract {
+        return $this->persist(
+            subject: null,
+            subjectReference: $subject,
+            event: $event,
+            description: $description,
+            context: $context,
+            actor: $actor,
+            importance: $importance,
+            resolveChanges: false,
+        );
+    }
+
+    /**
+     * Persist one canonical activity through the shared Spatie logger.
+     *
+     * @param  array<string, mixed>  $context
+     * @param  array<string, mixed>|null  $attributes
+     * @param  array<string, mixed>|null  $old
+     */
+    private function persist(
+        ?Model $subject,
+        ?ActivitySubjectReference $subjectReference,
         string|BackedEnum $event,
         string $description = '',
         array $context = [],
@@ -115,6 +184,14 @@ final class ActivityRecorder
 
         if ($subject !== null) {
             $logger->performedOn($subject);
+        } elseif ($subjectReference instanceof ActivitySubjectReference) {
+            $logger->tap(static function (ActivityContract $activity) use ($subjectReference): void {
+                if ($activity instanceof Model) {
+                    $activity->setAttribute('subject_type', $subjectReference->type);
+                    $activity->setAttribute('subject_id', (string) $subjectReference->id);
+                    $activity->setRelation('subject', null);
+                }
+            });
         }
 
         if ($resolvedActor instanceof Model) {

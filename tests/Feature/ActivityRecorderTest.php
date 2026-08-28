@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
+use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityRecorder;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityUser;
 
@@ -37,6 +40,31 @@ test('the canonical writer records structured scalar actors and caller owned bat
         ->and($activity?->properties?->get('source'))->toBe(ActivitySource::User->value)
         ->and($activity?->properties?->get('actor_id'))->toBe('operator-1')
         ->and($activity?->properties?->get('context'))->toBe(['reason' => 'manual review']);
+});
+
+test('the canonical writer records model-free subject references without reading a subject table', function (): void {
+    $subject = new ActivitySubjectReference(' domain.resource ', ' resource-42 ');
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $activity = ActivityLogFacade::recordForSubjectReference(
+        subject: $subject,
+        event: 'consumer.reference_recorded',
+        context: ['reason' => 'external subject'],
+        actor: 'operator-1',
+        importance: 'important',
+    );
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($activity)->toBeInstanceOf(ActivityLog::class)
+        ->and($activity?->subject_type)->toBe('domain.resource')
+        ->and($activity?->subject_id)->toBe('resource-42')
+        ->and($activity?->properties?->get('context'))->toBe(['reason' => 'external subject'])
+        ->and($activity?->properties?->get('actor_id'))->toBe('operator-1')
+        ->and($activity?->properties?->get('importance'))->toBe('important')
+        ->and($queries)->toHaveCount(1)
+        ->and(mb_strtolower($queries[0]['query']))->toStartWith('insert');
 });
 
 test('the canonical writer accepts package owned activity events', function (): void {

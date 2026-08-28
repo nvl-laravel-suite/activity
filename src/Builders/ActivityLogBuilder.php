@@ -257,7 +257,9 @@ final class ActivityLogBuilder extends Builder
             });
         }
 
-        if ($filters->event !== null) {
+        if ($filters->events !== []) {
+            $this->whereEvents($filters->events);
+        } elseif ($filters->event !== null) {
             $this->where('event', $filters->event);
         }
 
