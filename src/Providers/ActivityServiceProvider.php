@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Nvl\Activity\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
@@ -32,13 +30,15 @@ use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Activity\Support\ModelActivityTimelineResolver;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
-use RuntimeException;
+use Nvl\Support\Traits\MergesPackageConfiguration;
 
 /**
  * Registers the standalone activity package services and extensions.
  */
 final class ActivityServiceProvider extends ServiceProvider
 {
+    use MergesPackageConfiguration;
+
     protected string $name = 'Activity';
 
     protected string $nameLower = 'activity';
@@ -48,7 +48,7 @@ final class ActivityServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->mergeActivityConfiguration();
+        $this->mergePackageConfiguration(__DIR__.'/../../config/activity.php', 'activity');
         config([
             'activitylog.activity_model' => ActivityLog::class,
         ]);
@@ -58,53 +58,6 @@ final class ActivityServiceProvider extends ServiceProvider
         $this->app->bind(QueueActivityLogPurgeContract::class, QueueActivityLogPurgeAction::class);
 
         $this->registerSingletons();
-    }
-
-    /**
-     * Merge nested configuration maps while replacing every consumer list atomically.
-     */
-    private function mergeActivityConfiguration(): void
-    {
-        if ($this->app instanceof CachesConfiguration && $this->app->configurationIsCached()) {
-            return;
-        }
-
-        $defaults = require __DIR__.'/../../config/activity.php';
-        $configured = $this->app->make(Repository::class)->get('activity', []);
-
-        if (! is_array($defaults) || ! is_array($configured)) {
-            throw new RuntimeException('Activity configuration must contain an array.');
-        }
-
-        $this->app->make(Repository::class)->set(
-            'activity',
-            $this->mergeConfigurationValues($defaults, $configured),
-        );
-    }
-
-    /**
-     * Overlay consumer configuration without retaining default numeric-list entries.
-     *
-     * @param  array<array-key, mixed>  $defaults
-     * @param  array<array-key, mixed>  $configured
-     * @return array<array-key, mixed>
-     */
-    private function mergeConfigurationValues(array $defaults, array $configured): array
-    {
-        if (array_is_list($defaults) || ($configured !== [] && array_is_list($configured))) {
-            return $configured;
-        }
-
-        $merged = $defaults;
-
-        foreach ($configured as $key => $value) {
-            $default = $defaults[$key] ?? null;
-            $merged[$key] = is_array($default) && is_array($value)
-                ? $this->mergeConfigurationValues($default, $value)
-                : $value;
-        }
-
-        return $merged;
     }
 
     /**
