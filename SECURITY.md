@@ -1,6 +1,6 @@
 # Security Policy
 
-Version 1.0 is currently unreleased. The upcoming `1.x` line targets PHP 8.4–8.5, Laravel 12–13, and Spatie Activitylog 5.x; after release, security fixes are provided for the current `1.x` line.
+Version 2.0 is currently unreleased. The upcoming `2.x` line targets PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x; after release, security fixes are provided for the current `2.x` line.
 
 Report vulnerabilities privately through the repository host's security-advisory feature. Do not open a public issue containing an exploit, personal data, credentials, storage paths, or audit payloads.
 

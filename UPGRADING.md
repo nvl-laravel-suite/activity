@@ -2,9 +2,9 @@
 
 ## Upgrading to 1.0
 
-Version 1.0 remains unreleased. It removes consumer-specific mappings and model hooks, compatibility writers, mutable package-migration targets, TypeScript namespace assumptions, and route assumptions. It supports only Spatie Activitylog 5.x.
+Version 1.0 removed consumer-specific mappings and model hooks, compatibility writers, mutable package-migration targets, TypeScript namespace assumptions, and route assumptions. It supports only Spatie Activitylog 5.x.
 
-1. Update runtime and CI matrices to PHP 8.4–8.5 and Laravel 12–13.
+1. Update runtime and CI matrices to PHP 8.4–8.5 and Laravel 13.
 2. Explicitly require `spatie/laravel-activitylog:^5.0`; v4 is not a supported runtime. Replace host imports for `LogsActivity`, `LogOptions`, and `ActivityLogger` with their v5 namespaces under `Models\Concerns` and `Support`, or use `Nvl\Activity\Traits\HasModelActivity` for mapped capture.
 3. Remove any `activity.model` configuration. The provider always binds `Nvl\Activity\Models\ActivityLog` to `activitylog.activity_model`; consumer overrides are unsupported.
 4. Decide who owns the migrations before running them:

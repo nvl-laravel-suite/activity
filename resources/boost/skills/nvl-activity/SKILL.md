@@ -1,11 +1,11 @@
 ---
 name: nvl-activity
-description: Implement, integrate, test, or review nvl/activity on PHP 8.4–8.5, Laravel 12–13, and Spatie Activitylog 5.x. Use for generic audit capture, Spatie Activitylog adoption, semantic timelines, activity mappings, value formatters, retention, purge operations, API authorization, or activity DTOs.
+description: Implement, integrate, test, or review nvl/activity on PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Use for generic audit capture, Spatie Activitylog adoption, semantic timelines, activity mappings, value formatters, retention, purge operations, API authorization, or activity DTOs.
 ---
 
 # NVL Activity
 
-Use this package for generic structured audit capture and semantic timelines on PHP 8.4–8.5, Laravel 12–13, and Spatie Activitylog 5.x. Keep raw audit storage separate from presentation, and never infer a consumer domain from event names, payload keys, models, or authorization conventions.
+Use this package for generic structured audit capture and semantic timelines on PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Keep raw audit storage separate from presentation, and never infer a consumer domain from event names, payload keys, models, or authorization conventions.
 
 ## Own the model and schema correctly
 
