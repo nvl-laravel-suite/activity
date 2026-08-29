@@ -4,6 +4,14 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-29
+
+### Changed
+
+- Established `ActivityLog`, `ActivityReadService`, stable subject references,
+  and documented model activity traits as the 2.0 consumer boundary; direct
+  consumer Activity-model queries now fail Suite audit.
+
 ## [1.0.5] - 2026-08-12
 
 ### Changed
