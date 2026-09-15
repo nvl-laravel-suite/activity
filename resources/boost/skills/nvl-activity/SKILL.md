@@ -37,7 +37,7 @@ Use this package for generic structured audit capture and semantic timelines on 
 - Store stable event keys and safe structured properties. `ActivityEvent` uses the existing event/description columns and requires no schema migration. Never store secrets, credentials, access tokens, full request payloads, or unredacted sensitive values.
 - Integer, UUID, ULID, and string subject or causer identifiers are supported.
 - `source`, `visibility`, and `importance` accept backed enums or exact canonical values. Unknown non-blank metadata raises `ActivityRecordingException` with `invalid_activity_metadata`/422; do not coerce or silently store it.
-- Blank overrides use canonical defaults. Historical absent/blank visibility remains compatible, while every unknown non-blank visibility is excluded from signal timelines so reads fail closed.
+- Blank overrides use canonical defaults. Historical absent/blank visibility remains compatible, while every unknown non-blank visibility is excluded from signal timelines so reads fail closed. Malformed non-string visibility, including arrays and booleans, is treated as audit-only.
 - The recorder joins the caller's transaction only when activity and the business model use the same database connection. Separate connections are not atomic: choose and implement an explicit policy such as after-commit best-effort recording or an application-owned transactional outbox. Dispatch dependent work only after commit, and decide explicitly whether an activity failure may roll back the business mutation.
 
 ## Build semantic timelines

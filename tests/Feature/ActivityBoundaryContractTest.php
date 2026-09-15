@@ -395,3 +395,28 @@ test('headline segment enum stays strongly typed while serializing to its api va
             'text' => 'Published',
         ]);
 });
+
+test('historical visibility only admits absent or blank strings and exact timeline values', function (mixed $visibility, bool $included): void {
+    $item = new ActivityItem(
+        id: 'historical-activity',
+        log: 'consumer',
+        event: 'created',
+        source: EntrySource::ActivityLog,
+        properties: ActivityItemProperties::fromPayload(['visibility' => $visibility]),
+    );
+
+    expect((new TimelineFilter)->shouldIncludeInSignalTimeline($item))->toBe($included);
+})->with([
+    'null' => [null, true],
+    'empty string' => ['', true],
+    'blank string' => ['  ', true],
+    'timeline' => ['timeline', true],
+    'audit only' => ['audit_only', false],
+    'unknown' => ['unknown', false],
+    'list' => [['audit_only'], false],
+    'object' => [['policy' => 'internal'], false],
+    'empty array' => [[], false],
+    'false' => [false, false],
+    'true' => [true, false],
+    'zero' => [0, false],
+]);

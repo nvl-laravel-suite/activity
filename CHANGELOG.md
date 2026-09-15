@@ -4,6 +4,11 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Restrict malformed historical visibility metadata to audit-only presentation,
+  preserving compatibility for absent, null, and blank string values.
+
 ## [2.0.0] - 2026-08-29
 
 ### Changed

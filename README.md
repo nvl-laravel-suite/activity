@@ -167,7 +167,7 @@ For `Updated`, `DetailsUpdated`, and status-change events, the recorder derives 
 
 Adding or adopting `ActivityEvent` requires no migration and no additional column. It uses the existing `event` and `description` fields. A blank event key records nothing and returns `null`. Avoid secrets, credentials, full request payloads, and unredacted personal data.
 
-`source`, `visibility`, and `importance` accept their backed enums or exact canonical values. Unknown non-blank values are rejected with `ActivityRecordingException`, response code `invalid_activity_metadata`, and suggested HTTP status `422`; they are never stored and made visible accidentally. Blank overrides use canonical defaults. Historical rows with absent or blank visibility remain readable for compatibility, but any non-blank visibility other than exact lowercase `timeline` is excluded from signal timelines.
+`source`, `visibility`, and `importance` accept their backed enums or exact canonical values. Unknown non-blank values are rejected with `ActivityRecordingException`, response code `invalid_activity_metadata`, and suggested HTTP status `422`; they are never stored and made visible accidentally. Blank overrides use canonical defaults. Historical rows with absent or blank visibility remain readable for compatibility, but any non-blank visibility other than exact lowercase `timeline` is excluded from signal timelines. Malformed non-string visibility is treated as audit-only, including arrays and booleans.
 
 `ActivityRecorder` is the canonical writer. `ActivityLog` provides a facade over the same service. The v1 API has no compatibility writers or application-specific activity factories.
 

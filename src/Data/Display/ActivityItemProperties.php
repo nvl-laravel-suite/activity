@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Data\Display;
 
+use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Data\Traits\DataTransform;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Attributes\MapOutputName;
@@ -75,7 +76,7 @@ final class ActivityItemProperties extends Data
             toStatus: self::optionalString($payload, 'to_status'),
             newStatus: self::optionalString($payload, 'new_status'),
             source: self::optionalString($payload, 'source'),
-            visibility: self::optionalString($payload, 'visibility'),
+            visibility: self::visibility($payload),
             importance: self::optionalString($payload, 'importance'),
             descriptionOverride: self::optionalString($payload, 'description_override'),
             extra: $extra === [] ? Optional::create() : $extra,
@@ -229,6 +230,22 @@ final class ActivityItemProperties extends Data
         $stringValue = trim((string) $value);
 
         return $stringValue === '' ? null : $stringValue;
+    }
+
+    /**
+     * Preserve legacy blank visibility while restricting malformed stored values.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private static function visibility(array $payload): string|Optional|null
+    {
+        $value = self::payloadValue($payload, 'visibility');
+
+        if ($value instanceof Optional || $value === null || is_string($value)) {
+            return self::optionalString($payload, 'visibility');
+        }
+
+        return ActivityVisibility::AuditOnly->value;
     }
 
     /**
