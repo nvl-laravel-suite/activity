@@ -29,8 +29,13 @@ use Nvl\Activity\Services\TimelineFilter;
 use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Activity\Support\ModelActivityTimelineResolver;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
+use Nvl\Activity\Tenancy\ActivityResourceRegistrar;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
 use Nvl\Support\Traits\MergesPackageConfiguration;
+use Nvl\Tenancy\Providers\TenancyServiceProvider;
+use Nvl\Tenancy\Services\TenantAdoptionRegistry;
+use Nvl\Tenancy\Services\TenantResourceRegistry;
 
 /**
  * Registers the standalone activity package services and extensions.
@@ -53,7 +58,9 @@ final class ActivityServiceProvider extends ServiceProvider
             'activitylog.activity_model' => ActivityLog::class,
         ]);
 
+        $this->app->register(TenancyServiceProvider::class);
         $this->app->register(RouteServiceProvider::class);
+        (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class), $this->app->make(TenantAdoptionRegistry::class));
 
         $this->app->bind(QueueActivityLogPurgeContract::class, QueueActivityLogPurgeAction::class);
 
@@ -147,8 +154,9 @@ final class ActivityServiceProvider extends ServiceProvider
         $this->app->singleton(MappingRegistry::class);
         $this->app->singleton(CauserNormalizer::class);
         $this->app->singleton(TimelineFilter::class);
-        $this->app->singleton(ActivityReadService::class);
-        $this->app->singleton(ActivityRelationLoader::class);
+        $this->app->scoped(ActivityReadService::class);
+        $this->app->scoped(ActivityRelationLoader::class);
+        $this->app->scoped(ActivityOwnershipGuard::class);
 
         $this->app->singleton(LabelResolver::class, function (Application $app): LabelResolver {
             return new LabelResolver($app->make(MappingRegistry::class));
@@ -174,7 +182,7 @@ final class ActivityServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->singleton(ActivityTransformService::class, function (Application $app): ActivityTransformService {
+        $this->app->scoped(ActivityTransformService::class, function (Application $app): ActivityTransformService {
             return new ActivityTransformService(
                 $app->make(ActivityEntryNormalizer::class),
                 $app->make(ActivityRelationLoader::class),
@@ -182,18 +190,16 @@ final class ActivityServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->singleton(ModelActivityTimelineService::class, function (Application $app): ModelActivityTimelineService {
+        $this->app->scoped(ModelActivityTimelineService::class, function (Application $app): ModelActivityTimelineService {
             $service = new ModelActivityTimelineService(
                 $app->make(ActivityReadService::class),
                 $app->make(ActivityTransformService::class),
             );
 
-            ModelActivityTimelineResolver::use($service);
-
             return $service;
         });
 
-        $this->app->singleton(ActivityRecorder::class);
+        $this->app->scoped(ActivityRecorder::class);
     }
 
     /**
@@ -209,7 +215,7 @@ final class ActivityServiceProvider extends ServiceProvider
      */
     private function registerModelActivityTimelineResolver(): void
     {
-        ModelActivityTimelineResolver::use($this->app->make(ModelActivityTimelineService::class));
+        ModelActivityTimelineResolver::resolveUsing(fn (): ModelActivityTimelineService => $this->app->make(ModelActivityTimelineService::class));
     }
 
     /**

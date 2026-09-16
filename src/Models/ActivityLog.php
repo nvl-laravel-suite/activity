@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Models;
 
+use Illuminate\Container\Container;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -12,11 +14,15 @@ use Illuminate\Support\Collection;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
+use Nvl\Tenancy\Services\TenantBoundary;
 use Spatie\Activitylog\Models\Activity;
 
 /**
  * Custom activity log model using UUID primary keys.
  *
+ * @property string|null $tenant_id Immutable tenant owner after adoption
+ * @property string $ownership_key Canonical platform or tenant partition after adoption
  * @property string $id UUID primary key
  * @property string|null $log_name Activity log namespace
  * @property string $description Human-readable activity description
@@ -52,6 +58,20 @@ final class ActivityLog extends Activity
      * @var bool
      */
     public $incrementing = false;
+
+    /** Attach the package boundary to every query and Spatie persistence entry. */
+    protected static function booted(): void
+    {
+        self::addGlobalScope('activity.ownership', static function (Builder $query): void {
+            Container::getInstance()->make(TenantBoundary::class)->query($query, 'activity.events');
+        });
+        self::creating(static function (ActivityLog $activity): void {
+            Container::getInstance()->make(ActivityOwnershipGuard::class)->stamp($activity);
+        });
+        self::updating(static function (ActivityLog $activity): void {
+            Container::getInstance()->make(ActivityOwnershipGuard::class)->updating($activity);
+        });
+    }
 
     /**
      * Read tracked changes from the version-specific Spatie storage column.

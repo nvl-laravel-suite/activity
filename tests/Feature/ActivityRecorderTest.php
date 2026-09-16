@@ -13,6 +13,7 @@ use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Support\ActivitySubjectReference;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityUser;
 
@@ -44,6 +45,7 @@ test('the canonical writer records structured scalar actors and caller owned bat
 
 test('the canonical writer records model-free subject references without reading a subject table', function (): void {
     $subject = new ActivitySubjectReference(' domain.resource ', ' resource-42 ');
+    app(ActivityOwnershipGuard::class)->attributes();
     DB::flushQueryLog();
     DB::enableQueryLog();
 

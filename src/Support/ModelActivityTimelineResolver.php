@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Support;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use LogicException;
 use Nvl\Activity\Data\Display\ActivityItem;
@@ -18,14 +19,25 @@ use Nvl\Activity\Services\ModelActivityTimelineService;
  */
 final class ModelActivityTimelineResolver
 {
-    private static ?ModelActivityTimelineService $service = null;
+    /** @var Closure(): ModelActivityTimelineService|null */
+    private static ?Closure $resolver = null;
 
     /**
      * Register the model timeline service for trait consumers.
      */
     public static function use(ModelActivityTimelineService $service): void
     {
-        self::$service = $service;
+        self::$resolver = static fn (): ModelActivityTimelineService => $service;
+    }
+
+    /**
+     * Resolve current scoped services without retaining their service graph.
+     *
+     * @param  Closure(): ModelActivityTimelineService  $resolver
+     */
+    public static function resolveUsing(Closure $resolver): void
+    {
+        self::$resolver = $resolver;
     }
 
     /**
@@ -36,10 +48,10 @@ final class ModelActivityTimelineResolver
      */
     public static function forSubject(Model $subject, ?int $limit = null): array
     {
-        if (! self::$service instanceof ModelActivityTimelineService) {
+        if (self::$resolver === null) {
             throw new LogicException('Activity model timeline service has not been registered.');
         }
 
-        return self::$service->forSubject($subject, $limit);
+        return (self::$resolver)()->forSubject($subject, $limit);
     }
 }

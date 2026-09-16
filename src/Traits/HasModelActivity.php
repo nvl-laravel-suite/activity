@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Traits;
 
+use Illuminate\Container\Container;
+use Illuminate\Database\Eloquent\Model;
 use Nvl\Activity\Data\Display\ActivityItem;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Activity\Support\ModelActivityTimelineResolver;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
@@ -24,6 +27,14 @@ use Spatie\Activitylog\Support\LogOptions;
 trait HasModelActivity
 {
     use LogsActivity;
+
+    /** Capture canonical ownership while deleted subjects still exist in storage. */
+    protected static function bootHasModelActivity(): void
+    {
+        static::deleting(static function (Model $subject): void {
+            Container::getInstance()->make(ActivityOwnershipGuard::class)->captureDeletingSubject($subject);
+        });
+    }
 
     /**
      * Resolve mapping-owned model capture configuration.

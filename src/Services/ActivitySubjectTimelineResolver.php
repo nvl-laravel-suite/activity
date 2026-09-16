@@ -10,6 +10,7 @@ use Illuminate\Validation\ValidationException;
 use Nvl\Activity\Contracts\MergesActivity;
 use Nvl\Activity\Exceptions\ActivityTimelineException;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 
 /**
  * Resolves host models that can expose a merged activity timeline.
@@ -26,6 +27,7 @@ final class ActivitySubjectTimelineResolver
      */
     public function __construct(
         private readonly ModelKeyIdentifierValidator $modelKeyIdentifierValidator,
+        private readonly ActivityOwnershipGuard $ownership,
     ) {}
 
     /**
@@ -41,14 +43,24 @@ final class ActivitySubjectTimelineResolver
     public function resolve(string $subjectType, string $subjectId): Model&MergesActivity
     {
         $modelClass = $this->resolveModelClass($subjectType);
-        $model = new $modelClass;
+        $model = $this->ownership->enabled()
+            ? $this->ownership->relationModel($modelClass, false)
+            : new $modelClass;
+
+        if (! $model instanceof Model || ! $model instanceof MergesActivity) {
+            $this->throwUnsupportedSubjectType();
+        }
 
         $normalizedSubjectId = $this->modelKeyIdentifierValidator->normalizeIdentifier($model, $subjectId);
         if ($normalizedSubjectId === null) {
             throw ActivityTimelineException::subjectNotFound($modelClass, $subjectId);
         }
 
-        $subject = $model->newQuery()->whereKey($normalizedSubjectId)->first();
+        $query = $model->newQuery()->whereKey($normalizedSubjectId);
+        if ($this->ownership->enabled()) {
+            $query = $this->ownership->relatedQuery($query);
+        }
+        $subject = $query->first();
 
         if ($subject === null) {
             throw ActivityTimelineException::subjectNotFound($modelClass, $subjectId);

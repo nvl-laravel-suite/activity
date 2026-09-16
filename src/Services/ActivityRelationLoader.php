@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
+use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
 use ReflectionClass;
 
 /**
@@ -23,6 +25,7 @@ final class ActivityRelationLoader
      */
     public function __construct(
         private readonly ModelKeyIdentifierValidator $modelKeyIdentifierValidator,
+        private readonly ActivityOwnershipGuard $ownership,
     ) {}
 
     /**
@@ -32,8 +35,51 @@ final class ActivityRelationLoader
      */
     public function load(EloquentCollection $activities): void
     {
+        $this->ownership->attributes();
+
+        if ($this->ownership->enabled()) {
+            $this->reloadCanonicalActivities($activities);
+        }
+
         $this->loadRelation($activities, 'causer', 'causer_type', 'causer_id', includeSoftDeleted: true);
         $this->loadRelation($activities, 'subject', 'subject_type', 'subject_id');
+    }
+
+    /**
+     * Replace caller-controlled attributes and relations with canonical partitioned Activity rows.
+     *
+     * @param  EloquentCollection<int, ActivityLog>  $activities
+     */
+    private function reloadCanonicalActivities(EloquentCollection $activities): void
+    {
+        $canonicalRows = $this->ownership->canonicalActivities($activities);
+        $canonicalById = $canonicalRows->keyBy(fn (ActivityLog $activity): string => $this->activityIdentifier(
+            $activity->getKey(),
+        ));
+
+        foreach ($activities as $activity) {
+            $canonical = $canonicalById->get($this->activityIdentifier(
+                $activity->getRawOriginal($activity->getKeyName()),
+            ));
+
+            if (! $canonical instanceof ActivityLog) {
+                continue;
+            }
+
+            $activity->setRawAttributes($canonical->getAttributes(), true);
+            $activity->unsetRelation('causer');
+            $activity->unsetRelation('subject');
+        }
+    }
+
+    /** Normalize a validated Activity key without permitting unsupported identifiers. */
+    private function activityIdentifier(mixed $identifier): string
+    {
+        if (! is_string($identifier) && ! is_int($identifier)) {
+            throw new TenantBoundaryViolation('Activity hydration requires canonical persisted identities.');
+        }
+
+        return (string) $identifier;
     }
 
     /**
@@ -52,7 +98,7 @@ final class ActivityRelationLoader
         $groups = [];
 
         foreach ($activities as $activity) {
-            if ($activity->relationLoaded($relation)) {
+            if (! $this->ownership->enabled() && $activity->relationLoaded($relation)) {
                 continue;
             }
 
@@ -68,7 +114,7 @@ final class ActivityRelationLoader
         }
 
         foreach ($groups as $storedType => $group) {
-            $relatedModel = $this->resolveLoadableModel($storedType);
+            $relatedModel = $this->resolveLoadableModel($storedType, $relation === 'causer');
 
             if (! $relatedModel instanceof Model) {
                 foreach ($group as $activity) {
@@ -112,6 +158,7 @@ final class ActivityRelationLoader
                 $relatedModel,
                 array_column($loadableActivities, 'identifier'),
                 $includeSoftDeleted,
+                $relation === 'causer',
             );
 
             foreach ($loadableActivities as $loadableActivity) {
@@ -138,11 +185,20 @@ final class ActivityRelationLoader
         Model $relatedModel,
         array $identifiers,
         bool $includeSoftDeleted,
+        bool $causer,
     ): array {
         $query = $relatedModel->newQuery()->whereKey(array_values(array_unique(
             $identifiers,
             SORT_REGULAR,
         )));
+
+        if ($this->ownership->enabled()) {
+            $query = $this->ownership->relatedQuery($query);
+
+            if ($causer) {
+                $query->select($this->ownership->causerColumns($relatedModel));
+            }
+        }
 
         if ($includeSoftDeleted && in_array(SoftDeletes::class, class_uses_recursive($relatedModel), true)) {
             $query->withoutGlobalScope(SoftDeletingScope::class);
@@ -164,8 +220,12 @@ final class ActivityRelationLoader
     /**
      * Determine whether a stored morph type resolves to an available Eloquent table.
      */
-    private function resolveLoadableModel(string $storedType): ?Model
+    private function resolveLoadableModel(string $storedType, bool $causer): ?Model
     {
+        if ($this->ownership->enabled()) {
+            return $this->ownership->relationModel($storedType, $causer);
+        }
+
         $modelClass = Relation::getMorphedModel($storedType) ?? $storedType;
 
         if (! class_exists($modelClass) || ! is_subclass_of($modelClass, Model::class)) {

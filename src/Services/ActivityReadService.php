@@ -14,12 +14,16 @@ use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivitySubjectReference;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 
 /**
  * Use-case oriented read service for Activity log retrieval.
  */
 final class ActivityReadService
 {
+    /** Validate subject identities before composing their partitioned timeline. */
+    public function __construct(private readonly ActivityOwnershipGuard $ownership) {}
+
     /**
      * Retrieve newest activity rows for the global dashboard feed.
      *
@@ -51,6 +55,7 @@ final class ActivityReadService
      */
     public function forSubject(Model $subject, ?int $limit = 100): EloquentCollection
     {
+        $this->ownership->assertSubject($subject);
         $subjectId = $this->modelIdentifier($subject);
         if ($subjectId === null) {
             return new EloquentCollection;
@@ -92,6 +97,7 @@ final class ActivityReadService
         int $limit = 100,
         ?ActivityLog $cursor = null,
     ): EloquentCollection {
+        $this->ownership->assertSubject($subject);
         $subjectId = $this->modelIdentifier($subject);
         if ($subjectId === null) {
             return new EloquentCollection;

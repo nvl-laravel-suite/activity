@@ -14,6 +14,7 @@ use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\TimelineActivityRules;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 
 /**
@@ -24,6 +25,9 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
  */
 final class ActivityRecorder
 {
+    /** Capture ownership through the same guard used by automatic model logging. */
+    public function __construct(private readonly ActivityOwnershipGuard $ownership) {}
+
     /**
      * Record an activity with the canonical structured payload contract.
      *
@@ -123,6 +127,10 @@ final class ActivityRecorder
         bool $resolveChanges = true,
         ?string $batchUuid = null,
     ): ?ActivityContract {
+        $ownership = $this->ownership->attributes();
+        if ($subject !== null) {
+            $this->ownership->assertSubject($subject);
+        }
         $eventName = trim($this->normalizeValue($event));
         if ($eventName === '') {
             return null;
@@ -141,6 +149,11 @@ final class ActivityRecorder
             ? activity($normalizedLogName)
             : activity();
         $logger->causedByAnonymous();
+        $logger->tap(static function (ActivityContract $activity) use ($ownership): void {
+            if ($activity instanceof Model) {
+                $activity->forceFill($ownership);
+            }
+        });
 
         $resolvedActor = is_string($actor) ? trim($actor) : $actor;
         $resolvedSource = $this->resolveSource($resolvedActor, $source);

@@ -12,6 +12,7 @@
         "nesbot/carbon": "^2.72 || ^3.0",
         "nvl/data": "^2.0",
         "nvl/support": "^2.0",
+        "nvl/tenancy": "^2.0",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.23",
         "spatie/typescript-transformer": "^3.3",

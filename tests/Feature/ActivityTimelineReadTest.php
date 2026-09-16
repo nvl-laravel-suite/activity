@@ -18,6 +18,7 @@ use Nvl\Activity\Services\ActivityRelationLoader;
 use Nvl\Activity\Services\ActivityTransformService;
 use Nvl\Activity\Services\ModelActivityTimelineService;
 use Nvl\Activity\Services\TimelineFilter;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
 use Nvl\Activity\Tests\Stubs\TestUuidActivitySubject;
 
@@ -223,6 +224,12 @@ test('malformed integer and uuid morph identifiers are excluded before eager loa
 });
 
 test('relation hydration query count is independent of activity fixture size', function (): void {
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    app(ActivityOwnershipGuard::class)->attributes();
+    $compatibilityProbeCount = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
     $measure = function (): int {
         DB::flushQueryLog();
         DB::enableQueryLog();
@@ -265,7 +272,8 @@ test('relation hydration query count is independent of activity fixture size', f
 
     $populatedQueryCount = $measure();
 
-    expect($singleQueryCount)->toBeLessThanOrEqual(10)
+    expect($compatibilityProbeCount)->toBeLessThanOrEqual(2)
+        ->and($singleQueryCount)->toBeLessThanOrEqual(10)
         ->and($populatedQueryCount)->toBe($singleQueryCount);
 });
 

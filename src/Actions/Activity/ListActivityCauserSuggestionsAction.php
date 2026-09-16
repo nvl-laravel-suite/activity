@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Nvl\Activity\Data\Display\ActivityCauserSuggestion;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use ReflectionClass;
 use Spatie\LaravelData\DataCollection;
 use Stringable;
@@ -25,6 +26,7 @@ final class ListActivityCauserSuggestionsAction
      */
     public function __construct(
         private readonly ModelKeyIdentifierValidator $modelKeyIdentifierValidator = new ModelKeyIdentifierValidator,
+        private readonly ?ActivityOwnershipGuard $ownership = null,
     ) {}
 
     /**
@@ -44,6 +46,19 @@ final class ListActivityCauserSuggestionsAction
 
         /** @var Model $user */
         $user = new $userClass;
+
+        if (config('tenancy.enabled') === true) {
+            if (! $this->ownership instanceof ActivityOwnershipGuard) {
+                return ActivityCauserSuggestion::collect([], DataCollection::class);
+            }
+
+            $guardedUser = $this->ownership->relationModel($userClass, true);
+            if (! $guardedUser instanceof Model) {
+                return ActivityCauserSuggestion::collect([], DataCollection::class);
+            }
+            $user = $guardedUser;
+        }
+
         $userTable = $user->getTable();
         $userKey = $user->getKeyName();
         $schema = $user->getConnection()->getSchemaBuilder();
@@ -53,6 +68,12 @@ final class ListActivityCauserSuggestionsAction
         }
 
         $searchAttributes = $this->searchAttributes($schema->getColumns($userTable));
+        if ($this->ownership?->enabled() === true) {
+            $searchAttributes = array_values(array_intersect(
+                $searchAttributes,
+                $this->ownership->causerColumns($user),
+            ));
+        }
         $searchKey = $this->searchableKeyValue($user, $term);
 
         if ($term !== '' && $searchAttributes === [] && $searchKey === null) {
@@ -114,6 +135,11 @@ final class ListActivityCauserSuggestionsAction
         }
 
         $usersQuery = $user->newQuery();
+
+        if ($this->ownership?->enabled() === true) {
+            $usersQuery = $this->ownership->relatedQuery($usersQuery);
+            $usersQuery->select($this->ownership->causerColumns($user));
+        }
 
         if (in_array(SoftDeletes::class, class_uses_recursive($userClass), true)) {
             $usersQuery->withoutGlobalScope(SoftDeletingScope::class);
