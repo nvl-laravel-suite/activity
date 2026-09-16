@@ -22,7 +22,18 @@ final readonly class ActivityOwnershipGuard
     /** @var WeakMap<Model, array{tenant_id?: string|null, ownership_key?: string}> */
     private WeakMap $deletingSubjects;
 
-    /** @var WeakMap<Model, array<string, true>> */
+    /**
+     * @var WeakMap<Model, array<string, array{
+     *     ownership: array{tenant_id?: string|null, ownership_key?: string},
+     *     class: class-string<Model>,
+     *     table: string,
+     *     connection: int,
+     *     key: string,
+     *     exists: bool,
+     *     original: string|int|null,
+     *     current: string|int|null
+     * }>>
+     */
     private WeakMap $trustedRelations;
 
     /** Share Foundation's current-scope boundary across every Activity entry point. */
@@ -137,6 +148,18 @@ final readonly class ActivityOwnershipGuard
      */
     public function synchronizeActivities(EloquentCollection $activities): void
     {
+        $ownership = $this->attributes();
+        $preservedRelations = [];
+
+        foreach ($activities as $activity) {
+            foreach (['causer', 'subject'] as $relation) {
+                if ($activity->relationLoaded($relation)
+                    && $this->relationTrustedForOwnership($activity, $relation, $ownership)) {
+                    $preservedRelations[spl_object_id($activity)][$relation] = $activity->getRelation($relation);
+                }
+            }
+        }
+
         $canonicalById = $this->canonicalActivities($activities)->keyBy(
             fn (ActivityLog $activity): string => $this->identifier($activity->getKey()),
         );
@@ -155,6 +178,11 @@ final readonly class ActivityOwnershipGuard
             $activity->unsetRelation('subject');
             $this->forgetTrustedRelation($activity, 'causer');
             $this->forgetTrustedRelation($activity, 'subject');
+
+            foreach ($preservedRelations[spl_object_id($activity)] ?? [] as $relation => $value) {
+                $activity->setRelation($relation, $value);
+                $this->trustRelationForOwnership($activity, $relation, $ownership);
+            }
         }
     }
 
@@ -167,9 +195,7 @@ final readonly class ActivityOwnershipGuard
     /** Mark a package-loaded relation as admitted for direct model access. */
     public function trustRelation(ActivityLog $activity, string $relation): void
     {
-        $trusted = $this->trustedRelations[$activity] ?? [];
-        $trusted[$relation] = true;
-        $this->trustedRelations[$activity] = $trusted;
+        $this->trustRelationForOwnership($activity, $relation, $this->attributes());
     }
 
     /** Invalidate caller-supplied relation state. */
@@ -183,7 +209,75 @@ final readonly class ActivityOwnershipGuard
     /** Report whether a relation was loaded through an admitted package path. */
     public function relationTrusted(ActivityLog $activity, string $relation): bool
     {
-        return ($this->trustedRelations[$activity] ?? [])[$relation] ?? false;
+        return $this->relationTrustedForOwnership($activity, $relation, $this->attributes());
+    }
+
+    /**
+     * Mark one relation as admitted for an exact Activity identity and ownership context.
+     *
+     * @param  array{tenant_id?: string|null, ownership_key?: string}  $ownership
+     */
+    private function trustRelationForOwnership(ActivityLog $activity, string $relation, array $ownership): void
+    {
+        $identity = $this->relationTrustIdentity($activity);
+        if ($identity === null) {
+            $this->forgetTrustedRelation($activity, $relation);
+
+            return;
+        }
+
+        $trusted = $this->trustedRelations[$activity] ?? [];
+        $trusted[$relation] = ['ownership' => $ownership, ...$identity];
+        $this->trustedRelations[$activity] = $trusted;
+    }
+
+    /**
+     * Confirm relation admission still matches the active context and exact Activity identity.
+     *
+     * @param  array{tenant_id?: string|null, ownership_key?: string}  $ownership
+     */
+    private function relationTrustedForOwnership(ActivityLog $activity, string $relation, array $ownership): bool
+    {
+        $identity = $this->relationTrustIdentity($activity);
+
+        return $identity !== null
+            && (($this->trustedRelations[$activity] ?? [])[$relation] ?? null) === ['ownership' => $ownership, ...$identity];
+    }
+
+    /**
+     * Describe the exact Activity storage and key admitted with a relation.
+     *
+     * @return array{
+     *     class: class-string<Model>,
+     *     table: string,
+     *     connection: int,
+     *     key: string,
+     *     exists: bool,
+     *     original: string|int|null,
+     *     current: string|int|null
+     * }|null
+     */
+    private function relationTrustIdentity(ActivityLog $activity): ?array
+    {
+        $keyName = $activity->getKeyName();
+        $original = $activity->getRawOriginal($keyName);
+        $current = $activity->getKey();
+
+        if (($original !== null && ! is_string($original) && ! is_int($original))
+            || ($current !== null && ! is_string($current) && ! is_int($current))
+            || ($activity->exists && ($original === null || $current === null || $original !== $current))) {
+            return null;
+        }
+
+        return [
+            'class' => $activity::class,
+            'table' => $activity->getTable(),
+            'connection' => spl_object_id($activity->getConnection()),
+            'key' => $keyName,
+            'exists' => $activity->exists,
+            'original' => $original,
+            'current' => $current,
+        ];
     }
 
     /** Preserve the runtime exact-class check hidden by the generic collection contract. */

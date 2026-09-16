@@ -181,6 +181,85 @@ test('native subject relations deny unknown types before model construction', fu
     });
 });
 
+test('trusted native and dedicated relations are re-admitted after a tenant context transition', function (): void {
+    adoptActivityHost();
+    $runner = app(TenantRunner::class);
+    [$subject, $causer] = $runner->run(new TenantId(TenantScenario::A), fn (): array => [
+        TenantActivitySubject::create([
+            'name' => 'A retained subject',
+            'tenant_id' => TenantScenario::A,
+        ]),
+        TenantActivitySubject::create([
+            'name' => 'A retained causer',
+            'tenant_id' => TenantScenario::A,
+        ]),
+    ]);
+    $activity = $runner->run(
+        new TenantId(TenantScenario::A),
+        fn () => app(ActivityRecorder::class)->record($subject, 'retained_relations', actor: $causer),
+    );
+
+    $retained = $runner->run(new TenantId(TenantScenario::A), function () use ($activity, $subject, $causer): array {
+        $nativeSubject = ActivityLog::query()->findOrFail($activity->getKey());
+        $nativeCauser = ActivityLog::query()->findOrFail($activity->getKey());
+        $dedicatedSubject = ActivityLog::query()->findOrFail($activity->getKey());
+        $dedicatedCauser = ActivityLog::query()->findOrFail($activity->getKey());
+
+        expect($nativeSubject->subject->is($subject))->toBeTrue()
+            ->and($nativeCauser->causer->is($causer))->toBeTrue();
+
+        app(ActivityRelationLoader::class)->load(new Collection([$dedicatedSubject, $dedicatedCauser]));
+        expect($dedicatedSubject->subject->is($subject))->toBeTrue()
+            ->and($dedicatedCauser->causer->is($causer))->toBeTrue();
+
+        return compact('nativeSubject', 'nativeCauser', 'dedicatedSubject', 'dedicatedCauser');
+    });
+
+    $runner->run(new TenantId(TenantScenario::B), function () use ($retained): void {
+        expect(fn () => $retained['nativeSubject']->subject)->toThrow(TenantBoundaryViolation::class)
+            ->and(fn () => $retained['nativeCauser']->causer)->toThrow(TenantBoundaryViolation::class)
+            ->and(fn () => $retained['dedicatedSubject']->subject)->toThrow(TenantBoundaryViolation::class)
+            ->and(fn () => $retained['dedicatedCauser']->causer)->toThrow(TenantBoundaryViolation::class);
+    });
+});
+
+test('combined native eager loads retain both relations in either order without lazy queries', function (): void {
+    adoptActivityHost();
+    $runner = app(TenantRunner::class);
+    [$subject, $causer] = $runner->run(new TenantId(TenantScenario::A), fn (): array => [
+        TenantActivitySubject::create([
+            'name' => 'A eager subject',
+            'tenant_id' => TenantScenario::A,
+        ]),
+        TenantActivitySubject::create([
+            'name' => 'A eager causer',
+            'tenant_id' => TenantScenario::A,
+        ]),
+    ]);
+    $activity = $runner->run(
+        new TenantId(TenantScenario::A),
+        fn () => app(ActivityRecorder::class)->record($subject, 'combined_eager_relations', actor: $causer),
+    );
+
+    $runner->run(new TenantId(TenantScenario::A), function () use ($activity, $subject, $causer): void {
+        foreach ([['subject', 'causer'], ['causer', 'subject']] as $relations) {
+            $eager = ActivityLog::query()->with($relations)->findOrFail($activity->getKey());
+
+            expect($eager->relationLoaded('subject'))->toBeTrue()
+                ->and($eager->relationLoaded('causer'))->toBeTrue();
+
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $serialized = $eager->toArray();
+
+            expect($eager->subject->is($subject))->toBeTrue()
+                ->and($eager->causer->is($causer))->toBeTrue()
+                ->and($serialized)->toHaveKeys(['subject', 'causer'])
+                ->and(DB::getQueryLog())->toBeEmpty();
+        }
+    });
+});
+
 test('subject admission does not fire retrieved observers before foreign ownership is denied', function (): void {
     adoptActivityHost();
     $runner = app(TenantRunner::class);
