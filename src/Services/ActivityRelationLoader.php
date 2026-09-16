@@ -12,7 +12,6 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
-use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
 use ReflectionClass;
 
 /**
@@ -38,48 +37,11 @@ final class ActivityRelationLoader
         $this->ownership->attributes();
 
         if ($this->ownership->enabled()) {
-            $this->reloadCanonicalActivities($activities);
+            $this->ownership->synchronizeActivities($activities);
         }
 
         $this->loadRelation($activities, 'causer', 'causer_type', 'causer_id', includeSoftDeleted: true);
         $this->loadRelation($activities, 'subject', 'subject_type', 'subject_id');
-    }
-
-    /**
-     * Replace caller-controlled attributes and relations with canonical partitioned Activity rows.
-     *
-     * @param  EloquentCollection<int, ActivityLog>  $activities
-     */
-    private function reloadCanonicalActivities(EloquentCollection $activities): void
-    {
-        $canonicalRows = $this->ownership->canonicalActivities($activities);
-        $canonicalById = $canonicalRows->keyBy(fn (ActivityLog $activity): string => $this->activityIdentifier(
-            $activity->getKey(),
-        ));
-
-        foreach ($activities as $activity) {
-            $canonical = $canonicalById->get($this->activityIdentifier(
-                $activity->getRawOriginal($activity->getKeyName()),
-            ));
-
-            if (! $canonical instanceof ActivityLog) {
-                continue;
-            }
-
-            $activity->setRawAttributes($canonical->getAttributes(), true);
-            $activity->unsetRelation('causer');
-            $activity->unsetRelation('subject');
-        }
-    }
-
-    /** Normalize a validated Activity key without permitting unsupported identifiers. */
-    private function activityIdentifier(mixed $identifier): string
-    {
-        if (! is_string($identifier) && ! is_int($identifier)) {
-            throw new TenantBoundaryViolation('Activity hydration requires canonical persisted identities.');
-        }
-
-        return (string) $identifier;
     }
 
     /**
@@ -166,6 +128,12 @@ final class ActivityRelationLoader
                     $relation,
                     $relatedModels[(string) $loadableActivity['identifier']] ?? null,
                 );
+            }
+        }
+
+        if ($this->ownership->enabled()) {
+            foreach ($activities as $activity) {
+                $this->ownership->trustRelation($activity, $relation);
             }
         }
     }

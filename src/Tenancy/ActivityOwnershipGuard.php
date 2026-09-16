@@ -22,10 +22,14 @@ final readonly class ActivityOwnershipGuard
     /** @var WeakMap<Model, array{tenant_id?: string|null, ownership_key?: string}> */
     private WeakMap $deletingSubjects;
 
+    /** @var WeakMap<Model, array<string, true>> */
+    private WeakMap $trustedRelations;
+
     /** Share Foundation's current-scope boundary across every Activity entry point. */
     public function __construct(private TenantBoundary $boundary, private TenantResourceRegistry $resources, private Repository $configuration)
     {
         $this->deletingSubjects = new WeakMap;
+        $this->trustedRelations = new WeakMap;
     }
 
     /** Report whether subject ownership and the safe global identity projection are required. */
@@ -54,14 +58,17 @@ final readonly class ActivityOwnershipGuard
             } else {
                 $this->assertSubject($subject);
             }
+        } elseif (is_string($activity->getAttribute('subject_type')) && $activity->getAttribute('subject_type') !== '') {
+            $this->forgetTrustedRelation($activity, 'subject');
         }
         if ($activity->relationLoaded('causer') && ($causer = $activity->getRelation('causer')) instanceof Model) {
-            $definition = $this->definition($causer::class);
-            if ($definition !== null) {
-                $this->boundary->assertRecord($causer, $definition->key);
-            } elseif ($causer::class !== $this->globalCauserClass()) {
-                throw new TenantBoundaryViolation('Activity causers require registered ownership or the configured identity presenter.');
-            }
+            $canonicalCauser = $this->canonicalCauser($causer);
+            $activity->forceFill([
+                'causer_type' => $canonicalCauser->getMorphClass(),
+                'causer_id' => $canonicalCauser->getKey(),
+            ]);
+            $activity->setRelation('causer', $canonicalCauser);
+            $this->trustRelation($activity, 'causer');
         }
         foreach ($ownership as $key => $value) {
             if (array_key_exists($key, $activity->getAttributes()) && $activity->getAttribute($key) !== $value) {
@@ -89,6 +96,7 @@ final readonly class ActivityOwnershipGuard
     public function canonicalActivities(EloquentCollection $activities): EloquentCollection
     {
         $this->attributes();
+
         if (! $this->enabled()) {
             return $activities;
         }
@@ -120,6 +128,62 @@ final readonly class ActivityOwnershipGuard
         }
 
         return $canonical;
+    }
+
+    /**
+     * Replace supplied Activity state with canonical rows from the current partition.
+     *
+     * @param  EloquentCollection<int, ActivityLog>  $activities
+     */
+    public function synchronizeActivities(EloquentCollection $activities): void
+    {
+        $canonicalById = $this->canonicalActivities($activities)->keyBy(
+            fn (ActivityLog $activity): string => $this->identifier($activity->getKey()),
+        );
+
+        foreach ($activities as $activity) {
+            $canonical = $canonicalById->get($this->identifier(
+                $activity->getRawOriginal($activity->getKeyName()),
+            ));
+
+            if (! $canonical instanceof ActivityLog) {
+                continue;
+            }
+
+            $activity->setRawAttributes($canonical->getAttributes(), true);
+            $activity->unsetRelation('causer');
+            $activity->unsetRelation('subject');
+            $this->forgetTrustedRelation($activity, 'causer');
+            $this->forgetTrustedRelation($activity, 'subject');
+        }
+    }
+
+    /** Replace one supplied Activity instance with its canonical current-partition row. */
+    public function synchronizeActivity(ActivityLog $activity): void
+    {
+        $this->synchronizeActivities(new EloquentCollection([$activity]));
+    }
+
+    /** Mark a package-loaded relation as admitted for direct model access. */
+    public function trustRelation(ActivityLog $activity, string $relation): void
+    {
+        $trusted = $this->trustedRelations[$activity] ?? [];
+        $trusted[$relation] = true;
+        $this->trustedRelations[$activity] = $trusted;
+    }
+
+    /** Invalidate caller-supplied relation state. */
+    public function forgetTrustedRelation(ActivityLog $activity, string $relation): void
+    {
+        $trusted = $this->trustedRelations[$activity] ?? [];
+        unset($trusted[$relation]);
+        $this->trustedRelations[$activity] = $trusted;
+    }
+
+    /** Report whether a relation was loaded through an admitted package path. */
+    public function relationTrusted(ActivityLog $activity, string $relation): bool
+    {
+        return ($this->trustedRelations[$activity] ?? [])[$relation] ?? false;
     }
 
     /** Preserve the runtime exact-class check hidden by the generic collection contract. */
@@ -170,6 +234,54 @@ final readonly class ActivityOwnershipGuard
             $canonical->exists = true;
             $this->boundary->assertRecord($canonical, $definition->key);
         }
+    }
+
+    /** Reload a supplied causer through its canonical registered or global identity. */
+    public function canonicalCauser(Model $causer): Model
+    {
+        $this->attributes();
+        if (! $this->enabled()) {
+            return $causer;
+        }
+
+        $definition = $this->definition($causer::class);
+        if ($definition !== null) {
+            $canonicalClass = $definition->model;
+        } else {
+            $globalClass = $this->globalCauserClass();
+            if (! is_string($globalClass) || $causer::class !== $globalClass) {
+                throw new TenantBoundaryViolation('Activity causers require registered ownership or the configured identity presenter.');
+            }
+            $canonicalClass = $globalClass;
+        }
+        $canonical = new $canonicalClass;
+        if ($causer::class !== $canonical::class
+            || $causer->getTable() !== $canonical->getTable()
+            || $causer->getConnection() !== $canonical->getConnection()
+            || $causer->getKeyName() !== $canonical->getKeyName()
+            || ! $causer->exists) {
+            throw new TenantBoundaryViolation('Activity causers require canonical declared storage.');
+        }
+
+        $identifier = $causer->getKey();
+        $originalIdentifier = $causer->getRawOriginal($causer->getKeyName());
+        if ((! is_string($identifier) && ! is_int($identifier))
+            || ($originalIdentifier !== null && $originalIdentifier !== $identifier)
+            || ($originalIdentifier === null && ! $causer->wasRecentlyCreated)) {
+            throw new TenantBoundaryViolation('Activity causers require canonical persisted identities.');
+        }
+
+        $query = $canonical->newQuery()->whereKey($originalIdentifier ?? $identifier);
+        if ($definition !== null) {
+            $query = $this->boundary->query($query, $definition->key);
+        }
+
+        $canonicalCauser = $query->select($this->causerColumns($canonical))->first();
+        if (! $canonicalCauser instanceof Model) {
+            throw new TenantBoundaryViolation('Activity causers require a persisted identity in the permitted scope.');
+        }
+
+        return $canonicalCauser;
     }
 
     /** Report whether a concrete model has registered canonical tenant ownership. */

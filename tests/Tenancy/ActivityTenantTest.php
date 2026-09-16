@@ -121,6 +121,66 @@ test('hydration reloads the canonical subject and rejects a preloaded foreign ev
     });
 });
 
+test('native subject relations cannot hydrate a foreign registered subject', function (): void {
+    adoptActivityHost();
+    $runner = app(TenantRunner::class);
+    $owned = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
+        'name' => 'A native subject',
+        'tenant_id' => TenantScenario::A,
+    ]));
+    $foreign = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
+        'name' => 'B native secret',
+        'tenant_id' => TenantScenario::B,
+    ]));
+    $activity = $runner->run(
+        new TenantId(TenantScenario::A),
+        fn () => app(ActivityRecorder::class)->recordForSubjectReference(
+            new ActivitySubjectReference($foreign->getMorphClass(), $foreign->getKey()),
+            'native_subject_reference',
+        ),
+    );
+    $ownedActivity = $runner->run(
+        new TenantId(TenantScenario::A),
+        fn () => app(ActivityRecorder::class)->record($owned, 'native_owned_subject'),
+    );
+
+    $runner->run(new TenantId(TenantScenario::A), function () use ($activity, $foreign, $owned, $ownedActivity): void {
+        $lazy = ActivityLog::query()->findOrFail($activity->getKey());
+        $explicit = ActivityLog::query()->findOrFail($activity->getKey());
+        $eager = ActivityLog::query()->with('subject')->findOrFail($activity->getKey());
+        $preloaded = ActivityLog::query()->findOrFail($ownedActivity->getKey());
+        $preloaded->setRelation('subject', $foreign);
+
+        expect($lazy->subject)->toBeNull()
+            ->and($explicit->subject()->first())->toBeNull()
+            ->and($eager->subject)->toBeNull()
+            ->and($preloaded->subject->is($owned))->toBeTrue();
+    });
+});
+
+test('native subject relations deny unknown types before model construction', function (): void {
+    $runner = app(TenantRunner::class);
+    $activity = $runner->run(
+        new TenantId(TenantScenario::A),
+        fn () => app(ActivityRecorder::class)->recordForSubjectReference(
+            new ActivitySubjectReference(UnknownActivitySubject::class, 'unknown-native-id'),
+            'unknown_native_subject',
+        ),
+    );
+    UnknownActivitySubject::$constructed = 0;
+
+    $runner->run(new TenantId(TenantScenario::A), function () use ($activity): void {
+        $lazy = ActivityLog::query()->findOrFail($activity->getKey());
+        $explicit = ActivityLog::query()->findOrFail($activity->getKey());
+
+        expect(fn () => $lazy->subject)->toThrow(TenantBoundaryViolation::class)
+            ->and(fn () => $explicit->subject()->first())->toThrow(TenantBoundaryViolation::class)
+            ->and(fn () => ActivityLog::query()->with('subject')->findOrFail($activity->getKey()))
+            ->toThrow(TenantBoundaryViolation::class)
+            ->and(UnknownActivitySubject::$constructed)->toBe(0);
+    });
+});
+
 test('subject admission does not fire retrieved observers before foreign ownership is denied', function (): void {
     adoptActivityHost();
     $runner = app(TenantRunner::class);
@@ -239,14 +299,101 @@ test('a configured global causer uses a fixed safe projection in each tenant par
     $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b): void {
         $rows = app(ActivityReadService::class)->latest();
         app(ActivityRelationLoader::class)->load($rows);
+        $lazy = ActivityLog::query()->findOrFail($a->getKey());
+        $explicit = ActivityLog::query()->findOrFail($a->getKey());
+        $eager = ActivityLog::query()->with('causer')->findOrFail($a->getKey());
+        $preloaded = ActivityLog::query()->findOrFail($a->getKey());
+        $preloaded->setRelation('causer', GlobalActivityCauser::query()->findOrFail($a->causer_id));
         $suggestions = app(ListActivityCauserSuggestionsAction::class)->execute('Shared');
         $credentialSearch = app(ListActivityCauserSuggestionsAction::class)->execute('credential-secret');
 
         expect($rows->modelKeys())->toBe([$a->getKey()])->not->toContain($b->getKey())
             ->and(array_keys($rows->first()->causer->getAttributes()))->toBe(['id', 'name', 'email'])
+            ->and(array_keys($lazy->causer->getAttributes()))->toBe(['id', 'name', 'email'])
+            ->and(array_keys($explicit->causer()->firstOrFail()->getAttributes()))->toBe(['id', 'name', 'email'])
+            ->and(array_keys($eager->causer->getAttributes()))->toBe(['id', 'name', 'email'])
+            ->and(array_keys($preloaded->causer->getAttributes()))->toBe(['id', 'name', 'email'])
             ->and($suggestions)->toHaveCount(1)
             ->and($suggestions->first()->label)->toBe('Shared Operator')
             ->and($credentialSearch)->toHaveCount(0);
+    });
+});
+
+test('registered causer association rejects a changed identity without recording a fact', function (): void {
+    adoptActivityHost();
+    config()->set('activity.causer_suggestions.model', TenantActivitySubject::class);
+    $runner = app(TenantRunner::class);
+    $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
+        'name' => 'A causer',
+        'tenant_id' => TenantScenario::A,
+    ]));
+    $b = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
+        'name' => 'B causer',
+        'tenant_id' => TenantScenario::B,
+    ]));
+
+    $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b): void {
+        $before = ActivityLog::query()->count();
+        $a->setAttribute($a->getKeyName(), $b->getKey());
+
+        expect(fn () => app(ActivityRecorder::class)->record(null, 'dirty_registered_causer', actor: $a))
+            ->toThrow(TenantBoundaryViolation::class)
+            ->and(ActivityLog::query()->count())->toBe($before);
+    });
+});
+
+test('global causer association requires one canonical persisted identity', function (): void {
+    Schema::create('global_activity_causers', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('email');
+        $table->string('password');
+        $table->string('account_audit');
+        $table->timestamps();
+    });
+    config()->set('activity.causer_suggestions.model', GlobalActivityCauser::class);
+    config()->set('database.connections.activity_foreign', config('database.connections.sqlite'));
+    $canonical = GlobalActivityCauser::create([
+        'name' => 'Canonical Operator',
+        'email' => 'canonical@example.test',
+        'password' => 'private-password',
+        'account_audit' => 'private-audit',
+    ]);
+    $transient = new GlobalActivityCauser([
+        'name' => 'Transient',
+        'email' => 'transient@example.test',
+    ]);
+    $nonexistent = new GlobalActivityCauser;
+    $nonexistent->setRawAttributes(['id' => 999999], true);
+    $nonexistent->exists = true;
+    $forgedTable = clone $canonical;
+    $forgedTable->setTable('forged_global_causers');
+    $forgedConnection = clone $canonical;
+    $forgedConnection->setConnection('activity_foreign');
+    $dirtyIdentity = clone $canonical;
+    $dirtyIdentity->setAttribute($dirtyIdentity->getKeyName(), 999999);
+    $runner = app(TenantRunner::class);
+
+    $runner->run(new TenantId(TenantScenario::A), function () use (
+        $canonical,
+        $transient,
+        $nonexistent,
+        $forgedTable,
+        $forgedConnection,
+        $dirtyIdentity,
+    ): void {
+        $before = ActivityLog::query()->count();
+
+        foreach ([$transient, $nonexistent, $forgedTable, $forgedConnection, $dirtyIdentity] as $invalid) {
+            expect(fn () => app(ActivityRecorder::class)->record(null, 'invalid_global_causer', actor: $invalid))
+                ->toThrow(TenantBoundaryViolation::class);
+        }
+
+        $activity = app(ActivityRecorder::class)->record(null, 'valid_global_causer', actor: $canonical);
+
+        expect(ActivityLog::query()->count())->toBe($before + 1)
+            ->and($activity->causer_id)->toEqual($canonical->getKey())
+            ->and(array_keys($activity->causer->getAttributes()))->toBe(['id', 'name', 'email']);
     });
 });
 
@@ -412,6 +559,7 @@ test('canonical hydration keeps Activity and subject reloads batched for multi-r
         DB::flushQueryLog();
         DB::enableQueryLog();
         app(ActivityRelationLoader::class)->load($rows);
+        $rows->each(fn (ActivityLog $activity): mixed => $activity->subject);
         $queries = collect(DB::getQueryLog())->pluck('query');
 
         expect($rows)->toHaveCount(12)

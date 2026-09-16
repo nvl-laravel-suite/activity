@@ -8,13 +8,18 @@ use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use LogicException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
+use Nvl\Activity\Tenancy\ActivityMorphTo;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
+use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
 use Nvl\Tenancy\Services\TenantBoundary;
 use Spatie\Activitylog\Models\Activity;
 
@@ -153,6 +158,133 @@ final class ActivityLog extends Activity
     public static function forSubjectTimeline(string $subjectType, string|int|array $subjectId): ActivityLogBuilder
     {
         return self::forDisplay()->forSubject($subjectType, $subjectId);
+    }
+
+    /** @return ActivityMorphTo<static> */
+    #[\Override]
+    public function subject(): MorphTo
+    {
+        $ownership = Container::getInstance()->make(ActivityOwnershipGuard::class);
+        $ownership->attributes();
+        $relation = $this->activityMorphTo('subject', $ownership, false, $ownership->enabled());
+        if (config('activitylog.include_soft_deleted_subjects')) {
+            $relation->withTrashed();
+        }
+
+        return $relation;
+    }
+
+    /** @return ActivityMorphTo<static> */
+    #[\Override]
+    public function causer(): MorphTo
+    {
+        $ownership = Container::getInstance()->make(ActivityOwnershipGuard::class);
+        $ownership->attributes();
+
+        return $this->activityMorphTo('causer', $ownership, true, $ownership->enabled());
+    }
+
+    /** {@inheritDoc} */
+    #[\Override]
+    public function getRelationValue($key)
+    {
+        if (! in_array($key, ['subject', 'causer'], true)) {
+            return parent::getRelationValue($key);
+        }
+
+        $ownership = Container::getInstance()->make(ActivityOwnershipGuard::class);
+        $ownership->attributes();
+        if ($ownership->enabled() && $this->relationLoaded($key) && ! $ownership->relationTrusted($this, $key)) {
+            $this->unsetRelation($key);
+        }
+
+        $value = parent::getRelationValue($key);
+        if ($ownership->enabled() && $this->relationLoaded($key)) {
+            $ownership->trustRelation($this, $key);
+        }
+
+        return $value;
+    }
+
+    /** {@inheritDoc} */
+    #[\Override]
+    public function setRelation($relation, $value)
+    {
+        $ownership = null;
+        if (in_array($relation, ['subject', 'causer'], true)) {
+            $ownership = Container::getInstance()->make(ActivityOwnershipGuard::class);
+            if ($ownership->enabled()) {
+                $ownership->forgetTrustedRelation($this, $relation);
+            }
+        }
+
+        $model = parent::setRelation($relation, $value);
+        if (! $this->exists && $ownership instanceof ActivityOwnershipGuard && $ownership->enabled()) {
+            $ownership->trustRelation($this, $relation);
+        }
+
+        return $model;
+    }
+
+    /**
+     * Build the package-owned native relation without constructing an untrusted stored type.
+     *
+     * @return ActivityMorphTo<static>
+     */
+    private function activityMorphTo(
+        string $relation,
+        ActivityOwnershipGuard $ownership,
+        bool $causer,
+        bool $guarded,
+    ): ActivityMorphTo {
+        if ($guarded && $this->exists) {
+            $ownership->synchronizeActivity($this);
+        }
+
+        $typeColumn = $relation.'_type';
+        $idColumn = $relation.'_id';
+        $storedType = $this->getAttribute($typeColumn);
+        $related = null;
+
+        if (is_string($storedType) && trim($storedType) !== '') {
+            if ($guarded) {
+                $related = $ownership->relationModel($storedType, $causer)
+                    ?? throw new TenantBoundaryViolation('Activity relations require registered canonical storage.');
+            } else {
+                $relatedClass = self::getActualClassNameForMorph($storedType);
+                if (! is_a($relatedClass, Model::class, true)) {
+                    throw new LogicException('Activity relation types must resolve to Eloquent models.');
+                }
+                $related = $this->newRelatedInstance($relatedClass);
+            }
+        }
+
+        /** @var Builder<Model> $query */
+        $query = $related instanceof Model
+            ? ($guarded ? $ownership->relatedQuery($related->newQuery()) : $related->newQuery())
+            : $this->newQuery()->setEagerLoads([]);
+
+        if ($guarded && $causer && $related instanceof Model) {
+            $query->select($ownership->causerColumns($related));
+        }
+
+        return new ActivityMorphTo(
+            $query,
+            $this->relationParent(),
+            $idColumn,
+            $related?->getKeyName(),
+            $typeColumn,
+            $relation,
+            $ownership,
+            $causer,
+            $guarded,
+        );
+    }
+
+    /** Return the exact declaring type expected by the invariant MorphTo template. */
+    private function relationParent(): ActivityLog
+    {
+        return $this;
     }
 
     /**
