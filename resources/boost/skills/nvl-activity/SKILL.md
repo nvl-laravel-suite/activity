@@ -117,3 +117,10 @@ From the suite root, run `composer quality` or its module-aware Pest command, th
 Coverage must include canonical model binding; literal migration up/down behavior; custom/adopted storage rejection; mapped create/update/delete; structured and batch writes; identifier/actor variants; invalid metadata; complete and finite post-filter timelines across keyset batches; real Gates and allowlists; JSON/API/error contracts; EN/BG parity; retention scopes and dry runs; job locking/retry/backoff/timeout; and after-commit dispatch.
 
 Activitylog 4 is not a supported runtime. Before enabling v5 writes, explicitly require Activitylog 5, move host imports to the v5 namespaces, add the nullable JSON `attribute_changes` column, run strict Doctor, and verify historical `properties` fallback reads. When upgrading a consumer that published this skill, republish `activity-skills` with `--force` only after reviewing local changes, or manually merge the newer bundled skill into the customized application copy. Review `CHANGELOG.md` and `UPGRADING.md` before changing storage or public contracts.
+
+## Configurable-tenancy release discipline
+
+- Preserve disabled compatibility and package independence; tenant support never creates an undeclared Auth or Suite dependency.
+- Use registered package-owned resources, adoption adapters, Actions, and lifecycle APIs. Never add a generic tenant delete-all path or raw cross-package cleanup.
+- Treat mapping/configuration hashes, interruption checkpoints, conservation evidence, worker context, tenant-leading queries, and standalone consumption as release contracts.
+- The P2 implementation is present, but consolidated runtime verification is pending. Do not claim release readiness until the complete matrix passes.
