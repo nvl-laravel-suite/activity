@@ -288,7 +288,7 @@ test('purge preserves important evidence by default and deletes it only after ex
         'updated_at' => $createdAt,
     ]);
 
-    (new PurgeActivityLogsJob(days: 90))->handle();
+    (new PurgeActivityLogsJob(days: 90))->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
 
     expect($normal->fresh())->toBeNull()
         ->and($important->fresh())->not->toBeNull()
@@ -302,7 +302,7 @@ test('purge preserves important evidence by default and deletes it only after ex
     (new PurgeActivityLogsJob(
         days: 90,
         criteria: ActivityPurgeCriteria::fromDays(90, includeImportant: true),
-    ))->handle();
+    ))->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
 
     expect($important->fresh())->toBeNull();
 });
@@ -490,7 +490,7 @@ test('system purge deletes only eligible system-originated rows', function (): v
         'updated_at' => $createdAt,
     ]);
 
-    (new PurgeActivityLogsJob(days: 90, systemOnly: true))->handle();
+    (new PurgeActivityLogsJob(days: 90, systemOnly: true))->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
 
     expect($system->fresh())->toBeNull()
         ->and($user->fresh())->not->toBeNull();
@@ -514,7 +514,7 @@ test('purge lock contention remains retryable beyond the exception limit', funct
         $fakeQueueJob = new FakeJob;
         $fakeQueueJob->attempts = 60;
         $job = (new PurgeActivityLogsJob(days: 90, systemOnly: true))->setJob($fakeQueueJob);
-        $job->handle();
+        $job->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
 
         expect($activity->fresh())->not->toBeNull()
             ->and($job->attempts())->toBe(60)

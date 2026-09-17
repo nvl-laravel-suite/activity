@@ -6,7 +6,7 @@ namespace Nvl\Activity\Console\Commands;
 
 use Illuminate\Console\Command;
 use Nvl\Activity\Exceptions\ActivityException;
-use Nvl\Activity\Jobs\PurgeActivityLogsJob;
+use Nvl\Activity\Services\ActivityPurgeDispatcher;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 
 /**
@@ -14,6 +14,10 @@ use Nvl\Activity\Support\ActivityPurgeCriteria;
  */
 final class PurgeActivityLogsCommand extends Command
 {
+    public function __construct(private readonly ActivityPurgeDispatcher $purges)
+    {
+        parent::__construct();
+    }
     /**
      * @var string Console command signature
      */
@@ -57,7 +61,7 @@ final class PurgeActivityLogsCommand extends Command
         $this->writeCriteriaSummary($criteria);
 
         if ((bool) $this->option('dry-run')) {
-            $count = PurgeActivityLogsJob::countPurgeableForCriteria($criteria);
+            $count = $this->purges->count($criteria);
             $this->info((string) trans(
                 'activity::activity/general.console.purge.dry_run',
                 ['count' => $count],
@@ -66,7 +70,7 @@ final class PurgeActivityLogsCommand extends Command
             return self::SUCCESS;
         }
 
-        PurgeActivityLogsJob::dispatch($criteria->days ?? 0, $criteria->systemOnly, $criteria);
+        $this->purges->dispatch($criteria);
 
         $this->info((string) trans('activity::activity/general.console.purge.dispatched'));
 

@@ -4,6 +4,11 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Partitioned purge candidates, locks, deletion counts, and queued work by
+  captured tenant ownership with explicit platform worklist enumeration.
+
 ### Fixed
 
 - Restrict malformed historical visibility metadata to audit-only presentation,

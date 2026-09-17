@@ -9,12 +9,17 @@ use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
 use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Tenancy\Contracts\TenantContext;
+use Nvl\Tenancy\ValueObjects\TenantJobEnvelope;
 
 /**
  * Queue purge work for activity logs.
  */
-final class QueueActivityLogPurgeAction implements QueueActivityLogPurgeContract
+final readonly class QueueActivityLogPurgeAction implements QueueActivityLogPurgeContract
 {
+    /** Create the tenant-aware queue boundary. */
+    public function __construct(private TenantContext $tenantContext) {}
+
     /**
      * Queue the activity log purge job.
      *
@@ -29,7 +34,8 @@ final class QueueActivityLogPurgeAction implements QueueActivityLogPurgeContract
     ): void {
         $criteria = ActivityPurgeCriteria::fromDays($days, $systemOnly, $includeImportant);
 
-        PurgeActivityLogsJob::dispatch($days, $systemOnly, $criteria);
+        $envelope = TenantJobEnvelope::capture($this->tenantContext);
+        PurgeActivityLogsJob::dispatch($days, $systemOnly, $criteria, $envelope);
 
         DB::afterCommit(static function () use ($days, $systemOnly, $includeImportant): void {
             event(new ActivityLogPurgeQueuedEvent($days, $systemOnly, $includeImportant));

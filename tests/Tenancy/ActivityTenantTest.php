@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
 use Nvl\Activity\Exceptions\ActivityTimelineException;
+use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Services\ActivityRecorder;
@@ -27,6 +28,7 @@ use Nvl\Activity\Tests\Fixtures\TenantActivitySubject;
 use Nvl\Activity\Tests\Fixtures\TenantScenario;
 use Nvl\Activity\Tests\Fixtures\UnknownActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
+use Nvl\Tenancy\Contracts\TenantContext;
 use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
 use Nvl\Tenancy\Exceptions\TenantContextMissing;
 use Nvl\Tenancy\Exceptions\TenantSchemaNotReady;
@@ -36,6 +38,7 @@ use Nvl\Tenancy\Services\TenantRunner;
 use Nvl\Tenancy\ValueObjects\PlatformOperation;
 use Nvl\Tenancy\ValueObjects\TenantAdoptionPlan;
 use Nvl\Tenancy\ValueObjects\TenantId;
+use Nvl\Tenancy\ValueObjects\TenantJobEnvelope;
 use Nvl\Tenancy\ValueObjects\TenantResourceDefinition;
 
 test('selected adoption adds the immutable ownership schema and refuses nonempty legacy storage', function (): void {
@@ -78,6 +81,21 @@ test('a shared subject reference does not merge tenant timelines', function (): 
 test('unresolved recording and reads fail closed', function (): void {
     expect(fn () => app(ActivityRecorder::class)->record(null, 'system_event'))->toThrow(TenantContextMissing::class);
     expect(fn () => app(ActivityReadService::class)->latest())->toThrow(TenantContextMissing::class);
+});
+
+test('retention jobs preserve their tenant envelope across serialization', function (): void {
+    $job = app(TenantRunner::class)->run(
+        new TenantId(TenantScenario::A),
+        fn (): PurgeActivityLogsJob => new PurgeActivityLogsJob(
+            days: 90,
+            envelope: TenantJobEnvelope::capture(app(TenantContext::class)),
+        ),
+    );
+
+    $restored = unserialize(serialize($job), ['allowed_classes' => true]);
+
+    expect($restored)->toBeInstanceOf(PurgeActivityLogsJob::class)
+        ->and($restored->tenantJobEnvelope()->context->tenantId?->value)->toBe(TenantScenario::A);
 });
 
 test('system facts and explicit platform facts occupy separate partitions', function (): void {

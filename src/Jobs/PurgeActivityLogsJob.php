@@ -15,13 +15,18 @@ use Illuminate\Support\Facades\Log;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Tenancy\Contracts\TenantQueuedJob;
+use Nvl\Tenancy\Enums\TenantContextMode;
+use Nvl\Tenancy\Services\TenantBoundary;
+use Nvl\Tenancy\ValueObjects\TenantContextSnapshot;
+use Nvl\Tenancy\ValueObjects\TenantJobEnvelope;
 use Throwable;
 use UnexpectedValueException;
 
 /**
  * Queued job that deletes old activity log entries in chunks.
  */
-final class PurgeActivityLogsJob implements ShouldQueue
+final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -65,20 +70,30 @@ final class PurgeActivityLogsJob implements ShouldQueue
         public readonly int $days,
         public readonly bool $systemOnly = false,
         public readonly ?ActivityPurgeCriteria $criteria = null,
+        ?TenantJobEnvelope $envelope = null,
     ) {
+        $this->envelope = $envelope ?? new TenantJobEnvelope(new TenantContextSnapshot(TenantContextMode::Disabled));
         $configuredQueue = config('activity.retention.queue', 'maintenance');
         $this->onQueue(is_string($configuredQueue) ? $configuredQueue : 'maintenance');
         $this->afterCommit();
     }
 
+    private readonly TenantJobEnvelope $envelope;
+
+    /** Return the producer tenant captured before native queue dispatch. */
+    public function tenantJobEnvelope(): TenantJobEnvelope
+    {
+        return $this->envelope;
+    }
+
     /**
      * Execute the job: delete old activity logs in chunks.
      */
-    public function handle(): void
+    public function handle(TenantBoundary $boundary): void
     {
         $criteria = $this->resolvedCriteria();
         $lock = Cache::lock(
-            'nvl:activity:purge',
+            $boundary->key('activity.events', 'purge'),
             $this->lockSeconds(),
         );
 
@@ -90,7 +105,7 @@ final class PurgeActivityLogsJob implements ShouldQueue
         }
 
         try {
-            $this->purge($criteria);
+            $this->purge($criteria, $boundary);
         } finally {
             $lock->release();
         }
@@ -141,12 +156,12 @@ final class PurgeActivityLogsJob implements ShouldQueue
     /**
      * Delete all rows matching the immutable criteria in bounded chunks.
      */
-    private function purge(ActivityPurgeCriteria $criteria): void
+    private function purge(ActivityPurgeCriteria $criteria, TenantBoundary $boundary): void
     {
         $totalDeleted = 0;
 
         while (true) {
-            $ids = $this->purgeableQuery($criteria)
+            $ids = $this->purgeableQuery($criteria, $boundary)
                 ->oldestFirst()
                 ->limit(self::CHUNK_SIZE)
                 ->pluck('id')
@@ -158,7 +173,7 @@ final class PurgeActivityLogsJob implements ShouldQueue
                 break;
             }
 
-            $deleted = ActivityLog::query()
+            $deleted = $boundary->query(ActivityLog::query(), 'activity.events')
                 ->whereKey($ids)
                 ->delete();
 
@@ -196,33 +211,42 @@ final class PurgeActivityLogsJob implements ShouldQueue
      * @param  bool  $systemOnly  Only count system-generated entries
      * @return int Number of purgeable entries
      */
-    public static function countPurgeable(int $days, bool $systemOnly = false): int
+    public static function countPurgeable(int $days, bool $systemOnly = false, ?TenantBoundary $boundary = null): int
     {
-        return self::countPurgeableForCriteria(ActivityPurgeCriteria::fromDays($days, $systemOnly));
+        return self::countPurgeableForCriteria(ActivityPurgeCriteria::fromDays($days, $systemOnly), $boundary);
     }
 
     /**
      * Count entries matching the supplied purge criteria without deleting them.
      */
-    public static function countPurgeableForCriteria(ActivityPurgeCriteria $criteria): int
+    public static function countPurgeableForCriteria(ActivityPurgeCriteria $criteria, ?TenantBoundary $boundary = null): int
     {
-        return self::newPurgeableQuery($criteria)->count();
+        if ($boundary === null && config('tenancy.enabled') === true) {
+            throw new UnexpectedValueException('Tenant activity purge counts require an explicit tenant boundary.');
+        }
+
+        return self::newPurgeableQuery($criteria, $boundary)->count();
     }
 
     /**
      * Build the shared purge eligibility query.
      */
-    private function purgeableQuery(ActivityPurgeCriteria $criteria): ActivityLogBuilder
+    private function purgeableQuery(ActivityPurgeCriteria $criteria, TenantBoundary $boundary): ActivityLogBuilder
     {
-        return self::newPurgeableQuery($criteria);
+        return self::newPurgeableQuery($criteria, $boundary);
     }
 
     /**
      * Build the shared purge eligibility query.
      */
-    private static function newPurgeableQuery(ActivityPurgeCriteria $criteria): ActivityLogBuilder
+    private static function newPurgeableQuery(ActivityPurgeCriteria $criteria, ?TenantBoundary $boundary): ActivityLogBuilder
     {
-        return ActivityLog::query()->applyPurgeCriteria($criteria);
+        $query = ActivityLog::query();
+        if ($boundary !== null) {
+            $query = $boundary->query($query, 'activity.events');
+        }
+
+        return $query->applyPurgeCriteria($criteria);
     }
 
     /**

@@ -103,6 +103,9 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 
 - Doctor is read-only. Run it in strict JSON mode after storage, authorization, queue, schedule, or cached-configuration changes.
 - Preview retention with `nvl:activity:purge --dry-run`; use queued deletion for mutation. Important rows are protected by default, including system retention, and require explicit `include_important=true` API input or `--include-important` CLI opt-in. `nvl:activity:purge-system` and its schedule are opt-in.
+- In tenant mode, purge jobs require captured tenant envelopes; queries and
+  overlap locks stay tenant-bound. Platform commands use only the configured
+  active-tenant worklist and never enumerate application tables implicitly.
 - `PurgeActivityLogsJob` runs after commit, deletes in chunks of 1,000, and holds a distributed lock. Lock contention releases it for 60 seconds.
 - All workers and schedulers must use the same canonical LockProvider-backed default cache. Use Redis, database, Memcached, DynamoDB, or another shared atomic-lock backend for multi-node operation; file is single-host only, and array/null are never production-safe. Cache failover cannot preserve one lock domain across partial failures, so strict Doctor rejects it outright.
 - The time-based retry window covers one configured lock lifetime plus bounded execution retries, so repeated 60-second contention releases remain valid; five unhandled execution exceptions fail the job. Each attempt has a public 900-second timeout contract with failure-on-timeout and exception backoff of 60, 300, 900, and 1,800 seconds. Configure database, Redis, or Beanstalkd `retry_after` above 900 seconds. For SQS or a custom driver without `retry_after`, declare the externally configured value through `retention.external_visibility_timeout_seconds`. Doctor validates every target behind failover connections. Allow sufficient worker shutdown time.

@@ -13,6 +13,7 @@ use Nvl\Activity\Console\Commands\ActivityDoctorCommand;
 use Nvl\Activity\Console\Commands\PurgeActivityLogsCommand;
 use Nvl\Activity\Console\Commands\PurgeSystemActivityLogsCommand;
 use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
+use Nvl\Activity\Contracts\ActivityTenantWorklist;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Policies\ActivityLogPolicy;
 use Nvl\Activity\Services\ActivityDiffBuilder;
@@ -21,6 +22,7 @@ use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\ActivityRelationLoader;
 use Nvl\Activity\Services\ActivityTransformService;
+use Nvl\Activity\Services\ConfiguredActivityTenantWorklist;
 use Nvl\Activity\Services\HeadlineRenderer;
 use Nvl\Activity\Services\LabelResolver;
 use Nvl\Activity\Services\MappingRegistry;
@@ -63,6 +65,7 @@ final class ActivityServiceProvider extends ServiceProvider
         (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class), $this->app->make(TenantAdoptionRegistry::class));
 
         $this->app->bind(QueueActivityLogPurgeContract::class, QueueActivityLogPurgeAction::class);
+        $this->app->bindIf(ActivityTenantWorklist::class, ConfiguredActivityTenantWorklist::class);
 
         $this->registerSingletons();
     }

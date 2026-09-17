@@ -578,6 +578,11 @@ Doctor is read-only. It checks strict configuration values, connection availabil
 
 Purge supports date, event, log, subject, causer, and system-origin scopes. Important rows are excluded by default from general, system-only, API, CLI, and scheduled retention. Deleting them requires the explicit, auditable API input `include_important=true` or CLI flag `--include-important`; the queued DTO, event, job logs, and criteria summary retain that decision. `audit_only` visibility does not make a user event system-originated. Dry run counts rows. Mutation dispatches locked, chunked queue work and reports failures.
 
+With tenancy enabled, every purge job carries a tenant envelope, scopes its
+candidate/delete queries, and uses a tenant-qualified lock. Platform commands
+enumerate only `activity.tenancy.active_tenant_worklist`; there is no implicit
+all-tenant query.
+
 Automatic system retention is disabled by default. Configure the maintenance queue, run a worker, and explicitly enable it only after previewing the result:
 
 ```php

@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 
 return [
+    'tenancy' => [
+        'active_tenant_worklist' => [],
+    ],
     'name' => 'Activity',
 
     'routes' => [

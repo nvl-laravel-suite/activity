@@ -1,5 +1,9 @@
 # Upgrading NVL Activity
 
+For tenant retention, configure the explicit active-tenant worklist before
+enabling scheduled purges. Drain envelope-less legacy purge jobs; new jobs are
+tenant queued jobs and cannot run under unresolved context.
+
 ## Upgrading to 1.0
 
 Version 1.0 removed consumer-specific mappings and model hooks, compatibility writers, mutable package-migration targets, TypeScript namespace assumptions, and route assumptions. It supports only Spatie Activitylog 5.x.
