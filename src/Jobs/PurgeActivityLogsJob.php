@@ -245,6 +245,9 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
         if ($boundary !== null) {
             $query = $boundary->query($query, 'activity.events');
         }
+        if (! $query instanceof ActivityLogBuilder) {
+            throw new UnexpectedValueException('Activity purge requires the canonical Activity query builder.');
+        }
 
         return $query->applyPurgeCriteria($criteria);
     }

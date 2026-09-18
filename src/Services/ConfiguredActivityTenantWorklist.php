@@ -21,7 +21,13 @@ final readonly class ConfiguredActivityTenantWorklist implements ActivityTenantW
             || array_any($configured, static fn (mixed $id): bool => ! is_string($id) || ! Str::isUuid($id))) {
             throw new TenantConfigurationInvalid('The Activity tenant worklist must be a list of canonical UUIDs.');
         }
-        $ids = array_values(array_unique($configured));
+        $ids = [];
+        foreach ($configured as $id) {
+            if (is_string($id)) {
+                $ids[$id] = $id;
+            }
+        }
+        $ids = array_values($ids);
         sort($ids);
 
         return $ids;

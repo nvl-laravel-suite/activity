@@ -25,6 +25,7 @@ use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Tenancy\Services\TenantBoundary;
 
 test('the package migration rejects an incompatible existing activity table', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
@@ -288,7 +289,7 @@ test('purge preserves important evidence by default and deletes it only after ex
         'updated_at' => $createdAt,
     ]);
 
-    (new PurgeActivityLogsJob(days: 90))->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
+    (new PurgeActivityLogsJob(days: 90))->handle(app(TenantBoundary::class));
 
     expect($normal->fresh())->toBeNull()
         ->and($important->fresh())->not->toBeNull()
@@ -302,7 +303,7 @@ test('purge preserves important evidence by default and deletes it only after ex
     (new PurgeActivityLogsJob(
         days: 90,
         criteria: ActivityPurgeCriteria::fromDays(90, includeImportant: true),
-    ))->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
+    ))->handle(app(TenantBoundary::class));
 
     expect($important->fresh())->toBeNull();
 });
@@ -329,7 +330,7 @@ test('purge criteria reject fractional days and inverted effective ranges', func
 test('purge queue actions reject invalid retention before dispatch', function (): void {
     Bus::fake();
 
-    expect(fn () => (new QueueActivityLogPurgeAction)->execute(0))
+    expect(fn () => app(QueueActivityLogPurgeAction::class)->execute(0))
         ->toThrow(ActivityPurgeCriteriaException::class, 'Days must be a positive integer.');
 
     Bus::assertNothingDispatched();
@@ -490,7 +491,7 @@ test('system purge deletes only eligible system-originated rows', function (): v
         'updated_at' => $createdAt,
     ]);
 
-    (new PurgeActivityLogsJob(days: 90, systemOnly: true))->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
+    (new PurgeActivityLogsJob(days: 90, systemOnly: true))->handle(app(TenantBoundary::class));
 
     expect($system->fresh())->toBeNull()
         ->and($user->fresh())->not->toBeNull();
@@ -506,7 +507,10 @@ test('purge lock contention remains retryable beyond the exception limit', funct
         'created_at' => $createdAt,
         'updated_at' => $createdAt,
     ]);
-    $lock = Cache::lock('nvl:activity:purge', 60);
+    $lock = Cache::lock(
+        app(TenantBoundary::class)->key('activity.events', 'purge'),
+        60,
+    );
 
     expect($lock->get())->toBeTrue();
 
@@ -514,7 +518,7 @@ test('purge lock contention remains retryable beyond the exception limit', funct
         $fakeQueueJob = new FakeJob;
         $fakeQueueJob->attempts = 60;
         $job = (new PurgeActivityLogsJob(days: 90, systemOnly: true))->setJob($fakeQueueJob);
-        $job->handle(app(\Nvl\Tenancy\Services\TenantBoundary::class));
+        $job->handle(app(TenantBoundary::class));
 
         expect($activity->fresh())->not->toBeNull()
             ->and($job->attempts())->toBe(60)
@@ -658,7 +662,7 @@ test('purge work and its queued event execute only after the surrounding transac
     ]);
 
     DB::transaction(function () use ($activity): void {
-        (new QueueActivityLogPurgeAction)->execute(90);
+        app(QueueActivityLogPurgeAction::class)->execute(90);
 
         expect($activity->fresh())->not->toBeNull();
         Event::assertNotDispatched(ActivityLogPurgeQueuedEvent::class);
@@ -685,7 +689,7 @@ test('rolled back transactions discard purge work and its queued event', functio
     ]);
 
     expect(fn () => DB::transaction(function () use ($activity): never {
-        (new QueueActivityLogPurgeAction)->execute(90);
+        app(QueueActivityLogPurgeAction::class)->execute(90);
 
         expect($activity->fresh())->not->toBeNull();
         Event::assertNotDispatched(ActivityLogPurgeQueuedEvent::class);

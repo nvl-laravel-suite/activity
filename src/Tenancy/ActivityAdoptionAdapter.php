@@ -40,7 +40,11 @@ final readonly class ActivityAdoptionAdapter implements TenantAdoptionAdapter
         return new TenantBackfillResult(null, 0);
     }
 
-    /** Certify the actual schema and empty dataset without relying on migration markers. */
+    /**
+     * Certify the actual schema and empty dataset without relying on migration markers.
+     *
+     * @phpstan-impure
+     */
     public function verify(TenantAdoptionPlan $plan): TenantVerification
     {
         $connection = $this->connection($plan);

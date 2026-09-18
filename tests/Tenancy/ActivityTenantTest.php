@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
@@ -336,7 +337,8 @@ test('adopted Activity storage denies recorder queries and hydration when tenanc
         ->toThrow(TenantSchemaNotReady::class);
 });
 
-test('tenant retention dispatch remains denied until its bounded W6 dispatcher exists', function (): void {
+test('tenant retention dispatch captures its bounded tenant envelope', function (): void {
+    Bus::fake();
     $runner = app(TenantRunner::class);
     $activity = $runner->run(
         new TenantId(TenantScenario::A),
@@ -344,9 +346,13 @@ test('tenant retention dispatch remains denied until its bounded W6 dispatcher e
     );
 
     $runner->run(new TenantId(TenantScenario::A), function () use ($activity): void {
-        expect(fn () => app(QueueActivityLogPurgeAction::class)->execute(90))
-            ->toThrow(TenantBoundaryViolation::class)
-            ->and(app(ActivityReadService::class)->latest()->modelKeys())
+        app(QueueActivityLogPurgeAction::class)->execute(90);
+
+        Bus::assertDispatched(
+            PurgeActivityLogsJob::class,
+            static fn (PurgeActivityLogsJob $job): bool => $job->tenantJobEnvelope()->context->tenantId?->value === TenantScenario::A,
+        );
+        expect(app(ActivityReadService::class)->latest()->modelKeys())
             ->toContain($activity->getKey());
     });
 });
@@ -661,7 +667,7 @@ test('canonical hydration keeps Activity and subject reloads batched for multi-r
 
         expect($rows)->toHaveCount(12)
             ->and($queries->filter(fn (string $query): bool => str_contains($query, 'activity_log')))->toHaveCount(1)
-            ->and($queries->filter(fn (string $query): bool => str_starts_with($query, 'select * from "tenant_activity_subjects"')))->toHaveCount(1)
+            ->and($queries->filter(fn (string $query): bool => preg_match('/^select \* from [`"]tenant_activity_subjects[`"]/i', $query) === 1))->toHaveCount(1)
             ->and($queries->count())->toBeLessThan(12);
     });
 });

@@ -18,6 +18,7 @@ final class PurgeSystemActivityLogsCommand extends Command
     {
         parent::__construct();
     }
+
     /**
      * @var string Console command signature
      */
