@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Tenancy;
 
-use Illuminate\Database\Connection;
 use Illuminate\Database\Migrations\Migrator;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Tenancy\Contracts\TenantAdoptionAdapter;
 use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
+use Nvl\Tenancy\Services\TenantAdoptionSupport;
 use Nvl\Tenancy\ValueObjects\TenantAdoptionPlan;
 use Nvl\Tenancy\ValueObjects\TenantBackfillResult;
 use Nvl\Tenancy\ValueObjects\TenantVerification;
@@ -17,7 +17,7 @@ use Nvl\Tenancy\ValueObjects\TenantVerification;
 final readonly class ActivityAdoptionAdapter implements TenantAdoptionAdapter
 {
     /** Use Laravel's migration repository for the separately selected ownership schema. */
-    public function __construct(private Migrator $migrator) {}
+    public function __construct(private Migrator $migrator, private TenantAdoptionSupport $adoption) {}
 
     /** @return list<string> */
     public function resources(): array
@@ -47,7 +47,7 @@ final readonly class ActivityAdoptionAdapter implements TenantAdoptionAdapter
      */
     public function verify(TenantAdoptionPlan $plan): TenantVerification
     {
-        $connection = $this->connection($plan);
+        $connection = $this->adoption->connection($plan, 'activity.events');
         $table = (new ActivityLog)->getTable();
         $schema = $connection->getSchemaBuilder();
         $columns = collect($schema->getColumns($table))->keyBy('name');
@@ -67,22 +67,10 @@ final readonly class ActivityAdoptionAdapter implements TenantAdoptionAdapter
         }
     }
 
-    /** Resolve the registered canonical storage on the selected adoption connection. */
-    private function connection(TenantAdoptionPlan $plan): Connection
-    {
-        $model = new ActivityLog;
-        $connection = $model->getConnection();
-        if ($connection->getName() !== $plan->connection) {
-            throw new TenantBoundaryViolation('Activity adoption requires the canonical storage connection.');
-        }
-
-        return $connection;
-    }
-
     /** Deny unsupported existing-data adoption before any ownership schema mutation. */
     private function assertEmpty(TenantAdoptionPlan $plan): void
     {
-        if ($this->connection($plan)->table((new ActivityLog)->getTable())->exists()) {
+        if ($this->adoption->connection($plan, 'activity.events')->table((new ActivityLog)->getTable())->exists()) {
             throw new TenantBoundaryViolation('Existing Activity evidence requires an explicit historical adoption workflow.');
         }
     }
