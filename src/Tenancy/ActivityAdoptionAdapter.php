@@ -8,7 +8,7 @@ use Illuminate\Database\Migrations\Migrator;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Tenancy\Contracts\TenantAdoptionAdapter;
 use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
-use Nvl\Tenancy\Services\TenantAdoptionSupport;
+use Nvl\Tenancy\Services\TenantAdoptionBoundary;
 use Nvl\Tenancy\ValueObjects\TenantAdoptionPlan;
 use Nvl\Tenancy\ValueObjects\TenantBackfillResult;
 use Nvl\Tenancy\ValueObjects\TenantVerification;
@@ -17,7 +17,7 @@ use Nvl\Tenancy\ValueObjects\TenantVerification;
 final readonly class ActivityAdoptionAdapter implements TenantAdoptionAdapter
 {
     /** Use Laravel's migration repository for the separately selected ownership schema. */
-    public function __construct(private Migrator $migrator, private TenantAdoptionSupport $adoption) {}
+    public function __construct(private Migrator $migrator, private TenantAdoptionBoundary $adoption) {}
 
     /** @return list<string> */
     public function resources(): array
