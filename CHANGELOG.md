@@ -4,6 +4,8 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-21
+
 ### Added
 
 - Partitioned purge candidates, locks, deletion counts, and queued work by
