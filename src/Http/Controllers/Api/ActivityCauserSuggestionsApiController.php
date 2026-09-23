@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace Nvl\Activity\Http\Controllers\Api;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Gate;
 use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
-use Nvl\Activity\Http\Requests\ListActivityCauserSuggestionsRequest;
+use Nvl\Activity\Data\ActivityCauserSuggestionsQueryData;
+use Nvl\Activity\Http\ActivityRequestInput;
+use Nvl\Activity\Models\ActivityLog;
 use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use Spatie\LaravelData\Support\Wrapping\WrapExecutionType;
 
@@ -19,7 +23,7 @@ final class ActivityCauserSuggestionsApiController extends Controller
     /**
      * Return historical user causers represented in Activity rows.
      *
-     * @param  ListActivityCauserSuggestionsRequest  $request  Validated suggestion request.
+     * @param  Request  $request  Suggestion request.
      * @param  ListActivityCauserSuggestionsAction  $action  Activity causer suggestions action.
      * @return JsonResponse Canonical simple suggestion response.
      *
@@ -28,16 +32,19 @@ final class ActivityCauserSuggestionsApiController extends Controller
      * @queryParam limit integer Optional maximum result count from 1 to 50.
      */
     public function __invoke(
-        ListActivityCauserSuggestionsRequest $request,
+        Request $request,
         ListActivityCauserSuggestionsAction $action,
     ): JsonResponse {
-        if ($request->hasShortSearch()) {
+        Gate::authorize('viewAny', ActivityLog::class);
+        $query = ActivityCauserSuggestionsQueryData::validateAndCreate(ActivityRequestInput::aliased($request, ['search' => ['q']]));
+
+        if ($query->hasShortSearch()) {
             return response()->json(['data' => []], 200);
         }
 
         $suggestions = $action->execute(
-            search: $request->search(),
-            limit: $request->limit(),
+            search: $query->searchTerm(),
+            limit: $query->limit ?? 10,
         );
 
         $payload = $suggestions->transform(

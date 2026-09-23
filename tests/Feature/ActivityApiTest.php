@@ -204,7 +204,7 @@ test('denied and missing timeline subjects return the same non-enumerable respon
     }
 });
 
-test('purge requests authorize once through the form request and dispatch the contract job', function (): void {
+test('purge requests authorize through the policy boundary and dispatch the contract job', function (): void {
     Bus::fake();
     Event::fake([ActivityLogPurgeQueuedEvent::class]);
     config()->set('activity.authorization.abilities.purge', 'activity.purge');
@@ -245,6 +245,11 @@ test('purge requests expose and audit explicit important-evidence inclusion', fu
             'days' => 90,
             'include_important' => true,
         ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.includeImportant', true);
+
+    $this->actingAs(activity_test_user())
+        ->postJson('/api/v1/activities/purge', ['days' => 90, 'includeImportant' => true])
         ->assertSuccessful()
         ->assertJsonPath('data.includeImportant', true);
 

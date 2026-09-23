@@ -6,19 +6,21 @@ namespace Nvl\Activity\Http\Controllers\Api;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Nvl\Activity\Actions\Activity\ListActivitiesAction;
 use Nvl\Activity\Contracts\MergesActivity;
 use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
+use Nvl\Activity\Data\ActivityLogsQueryData;
+use Nvl\Activity\Data\ActivityPurgeData;
 use Nvl\Activity\Data\ActivityPurgeQueuedResult;
+use Nvl\Activity\Data\ActivityTimelineQueryData;
 use Nvl\Activity\Data\Display\ActivityItem;
 use Nvl\Activity\Enums\ActivityResponseCode;
 use Nvl\Activity\Exceptions\ActivityTimelineException;
-use Nvl\Activity\Http\Requests\ActivityTimelineRequest;
-use Nvl\Activity\Http\Requests\ListActivityLogsRequest;
-use Nvl\Activity\Http\Requests\PurgeActivityLogsRequest;
+use Nvl\Activity\Http\ActivityRequestInput;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivitySubjectTimelineResolver;
 use Nvl\Data\Data\PaginatedCollection;
@@ -31,7 +33,7 @@ final class ActivityLogsApiController extends Controller
     /**
      * List normalized activity rows through the canonical API envelope.
      *
-     * @param  ListActivityLogsRequest  $request  Validated index request.
+     * @param  Request  $request  Index request.
      * @param  ListActivitiesAction  $action  Activity listing action.
      * @return JsonResponse Canonical paginated activity response.
      *
@@ -55,9 +57,18 @@ final class ActivityLogsApiController extends Controller
      *
      * @throws ValidationException
      */
-    public function index(ListActivityLogsRequest $request, ListActivitiesAction $action): JsonResponse
+    public function index(Request $request, ListActivitiesAction $action): JsonResponse
     {
-        $activities = $action->execute($request->filters());
+        Gate::authorize('viewAny', ActivityLog::class);
+        $query = ActivityLogsQueryData::validateAndCreate(ActivityRequestInput::aliased($request, [
+            'causer_id' => ['causerId'],
+            'subject_type' => ['subjectType'],
+            'subject_id' => ['subjectId'],
+            'created_at_from' => ['createdAtFrom'],
+            'created_at_to' => ['createdAtTo'],
+            'per_page' => ['perPage', 'limit'],
+        ]));
+        $activities = $action->execute($query->filters());
         $activities->appends($request->query());
 
         return response()->json([
@@ -70,7 +81,7 @@ final class ActivityLogsApiController extends Controller
     /**
      * Return the host-owned merged timeline for one activity-aware subject.
      *
-     * @param  ActivityTimelineRequest  $request  Validated timeline request.
+     * @param  Request  $request  Timeline request.
      * @param  ActivitySubjectTimelineResolver  $resolver  Subject timeline resolver.
      * @return JsonResponse Canonical simple response containing data.activity.
      *
@@ -83,10 +94,14 @@ final class ActivityLogsApiController extends Controller
      * @throws ValidationException
      */
     public function timeline(
-        ActivityTimelineRequest $request,
+        Request $request,
         ActivitySubjectTimelineResolver $resolver,
     ): JsonResponse {
-        $subject = $resolver->resolve($request->subjectType(), $request->subjectId());
+        $query = ActivityTimelineQueryData::validateAndCreate(ActivityRequestInput::aliased($request, [
+            'subject_type' => ['subjectType'],
+            'subject_id' => ['subjectId'],
+        ]));
+        $subject = $resolver->resolve($query->subjectType, $query->subjectId);
 
         if (Gate::denies('viewTimeline', [ActivityLog::class, $subject])) {
             throw ActivityTimelineException::subjectNotFound(
@@ -96,23 +111,25 @@ final class ActivityLogsApiController extends Controller
         }
 
         return response()->json(['data' => [
-            'activity' => $this->timelineItems($subject, $request->limit()),
+            'activity' => $this->timelineItems($subject, $query->limit ?? 100),
         ]], 200);
     }
 
     /**
      * Queue a purge for all activity rows older than the requested retention window.
      *
-     * @param  PurgeActivityLogsRequest  $request  Validated purge request.
+     * @param  Request  $request  Purge request.
      * @param  QueueActivityLogPurgeContract  $action  Purge queue action.
      * @return JsonResponse Canonical simple queue result response.
      */
     public function purge(
-        PurgeActivityLogsRequest $request,
+        Request $request,
         QueueActivityLogPurgeContract $action,
     ): JsonResponse {
-        $days = $request->days();
-        $includeImportant = $request->includeImportant();
+        Gate::authorize('delete', ActivityLog::class);
+        $data = ActivityPurgeData::validateAndCreate(ActivityRequestInput::aliased($request, ['include_important' => ['includeImportant']]));
+        $days = $data->days;
+        $includeImportant = $data->includeImportant ?? false;
         $action->execute($days, false, $includeImportant);
 
         return $this->purgeQueuedResponse($days, false, $includeImportant);
@@ -121,16 +138,18 @@ final class ActivityLogsApiController extends Controller
     /**
      * Queue a purge for system-generated activity rows older than the requested retention window.
      *
-     * @param  PurgeActivityLogsRequest  $request  Validated purge request.
+     * @param  Request  $request  Purge request.
      * @param  QueueActivityLogPurgeContract  $action  Purge queue action.
      * @return JsonResponse Canonical simple queue result response.
      */
     public function purgeSystem(
-        PurgeActivityLogsRequest $request,
+        Request $request,
         QueueActivityLogPurgeContract $action,
     ): JsonResponse {
-        $days = $request->days();
-        $includeImportant = $request->includeImportant();
+        Gate::authorize('delete', ActivityLog::class);
+        $data = ActivityPurgeData::validateAndCreate(ActivityRequestInput::aliased($request, ['include_important' => ['includeImportant']]));
+        $days = $data->days;
+        $includeImportant = $data->includeImportant ?? false;
         $action->execute($days, true, $includeImportant);
 
         return $this->purgeQueuedResponse($days, true, $includeImportant);
