@@ -4,6 +4,14 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-23
+
+### Changed
+
+- Replace Activity API Form Requests with validated Data query and purge
+  contracts. Keep policy authorization in the HTTP controllers, translated
+  validation messages, query aliases, and existing response shapes.
+
 ## [2.0.1] - 2026-09-22
 
 ### Added
