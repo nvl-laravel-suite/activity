@@ -10,8 +10,7 @@
         "ext-mbstring": "*",
         "laravel/framework": "^13.0",
         "nesbot/carbon": "^2.72 || ^3.0",
-        "nvl/data": "^2.0",
-        "nvl/support": "^2.0",
+        "nvl/core": "^2.0",
         "nvl/tenancy": "^2.0",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.23",
@@ -68,6 +67,10 @@
     },
     "archive": {
         "exclude": [
+            "/database/factories/.gitkeep",
+            "/database/seeders/.gitkeep",
+            "/src/Http/Controllers/.gitkeep",
+            "/src/Providers/.gitkeep",
             "/.temp",
             "/build",
             "/coverage",

@@ -1,12 +1,12 @@
 # NVL Activity — API and usage
 
-[← NVL Laravel Suite](../../../README.md)
+[← NVL Laravel Suite](https://github.com/nvl-laravel-suite)
 
 ## Quick reference
 
 | Item | Value |
 |---|---|
-| Installed through | `composer require nvl/laravel-suite:^2.0` |
+| Installed through | `composer require nvl/activity:^2.0` |
 | Module identifier | `nvl/activity` |
 | PHP namespace | `Nvl\Activity` |
 | Service provider | `Nvl\Activity\Providers\ActivityServiceProvider` |
@@ -16,14 +16,14 @@
 
 `nvl/activity` provides generic structured audit capture and readable semantic timelines for Laravel 13 on PHP 8.4–8.5. It builds on Spatie Activitylog without embedding application event names, models, labels, or business rules.
 
-Activity depends on `nvl/data`, `nvl/support`, and Spatie Activitylog 5.x. Activitylog 4.x is not a supported runtime. Historical v4 rows remain readable after the documented schema and namespace upgrade. The package is not event sourcing, workflow orchestration, authorization policy, or a domain event replacement.
+Activity depends on `nvl/core` and Spatie Activitylog 5.x. Activitylog 4.x is not a supported runtime. Historical v4 rows remain readable after the documented schema and namespace upgrade. The package is not event sourcing, workflow orchestration, authorization policy, or a domain event replacement.
 
 ## Requirements and installation
 
 Version 2.0 is currently unreleased. This monorepo consumes `dev-main` through a Composer path repository. After 2.0 is published, applications can install the stable release with:
 
 ```bash
-composer require nvl/laravel-suite:^2.0
+composer require nvl/activity:^2.0
 php artisan migrate
 ```
 
@@ -63,7 +63,7 @@ The suite enforces Activitylog 5.x and PHP 8.4+. Treat this as an explicit consu
 
    ```bash
    composer require spatie/laravel-activitylog:^5.0 --no-update
-   composer update nvl/laravel-suite spatie/laravel-activitylog --with-all-dependencies
+   composer update nvl/activity spatie/laravel-activitylog --with-all-dependencies
    ```
 
 2. Replace v4 imports in application code:
@@ -606,7 +606,7 @@ Strict Doctor readiness rejects the `sync` queue even when management routes and
 
 ## TypeScript
 
-DTO and enum sources register with `nvl/data` and generate under `Nvl.Activity.*`:
+DTO and enum sources register with Core's Data provider and generate under `Nvl.Activity.*`:
 
 ```bash
 php artisan nvl:data:types:generate
@@ -662,7 +662,7 @@ For a fast isolated package test from the monorepo root, run:
 vendor/bin/pest --test-directory=packages/nvl/activity/tests --configuration=packages/nvl/activity/phpunit.xml.dist --bootstrap=vendor/autoload.php --compact packages/nvl/activity/tests
 ```
 
-The suite gate covers Pint, PHPStan at maximum strictness, Pest, module boundaries, and one clean-consumer installation of the tagged `nvl/laravel-suite` archive. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker. Keep this production smoke green together with dependency analysis, suite distribution validation, and frozen contract checks.
+The suite gate covers Pint, PHPStan at maximum strictness, Pest, module boundaries, and clean-consumer installations of the individually tagged package archives. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker. Keep this production smoke green together with dependency analysis, suite distribution validation, and frozen contract checks.
 
 Current tests exercise canonical model binding; immutable migration rollback; custom/adopted schema rejection; mapped create, update, and delete capture; structured writers and batches; anonymous, scalar, integer, UUID, and soft-deleted actors; invalid metadata rejection; complete and finite post-filter timelines across keyset batches; bilingual translations and validation; stable API/error envelopes; real named Gate abilities; subject allowlisting; JSON negotiation; dry-run eligibility; system-origin retention; lock contention; retry/backoff/timeout settings; and after-commit dispatch.
 

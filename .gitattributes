@@ -8,3 +8,7 @@
 /phpunit.xml.dist export-ignore
 /tests export-ignore
 /vendor export-ignore
+/database/factories/.gitkeep export-ignore
+/database/seeders/.gitkeep export-ignore
+/src/Http/Controllers/.gitkeep export-ignore
+/src/Providers/.gitkeep export-ignore
