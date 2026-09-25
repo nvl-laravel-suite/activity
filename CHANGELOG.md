@@ -4,6 +4,12 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-25
+
+### Documentation
+
+- Correct installation and security guidance now that the standalone package is published.
+
 ## [2.2.0] - 2026-09-25
 
 ### Changed

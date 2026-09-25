@@ -20,7 +20,7 @@ Activity depends on `nvl/core` and Spatie Activitylog 5.x. Activitylog 4.x is no
 
 ## Requirements and installation
 
-Version 2.0 is currently unreleased. This monorepo consumes `dev-main` through a Composer path repository. After 2.0 is published, applications can install the stable release with:
+Install the stable package from Packagist with:
 
 ```bash
 composer require nvl/activity:^2.0
