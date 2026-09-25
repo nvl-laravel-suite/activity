@@ -1,5 +1,11 @@
 # Contributing to NVL Activity
 
+This public repository is a publication mirror of private source. Open an issue
+here for a bug or proposal; include a reproduction and, if helpful, a patch.
+Maintainers apply accepted changes in source and publish a mirror release.
+Direct mirror pull requests do not update source. See the
+[organization contribution guide](https://github.com/nvl-laravel-suite/.github/blob/main/CONTRIBUTING.md).
+
 Changes must remain generic, internally isolated, and compatible with PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Do not add consumer models, event vocabulary, authorization assumptions, or presentation rules to the module.
 
 Add or update Pest coverage for every behavior. From the suite root, run `composer quality` or the documented package-aware Pest command. Also run Composer validation, dependency analysis, suite distribution validation, and the relevant integration checks before submitting a change. Exercise installation and documented integration paths in a clean consumer when public module wiring changes.

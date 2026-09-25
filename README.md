@@ -2,6 +2,9 @@
 
 [← NVL Laravel Suite](https://github.com/nvl-laravel-suite)
 
+For support, [open an issue](https://github.com/nvl-laravel-suite/activity/issues). For vulnerabilities, use
+[private reporting](https://github.com/nvl-laravel-suite/activity/security/advisories/new). See [Contributing](CONTRIBUTING.md).
+
 ## Quick reference
 
 | Item | Value |
@@ -647,22 +650,15 @@ The recorder does not open its own transaction. When activity and the business m
 
 ## Verification
 
-Run the suite root gate; it supplies the module-aware Pest bootstrap and all family-wide checks:
+From a standalone checkout of the public Activity repository, install development dependencies and run its package gate:
 
 ```bash
+composer install
 composer quality
-composer validate --strict packages/nvl/activity/composer.json
-php artisan nvl:activity:doctor --strict --format=json
-php artisan nvl:data:types:check
+composer validate --strict
 ```
 
-For a fast isolated package test from the monorepo root, run:
-
-```bash
-vendor/bin/pest --test-directory=packages/nvl/activity/tests --configuration=packages/nvl/activity/phpunit.xml.dist --bootstrap=vendor/autoload.php --compact packages/nvl/activity/tests
-```
-
-The suite gate covers Pint, PHPStan at maximum strictness, Pest, module boundaries, and clean-consumer installations of the individually tagged package archives. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker. Keep this production smoke green together with dependency analysis, suite distribution validation, and frozen contract checks.
+Run `php artisan nvl:activity:doctor --strict --format=json` in a consuming Laravel application after configuration. Maintainer CI additionally checks module boundaries and clean-consumer installation of the tagged package archives. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker.
 
 Current tests exercise canonical model binding; immutable migration rollback; custom/adopted schema rejection; mapped create, update, and delete capture; structured writers and batches; anonymous, scalar, integer, UUID, and soft-deleted actors; invalid metadata rejection; complete and finite post-filter timelines across keyset batches; bilingual translations and validation; stable API/error envelopes; real named Gate abilities; subject allowlisting; JSON negotiation; dry-run eligibility; system-origin retention; lock contention; retry/backoff/timeout settings; and after-commit dispatch.
 
