@@ -35,6 +35,3 @@ Version 1.0 removed consumer-specific mappings and model hooks, compatibility wr
 20. Regenerate and check `Nvl.Activity.*` TypeScript declarations, then run the isolated package quality gate and a clean consumer installation rehearsal.
 
 Do not edit already-deployed package or application migrations. Add a new application migration for every later schema change and document any deliberate forward-only audit-evidence boundary.
-
-<!-- tenancy-program-p2 -->
-Configurable-tenancy implementation and adoption documentation are present. The final consolidated verification matrix is pending; do not treat this package as release-ready until that gate passes.

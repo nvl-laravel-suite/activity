@@ -97,6 +97,3 @@ All notable changes to `nvl/activity` are documented here.
 - Added safe Spatie Activitylog schema adoption diagnostics.
 - Added authorized, opt-in APIs and locked, chunked purge operations.
 - Standardized DTOs under `Nvl.Activity.*` and commands under `nvl:activity:*`.
-
-<!-- tenancy-program-p2 -->
-Configurable-tenancy implementation and adoption documentation are present. The final consolidated verification matrix is pending; do not treat this package as release-ready until that gate passes.
