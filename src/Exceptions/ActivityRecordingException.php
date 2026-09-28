@@ -12,6 +12,16 @@ use Nvl\Activity\Enums\ActivityResponseCode;
  */
 final class ActivityRecordingException extends ActivityException
 {
+    /** Reject reuse of an envelope ID for a different immutable event. */
+    public static function conflictingEnvelope(): self
+    {
+        return new self(
+            message: (string) trans('activity::activity/general.errors.recording.conflicting_envelope'),
+            responseCode: ActivityResponseCode::ConflictingActivityEnvelope,
+            suggestedStatus: Response::HTTP_CONFLICT,
+        );
+    }
+
     /**
      * Create a failure for an invalid activity batch identifier.
      */

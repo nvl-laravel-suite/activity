@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Nvl\Activity\Enums\ActivityEvent;
@@ -12,10 +13,159 @@ use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityRecorder;
+use Nvl\Activity\Support\ActivityCauserReference;
+use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityUser;
+
+test('record envelopes retain their exact replay payload and native morph identities', function (): void {
+    $id = (string) Str::uuid();
+    $envelope = new ActivityRecordEnvelope(
+        id: $id,
+        subject: new ActivitySubjectReference('tasks.task', 'task-1'),
+        causer: new ActivityCauserReference('users', 'user-1'),
+        event: 'task.updated',
+        logName: 'tasks',
+        occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.123456+03:00'),
+        context: ['state' => 'active'],
+        attributes: ['title' => 'After'],
+        old: ['title' => 'Before'],
+    );
+
+    $restored = ActivityRecordEnvelope::fromArray(json_decode(json_encode($envelope->toArray(), JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR));
+    $activity = ActivityLogFacade::recordEnvelope($restored);
+    $replayed = ActivityLogFacade::recordEnvelope($restored);
+
+    expect($restored->toArray())->toBe($envelope->toArray())
+        ->and($activity)->toBeInstanceOf(ActivityLog::class)
+        ->and($replayed->getKey())->toBe($id)
+        ->and(ActivityLog::query()->count())->toBe(1)
+        ->and($activity->subject_type)->toBe('tasks.task')
+        ->and($activity->subject_id)->toBe('task-1')
+        ->and($activity->causer_type)->toBe('users')
+        ->and($activity->causer_id)->toBe('user-1')
+        ->and($activity->event)->toBe('task.updated')
+        ->and($activity->log_name)->toBe('tasks')
+        ->and($activity->properties->get('context'))->toBe(['state' => 'active'])
+        ->and($activity->properties->get('attributes'))->toBe(['title' => 'After'])
+        ->and($activity->properties->get('old'))->toBe(['title' => 'Before'])
+        ->and($activity->properties->get('occurred_at'))->toBe('2026-09-28T10:11:12.123456+03:00');
+});
+
+test('record envelopes reject reuse of an activity ID for a changed payload', function (): void {
+    $id = (string) Str::uuid();
+    $payload = [
+        'id' => $id,
+        'subject' => ['type' => 'tasks.task', 'id' => 'task-1'],
+        'causer' => null,
+        'event' => 'task.updated',
+        'logName' => 'tasks',
+        'occurredAt' => '2026-09-28T10:11:12.000000+03:00',
+        'context' => ['state' => 'active'],
+        'attributes' => null,
+        'old' => null,
+        'scalarActorId' => null,
+    ];
+
+    ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
+    $payload['context'] = ['state' => 'closed'];
+
+    expect(fn () => ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload)))
+        ->toThrow(ActivityRecordingException::class);
+    expect(ActivityLog::query()->count())->toBe(1);
+});
+
+test('record envelopes reject an existing row whose stored business payload changed', function (): void {
+    $envelope = new ActivityRecordEnvelope(
+        id: (string) Str::uuid(),
+        subject: new ActivitySubjectReference('tasks.task', 'task-1'),
+        causer: null,
+        event: 'task.updated',
+        logName: 'tasks',
+        occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
+        context: ['state' => 'active'],
+    );
+    $activity = ActivityLogFacade::recordEnvelope($envelope);
+    $activity->properties = $activity->properties->put('context', ['state' => 'closed']);
+    $activity->save();
+
+    expect(fn () => ActivityLogFacade::recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
+});
+
+test('record envelopes reject an existing row with a different timeline timestamp', function (): void {
+    $envelope = new ActivityRecordEnvelope(
+        id: (string) Str::uuid(),
+        subject: new ActivitySubjectReference('tasks.task', 'task-1'),
+        causer: null,
+        event: 'task.updated',
+        logName: 'tasks',
+        occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
+    );
+    $activity = ActivityLogFacade::recordEnvelope($envelope);
+    $activity->created_at = CarbonImmutable::parse('2026-09-29T10:11:12.000000+00:00');
+    $activity->save();
+
+    expect(fn () => ActivityLogFacade::recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
+});
+
+test('record envelopes reject malformed serialized payloads', function (): void {
+    $payload = [
+        'id' => (string) Str::uuid(),
+        'subject' => ['type' => 'tasks.task', 'id' => 'task-1'],
+        'causer' => null,
+        'event' => 'task.updated',
+        'logName' => 'tasks',
+        'occurredAt' => 'tomorrow',
+        'context' => [],
+        'attributes' => null,
+        'old' => null,
+        'scalarActorId' => null,
+    ];
+
+    expect(fn () => ActivityRecordEnvelope::fromArray($payload))->toThrow(InvalidArgumentException::class);
+});
+
+test('record envelopes accept JSON object keys in any order', function (): void {
+    $payload = [
+        'id' => (string) Str::uuid(),
+        'subject' => ['id' => 'task-1', 'type' => 'tasks.task'],
+        'causer' => null,
+        'event' => 'task.updated',
+        'logName' => 'tasks',
+        'occurredAt' => '2026-09-28T10:11:12.000000+00:00',
+        'context' => [],
+        'attributes' => null,
+        'old' => null,
+        'scalarActorId' => null,
+    ];
+
+    $restored = ActivityRecordEnvelope::fromArray(array_reverse($payload, true));
+
+    expect($restored->subject->type)->toBe('tasks.task')
+        ->and($restored->subject->id)->toBe('task-1');
+});
+
+test('record envelope retries tolerate reordered JSON object keys', function (): void {
+    $payload = [
+        'id' => (string) Str::uuid(),
+        'subject' => ['type' => 'tasks.task', 'id' => 'task-1'],
+        'causer' => null,
+        'event' => 'task.updated',
+        'logName' => 'tasks',
+        'occurredAt' => '2026-09-28T10:11:12.000000+00:00',
+        'context' => ['before' => 'open', 'after' => 'closed'],
+        'attributes' => null,
+        'old' => null,
+        'scalarActorId' => null,
+    ];
+    ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
+    $payload['context'] = ['after' => 'closed', 'before' => 'open'];
+
+    expect(ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload))->getKey())->toBe($payload['id'])
+        ->and(ActivityLog::query()->count())->toBe(1);
+});
 
 test('the canonical writer records structured scalar actors and caller owned batches', function (): void {
     $ambientActor = new TestActivityUser;

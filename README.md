@@ -176,6 +176,36 @@ Adding or adopting `ActivityEvent` requires no migration and no additional colum
 
 `ActivityRecorder` is the canonical writer. `ActivityLog` provides a facade over the same service. The v1 API has no compatibility writers or application-specific activity factories.
 
+### Idempotent delivery from an outbox
+
+Capture an immutable envelope when the business mutation occurs, persist `toArray()` in the caller's outbox, and reconstruct it with `fromArray()` before delivery:
+
+```php
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Str;
+use Nvl\Activity\Facades\ActivityLog;
+use Nvl\Activity\Support\ActivityCauserReference;
+use Nvl\Activity\Support\ActivityRecordEnvelope;
+use Nvl\Activity\Support\ActivitySubjectReference;
+
+$envelope = new ActivityRecordEnvelope(
+    id: (string) Str::uuid(),
+    subject: new ActivitySubjectReference('task', $taskId),
+    causer: new ActivityCauserReference('user', $userId),
+    event: 'task.updated',
+    logName: 'tasks',
+    occurredAt: CarbonImmutable::now(),
+    context: ['reason' => 'reviewed'],
+    attributes: ['status' => 'complete'],
+    old: ['status' => 'open'],
+);
+
+$payload = $envelope->toArray(); // Store this JSON payload with the business mutation.
+$activity = ActivityLog::recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
+```
+
+The envelope UUID becomes the Activity primary key. Identical retries return the existing row; reusing the ID with different event data throws `ActivityRecordingException` with response code `conflicting_activity_envelope`. The envelope writes its subject and causer morph identities without loading their models. Use `scalarActorId` instead of `causer` when only a scalar actor is known. Tenant scope is required on every write and retry. Deliver on the Activity storage connection inside the business transaction when both use that connection; otherwise deliver after commit. `properties.occurred_at` preserves the exact timestamp, including microseconds and offset; the existing `created_at` column orders timelines at its configured database precision.
+
 ## Automatic model changes
 
 Use `HasModelActivity` for narrow Eloquent create, update, and delete capture. A registered `ActivityMapping` is required and owns the Spatie `LogOptions` and log name. Unmapped models remain silent so importing the trait never creates broad or empty records accidentally.

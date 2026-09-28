@@ -18,6 +18,7 @@ enum ActivityResponseCode: string implements ResponseCode
     case InvalidMapping = 'invalid_mapping';
     case InvalidBatchIdentifier = 'invalid_batch_identifier';
     case InvalidActivityMetadata = 'invalid_activity_metadata';
+    case ConflictingActivityEnvelope = 'conflicting_activity_envelope';
     case InvalidPurgeCriteria = 'invalid_purge_criteria';
     case TimelineSubjectNotFound = 'timeline_subject_not_found';
 

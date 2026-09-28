@@ -16,6 +16,7 @@ return [
         'invalid_configuration' => 'The activity package configuration is invalid.',
         'invalid_mapping' => 'The activity mapping configuration is invalid.',
         'invalid_batch_identifier' => 'The activity batch identifier is invalid.',
+        'conflicting_activity_envelope' => 'This activity ID already belongs to a different event.',
         'invalid_activity_metadata' => 'The activity metadata is invalid.',
         'invalid_purge_criteria' => 'The activity purge criteria are invalid.',
         'timeline_subject_not_found' => 'The requested activity timeline subject was not found.',
@@ -155,6 +156,7 @@ return [
         'recording' => [
             'invalid_batch_identifier' => 'Activity batch identifiers must be valid UUIDs.',
             'invalid_metadata' => 'The activity :field value is not supported.',
+            'conflicting_envelope' => 'This activity ID already belongs to a different event.',
         ],
         'purge' => [
             'positive_days' => 'Days must be a positive integer.',

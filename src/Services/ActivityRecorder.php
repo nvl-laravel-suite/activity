@@ -6,12 +6,15 @@ namespace Nvl\Activity\Services;
 
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
+use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\TimelineActivityRules;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
@@ -27,6 +30,105 @@ final class ActivityRecorder
 {
     /** Capture ownership through the same guard used by automatic model logging. */
     public function __construct(private readonly ActivityOwnershipGuard $ownership) {}
+
+    /** Deliver one immutable activity fact and return the same row on an identical retry. */
+    public function recordEnvelope(ActivityRecordEnvelope $envelope): ActivityContract
+    {
+        $this->ownership->attributes();
+        $existing = ActivityLog::query()->find($envelope->id);
+        if ($existing instanceof ActivityLog) {
+            return $this->assertMatchingEnvelope($existing, $envelope);
+        }
+
+        $properties = $this->envelopeProperties($envelope);
+        $model = new ActivityLog;
+
+        try {
+            return $model->getConnection()->transaction(static function () use ($envelope, $properties): ActivityLog {
+                return ActivityLog::query()->create([
+                    'id' => $envelope->id,
+                    'subject_type' => $envelope->subject->type,
+                    'subject_id' => (string) $envelope->subject->id,
+                    'causer_type' => $envelope->causer?->type,
+                    'causer_id' => $envelope->causer === null ? null : (string) $envelope->causer->id,
+                    'event' => $envelope->event,
+                    'log_name' => $envelope->logName,
+                    'description' => $envelope->event,
+                    'properties' => $properties,
+                    'created_at' => $envelope->occurredAt->utc(),
+                    'updated_at' => $envelope->occurredAt->utc(),
+                ]);
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = ActivityLog::query()->find($envelope->id);
+            if (! $existing instanceof ActivityLog) {
+                throw $exception;
+            }
+
+            return $this->assertMatchingEnvelope($existing, $envelope);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function envelopeProperties(ActivityRecordEnvelope $envelope): array
+    {
+        $serialized = json_encode($this->canonicalEnvelopeValue($envelope->toArray()), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+
+        return [
+            'source' => $envelope->causer !== null || $envelope->scalarActorId !== null
+                ? ActivitySource::User->value : ActivitySource::System->value,
+            'visibility' => ActivityVisibility::Timeline->value,
+            'importance' => ActivityImportance::Normal->value,
+            'context' => $envelope->context,
+            'attributes' => $envelope->attributes,
+            'old' => $envelope->old,
+            'actor_id' => $envelope->scalarActorId,
+            'occurred_at' => $envelope->occurredAt->format('Y-m-d\TH:i:s.uP'),
+            '_envelope_hash' => hash('sha256', $serialized),
+        ];
+    }
+
+    /** Require an existing ID to represent the exact same immutable event. */
+    private function assertMatchingEnvelope(ActivityLog $existing, ActivityRecordEnvelope $envelope): ActivityContract
+    {
+        $properties = $existing->properties?->toArray() ?? [];
+        $expected = $this->envelopeProperties($envelope);
+        $actualPayload = array_intersect_key($properties, $expected);
+
+        if ($existing->subject_type !== $envelope->subject->type
+            || (string) $existing->subject_id !== (string) $envelope->subject->id
+            || $existing->causer_type !== $envelope->causer?->type
+            || $existing->causer_id !== ($envelope->causer === null ? null : (string) $envelope->causer->id)
+            || $existing->event !== $envelope->event
+            || $existing->log_name !== $envelope->logName
+            || $existing->description !== $envelope->event
+            || $existing->created_at?->format('Y-m-d H:i:s') !== $envelope->occurredAt->utc()->format('Y-m-d H:i:s')
+            || count($actualPayload) !== count($expected)
+            || json_encode($this->canonicalEnvelopeValue($actualPayload), JSON_THROW_ON_ERROR)
+                !== json_encode($this->canonicalEnvelopeValue($expected), JSON_THROW_ON_ERROR)) {
+            throw ActivityRecordingException::conflictingEnvelope();
+        }
+
+        return $existing;
+    }
+
+    /** Keep JSON object key order from changing an envelope's immutable identity. */
+    private function canonicalEnvelopeValue(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalEnvelopeValue($item);
+        }
+
+        return $value;
+    }
 
     /**
      * Record an activity with the canonical structured payload contract.

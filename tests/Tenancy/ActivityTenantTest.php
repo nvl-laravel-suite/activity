@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -11,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
 use Nvl\Activity\Exceptions\ActivityTimelineException;
+use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityReadService;
@@ -19,6 +22,7 @@ use Nvl\Activity\Services\ActivityRelationLoader;
 use Nvl\Activity\Services\ActivitySubjectTimelineResolver;
 use Nvl\Activity\Services\MappingRegistry;
 use Nvl\Activity\Services\ModelActivityTimelineService;
+use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Tenancy\ActivityAdoptionAdapter;
 use Nvl\Activity\Tests\Fixtures\ActivityHostAdoptionAdapter;
@@ -77,6 +81,24 @@ test('a shared subject reference does not merge tenant timelines', function (): 
     $rows = $runner->run(new TenantId('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
         fn () => app(ActivityReadService::class)->forSubjectKey('external_record', 'same-id'));
     expect($rows->modelKeys())->toBe([$a->getKey()])->not->toContain($b->getKey());
+});
+
+test('a replay cannot resolve an activity ID owned by another tenant', function (): void {
+    $runner = app(TenantRunner::class);
+    $envelope = new ActivityRecordEnvelope(
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        subject: new ActivitySubjectReference('tasks.task', 'same-subject'),
+        causer: null,
+        event: 'task.updated',
+        logName: 'tasks',
+        occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
+    );
+
+    $runner->run(new TenantId(TenantScenario::A), fn () => ActivityLogFacade::recordEnvelope($envelope));
+    expect(fn () => $runner->run(new TenantId(TenantScenario::B), fn () => ActivityLogFacade::recordEnvelope($envelope)))
+        ->toThrow(UniqueConstraintViolationException::class);
+    expect($runner->run(new TenantId(TenantScenario::A), fn (): int => ActivityLog::query()->count()))->toBe(1)
+        ->and($runner->run(new TenantId(TenantScenario::B), fn (): int => ActivityLog::query()->count()))->toBe(0);
 });
 
 test('unresolved recording and reads fail closed', function (): void {

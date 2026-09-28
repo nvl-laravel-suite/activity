@@ -4,6 +4,12 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-28
+
+### Added
+
+- Add an immutable activity record envelope with explicit causer references and idempotent UUID recording for durable cross-connection delivery.
+
 ## [2.2.2] - 2026-09-26
 
 ### Documentation

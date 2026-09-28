@@ -49,6 +49,8 @@ final class ActivityItemProperties extends Data
         'visibility',
         'importance',
         'description_override',
+        'occurred_at',
+        '_envelope_hash',
     ];
 
     /**
