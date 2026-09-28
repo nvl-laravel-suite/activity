@@ -127,6 +127,58 @@ test('record envelopes reject malformed serialized payloads', function (): void 
     expect(fn () => ActivityRecordEnvelope::fromArray($payload))->toThrow(InvalidArgumentException::class);
 });
 
+test('record envelopes reject malformed persisted fields and references', function (): void {
+    $payload = [
+        'id' => (string) Str::uuid(),
+        'subject' => ['type' => 'tasks.task', 'id' => 'task-1'],
+        'causer' => null,
+        'event' => 'task.updated',
+        'logName' => 'tasks',
+        'occurredAt' => '2026-09-28T10:11:12.000000+00:00',
+        'context' => [],
+        'attributes' => null,
+        'old' => null,
+        'scalarActorId' => null,
+    ];
+
+    $invalidPayloads = [
+        array_diff_key($payload, ['old' => true]),
+        array_replace($payload, ['id' => 123]),
+        array_replace($payload, ['id' => 'not-a-uuid']),
+        array_replace($payload, ['event' => '']),
+        array_replace($payload, ['subject' => 'tasks.task']),
+        array_replace($payload, ['subject' => ['type' => 'tasks.task', 'id' => []]]),
+        array_replace($payload, ['context' => 'not-a-record']),
+        array_replace($payload, ['context' => ['nested' => new stdClass]]),
+        array_replace($payload, ['scalarActorId' => ' ']),
+        array_replace($payload, ['causer' => ['type' => 'users', 'id' => 'user-1'], 'scalarActorId' => 'user-1']),
+    ];
+
+    foreach ($invalidPayloads as $invalidPayload) {
+        expect(fn () => ActivityRecordEnvelope::fromArray($invalidPayload))
+            ->toThrow(InvalidArgumentException::class);
+    }
+});
+
+test('record envelopes reject metadata that cannot retain a stable JSON shape', function (): void {
+    $base = [
+        'id' => (string) Str::uuid(),
+        'subject' => new ActivitySubjectReference('tasks.task', 'task-1'),
+        'causer' => null,
+        'event' => 'task.updated',
+        'logName' => 'tasks',
+        'occurredAt' => CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
+    ];
+
+    foreach ([['first', 'second'], ['object' => new stdClass]] as $context) {
+        expect(fn () => new ActivityRecordEnvelope(...$base, context: $context))
+            ->toThrow(InvalidArgumentException::class);
+    }
+
+    expect(fn () => new ActivityRecordEnvelope(...$base, context: ['nonfinite' => INF]))
+        ->toThrow(InvalidArgumentException::class);
+});
+
 test('record envelopes accept JSON object keys in any order', function (): void {
     $payload = [
         'id' => (string) Str::uuid(),
