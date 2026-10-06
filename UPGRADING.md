@@ -67,3 +67,15 @@ Drain old mutation workers and maintenance processes, then wait for their outsta
 Use source `@api` workflows, extension contracts, and value types for application integration. Direct use of untagged implementations or `@internal` members is unsupported. This classification keeps existing concrete Action signatures and runtime behavior; it does not authorize package model persistence, ad hoc queries, relation traversal, or generic model serialization. Returned models are identity/result handles with only the explicitly declared in-memory read fields described in the README.
 
 `HasModelActivity::activitiesAsSubject()` are internal storage or lifecycle seams. Migrate direct traversal, eager/lazy loading, and aggregate queries to the package authorized read Actions or explicit C1 host scopes/adapters. Native host queries and opted-in Translatable behavior remain supported.
+
+## Major 5 focused workflow contracts
+
+Change application constructor dependencies from `ListActivitiesAction`, `ListActivityCauserSuggestionsAction`, `ActivityReadService`, and `ActivityRecorder` to `Nvl\Activity\Contracts\ListActivitiesContract`, `ListActivityCauserSuggestionsContract`, `ActivityReadContract`, and `ActivityRecorderContract`, respectively. Continue using the existing `QueueActivityLogPurgeContract` for purge orchestration. Concrete classes, constructor parameters, final/readonly qualifiers, public method signatures, generic result types, and execution behavior remain available in major 5.
+
+The recording contract exposes exactly `recordEnvelope`, `record`, and `recordForSubjectReference`; it retains Spatie's Activity return contract, including the nullable results of the latter two methods. The read contract exposes the existing nine instance methods. Raw `ActivityLog` results remain identity/result handles under the documented consumer boundary.
+
+Provider defaults are conditional, including the existing purge contract and the reader/recorder concrete scoped registrations. Bind host interfaces or preconstructed public reader/recorder instances before discovery to retain them. New service contracts resolve the existing concrete through the same application container and retain its scoped lifetime. Internal Action/service chains keep their concrete dependencies.
+
+`ActivityLog` now resolves `ActivityRecorderContract::class`. Move test substitutes previously bound only to `ActivityRecorder::class` to that interface. If a facade was resolved earlier, call `ActivityLog::clearResolvedInstance(ActivityRecorderContract::class)` after replacement. Resolve new host services after installing substitutes; earlier objects keep their original injected dependencies. When tests manually switch applications or scopes, clear the facade root separately. A host instance supplied before discovery retains the host's chosen lifetime.
+
+See [Testing your app](README.md#testing-your-app) for native Mockery/container substitution and the opt-in `vendor/nvl/core/support/consumer-audit.neon` configuration. These additive contracts require no schema or data migration.

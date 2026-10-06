@@ -8,6 +8,7 @@ use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
+use Nvl\Activity\Contracts\ActivityRecorderContract;
 use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
@@ -28,7 +29,7 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
  *
  * @api
  */
-final class ActivityRecorder
+final class ActivityRecorder implements ActivityRecorderContract
 {
     /** Capture ownership through the same guard used by automatic model logging. */
     public function __construct(

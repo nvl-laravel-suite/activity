@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Nvl\Activity\Contracts\ListActivityCauserSuggestionsContract;
 use Nvl\Activity\Data\Display\ActivityCauserSuggestion;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
@@ -21,7 +22,7 @@ use Stringable;
  *
  * @api
  */
-final class ListActivityCauserSuggestionsAction
+final class ListActivityCauserSuggestionsAction implements ListActivityCauserSuggestionsContract
 {
     /**
      * Create the suggestion action with historical identifier validation.

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
 use InvalidArgumentException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
+use Nvl\Activity\Contracts\ActivityReadContract;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivitySubjectReference;
@@ -21,7 +22,7 @@ use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
  *
  * @api
  */
-final class ActivityReadService
+final class ActivityReadService implements ActivityReadContract
 {
     /** Validate subject identities before composing their partitioned timeline. */
     public function __construct(private readonly ActivityOwnershipGuard $ownership) {}

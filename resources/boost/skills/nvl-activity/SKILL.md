@@ -29,7 +29,7 @@ Use this package for generic structured audit capture and semantic timelines on 
 
 The recording facade is `Nvl\Activity\Facades\ActivityLog`. The distinct `Nvl\Activity\Models\ActivityLog` is an identity-only result handle; it does not grant consumer model queries, writes, or relationship traversal. Read timelines through the supported Activity Actions/read service and authorized C1 host scopes.
 
-- Use `Nvl\Activity\Facades\ActivityLog::record(...)` or the underlying `ActivityRecorder` as the canonical model-backed writer.
+- Use `Nvl\Activity\Facades\ActivityLog::record(...)` or inject `Nvl\Activity\Contracts\ActivityRecorderContract` as the canonical writer. The contract exposes the existing `recordEnvelope`, `record`, and `recordForSubjectReference` methods and preserves their Spatie Activity return contracts/nullability. Concrete `ActivityRecorder` construction remains available.
 - When only stable subject identity is available, use `Nvl\Activity\Facades\ActivityLog::recordForSubjectReference(new ActivitySubjectReference($type, $id), ...)`. It inserts without instantiating or querying the subject and never infers model diffs. This value-only seam accepts `context`, `actor`, and `importance`, but not `attributes`, `old`, or `resolveChanges`; keep value-only change metadata in `context`, or use the model-backed writer when Eloquent diffs are required.
 - Use `ActivityEvent` for package-wide meanings shared across domains. Define a domain-owned string-backed enum for business-specific events rather than adding application vocabulary to the package enum.
 - Omit `description` for normal writes; it defaults to the stable event key. Never use it to persist translated labels or final timeline sentences.
@@ -49,24 +49,24 @@ The recording facade is `Nvl\Activity\Facades\ActivityLog`. The distinct `Nvl\Ac
 - Source DTOs collect and translate their own records; the host owns source composition and optional supersession; controllers return the finished DTOs.
 - `null` means a complete subject timeline. A finite limit means the newest requested rows after visibility/signal filtering. Base reads use deterministic `(created_at, id)` keyset batches of 100 until the limit is satisfied or storage is exhausted.
 - The merged host applies supersession, newest-first ordering, and the final finite limit. Extra collectors must implement the same null/finite contract.
-- For raw history across existing value-only identities, call `ActivityReadService::paginateForSubjectReferences($references, $perPage)`. Pass at most 100 `ActivitySubjectReference` values; exact type/ID pairs are deduplicated, page size clamps to 1–100, and an empty list returns an empty paginator without querying. `paginateForSubjectKey()` uses the same page-size clamp.
+- Inject `ActivityReadContract` for raw history across existing value-only identities and call `paginateForSubjectReferences($references, $perPage)`. It retains all nine reader methods. Pass at most 100 `ActivitySubjectReference` values; exact type/ID pairs are deduplicated, page size clamps to 1–100, and an empty list returns an empty paginator without querying. `paginateForSubjectKey()` uses the same page-size clamp.
 - At transport boundaries, return `ActivityItem` and related `Nvl.Activity.*` DTOs rather than exposing the raw `ActivityLog` rows returned by low-level read services. Use `HeadlineSegmentType` for backend segments; never return HTML or frontend presentation flags.
 
 ```php
-use Nvl\Activity\Actions\Activity\ListActivitiesAction;
+use Nvl\Activity\Contracts\ActivityReadContract;
+use Nvl\Activity\Contracts\ListActivitiesContract;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Facades\ActivityLog;
-use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Support\ActivitySubjectReference;
 
 $filters = ActivityIndexFilter::fromInput(['events' => ['created', 'updated']]);
-$page = app(ListActivitiesAction::class)->execute($filters);
+$page = app(ListActivitiesContract::class)->execute($filters);
 
 $references = [
     new ActivitySubjectReference('registration', $registrationId),
     new ActivitySubjectReference('participation', $participationId),
 ];
-$history = app(ActivityReadService::class)->paginateForSubjectReferences($references, 50);
+$history = app(ActivityReadContract::class)->paginateForSubjectReferences($references, 50);
 
 ActivityLog::recordForSubjectReference(
     new ActivitySubjectReference('setting', $settingKey),
@@ -111,6 +111,15 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 - `PurgeActivityLogsJob` runs after commit, deletes in chunks of 1,000, and holds a distributed lock. Lock contention releases it for 60 seconds.
 - All workers and schedulers must use the same canonical LockProvider-backed default cache. Use Redis, database, Memcached, DynamoDB, or another shared atomic-lock backend for multi-node operation; file is single-host only, and array/null are never production-safe. Cache failover cannot preserve one lock domain across partial failures, so strict Doctor rejects it outright.
 - The time-based retry window covers one configured lock lifetime plus bounded execution retries, so repeated 60-second contention releases remain valid; five unhandled execution exceptions fail the job. Each attempt has a public 900-second timeout contract with failure-on-timeout and exception backoff of 60, 300, 900, and 1,800 seconds. Configure database, Redis, or Beanstalkd `retry_after` above 900 seconds. For SQS or a custom driver without `retry_after`, declare the externally configured value through `retention.external_visibility_timeout_seconds`. Doctor validates every target behind failover connections. Allow sufficient worker shutdown time.
+
+## Test host orchestration through contracts
+
+- Application services inject `ListActivitiesContract`, `ListActivityCauserSuggestionsContract`, `QueueActivityLogPurgeContract`, `ActivityReadContract`, or `ActivityRecorderContract` from `Nvl\Activity\Contracts`. Preserve the exact native results: normalized ActivityItem paginators, suggestion DataCollections, raw ActivityLog collections/paginators, Spatie Activity handles, and the purge's `void` result.
+- Use native Mockery interface mocks or anonymous contract implementations in host tests, bind them with `$app->instance(Contract::class, $substitute)`, then resolve the real host service and assert its result. Return actual declared DTO/model handles without querying or invoking package persistence. An unsaved ActivityLog with `setRawAttributes(['id' => 'activity-1'])` is a test result handle.
+- Defaults use `bindIf` for Actions and `scopedIf` for reader/recorder contracts and their public concretes. Contract closures resolve the concrete through their own application. Host prebindings survive discovery; late replacements reach newly resolved host services. A pre-discovery host instance keeps the host's chosen lifetime, while scoped defaults/late substitutes reset at the next Laravel lifecycle.
+- The ActivityLog facade resolves ActivityRecorderContract. After a late replacement, clear `ActivityLog::clearResolvedInstance(ActivityRecorderContract::class)`; facade roots also need clearing when tests manually switch applications/scopes. Existing constructed services keep their injected dependencies.
+- Use Laravel Queue/Event fakes for host tests that execute real purge dispatch. Interface substitution proves host orchestration; retain real schema/authorization/ownership/retention tests for package behavior.
+- Include `vendor/nvl/core/support/consumer-audit.neon` explicitly in host PHPStan configuration and declare exact `nvlConsumer.testPaths`. It checks known API/persistence boundaries, while dynamic SQL, authorization, and unknown mixed provenance require application tests. Follow the package README's **Testing your app** examples and the major-5 contract migration in UPGRADING.md.
 
 ## Verify and upgrade
 

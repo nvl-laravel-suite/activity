@@ -4,7 +4,19 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Focused `ListActivitiesContract`, `ListActivityCauserSuggestionsContract`,
+  `ActivityReadContract`, and `ActivityRecorderContract` interfaces with the
+  existing native signatures and generic result contracts, plus host-service
+  substitution examples and binding/lifetime regression coverage.
+
 ### Changed
+
+- Activity facade recording now resolves `ActivityRecorderContract`. Public
+  workflow defaults, including `QueueActivityLogPurgeContract` and the scoped
+  reader/recorder concretes, preserve host bindings through conditional
+  registration while retaining existing execution and constructor behavior.
 
 - Classify the supported consumer PHP surface with explicit source annotations and restrict package model handles to declared identity and in-memory read fields; preserve existing workflow behavior and concrete signatures.
 - Isolate owned cache and lock keys under `nvl:activity:`; preserve generic host entries and explicit store choices.

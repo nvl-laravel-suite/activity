@@ -7,7 +7,7 @@ namespace Nvl\Activity\Facades;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Facade;
-use Nvl\Activity\Services\ActivityRecorder;
+use Nvl\Activity\Contracts\ActivityRecorderContract;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
@@ -17,7 +17,7 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
  * @method static ActivityContract|null recordForSubjectReference(ActivitySubjectReference $subject, string|BackedEnum $event, string $description = '', array<string, mixed> $context = [], Model|string|int|null $actor = null, string|BackedEnum|null $importance = null)
  * @method static ActivityContract recordEnvelope(ActivityRecordEnvelope $envelope)
  *
- * @see ActivityRecorder
+ * @see ActivityRecorderContract
  *
  * @api
  */
@@ -30,6 +30,6 @@ final class ActivityLog extends Facade
      */
     protected static function getFacadeAccessor(): string
     {
-        return ActivityRecorder::class;
+        return ActivityRecorderContract::class;
     }
 }

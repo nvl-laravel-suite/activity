@@ -176,7 +176,7 @@ Adding or adopting `ActivityEvent` requires no migration and no additional colum
 
 `source`, `visibility`, and `importance` accept their backed enums or exact canonical values. Unknown non-blank values are rejected with `ActivityRecordingException`, response code `invalid_activity_metadata`, and suggested HTTP status `422`; they are never stored and made visible accidentally. Blank overrides use canonical defaults. Historical rows with absent or blank visibility remain readable for compatibility, but any non-blank visibility other than exact lowercase `timeline` is excluded from signal timelines. Malformed non-string visibility is treated as audit-only, including arrays and booleans.
 
-`ActivityRecorder` is the canonical writer. `ActivityLog` provides a facade over the same service. The v1 API has no compatibility writers or application-specific activity factories.
+`ActivityRecorder` is the canonical writer. Inject `ActivityRecorderContract` into application workflows; `ActivityLog` resolves that same contract. Its methods are `recordEnvelope`, `record`, and `recordForSubjectReference`, with their existing Spatie Activity contract results and nullability. Concrete construction remains available.
 
 ### Idempotent delivery from an outbox
 
@@ -712,6 +712,81 @@ See [UPGRADING.md](UPGRADING.md), [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](
 The source `@api` declarations identify supported workflows, extension contracts, and value types. Public members marked `@internal` and untagged implementation types remain package-owned. Concrete Actions retain their existing constructors, qualifiers, and `execute()` signatures.
 
 A package model returned or accepted by a public workflow is an identity/result handle. Use its declared type and `getKey()`, `getKeyName()`, `getMorphClass()`, `getRouteKey()`, `getRouteKeyName()`, `is()`, `isNot()`, and `relationLoaded()`. Read only explicitly declared in-memory `@nvl-consumer-read` fields; ordinary model PHPDocs and fillable attributes do not grant consumer reads. Obtain display projections through public reads. Persistence, additional model queries, relation access/loading, and generic model serialization are outside this contract. Host-model queries remain available, while traversal or aggregates of package capability relations require the package public reader or authorized adapter.
+
+## Testing your app
+
+Inject the focused interfaces into application services so tests can substitute package work at the container boundary:
+
+| Contract | Default implementation | Default lifetime |
+| --- | --- | --- |
+| `ListActivitiesContract` | `ListActivitiesAction` | Transient |
+| `ListActivityCauserSuggestionsContract` | `ListActivityCauserSuggestionsAction` | Transient |
+| `QueueActivityLogPurgeContract` | `QueueActivityLogPurgeAction` | Transient |
+| `ActivityReadContract` | `ActivityReadService` | Scoped |
+| `ActivityRecorderContract` | `ActivityRecorder` | Scoped |
+
+All contracts live in `Nvl\Activity\Contracts`. The Action interfaces preserve their exact `execute()` signatures, including the purge's `void` result. The reader retains its nine public instance methods and typed raw model collections/paginators; the recorder retains its three public instance methods. Use normalized listing DTOs for transport-facing output.
+
+```php
+use Illuminate\Pagination\LengthAwarePaginator;
+use Nvl\Activity\Contracts\ListActivitiesContract;
+use Nvl\Activity\Data\ActivityIndexFilter;
+use Nvl\Activity\Data\Display\ActivityItem;
+
+final readonly class ActivityDashboard
+{
+    public function __construct(private ListActivitiesContract $activities) {}
+
+    /** @return LengthAwarePaginator<int, ActivityItem> */
+    public function index(ActivityIndexFilter $filters): LengthAwarePaginator
+    {
+        return $this->activities->execute($filters);
+    }
+}
+
+// In a Laravel/Pest feature test:
+$filters = new ActivityIndexFilter(null, null, null, null, null);
+$item = new ActivityItem(id: 'activity-1', log: 'host', event: 'reviewed');
+$page = new LengthAwarePaginator([$item], 1, 20);
+$listing = Mockery::mock(ListActivitiesContract::class);
+$listing->shouldReceive('execute')->once()->with($filters)->andReturn($page);
+$this->app->instance(ListActivitiesContract::class, $listing);
+
+expect($this->app->make(ActivityDashboard::class)->index($filters)->items())
+    ->toBe([$item]);
+```
+
+Defaults use conditional bindings, preserving host interfaces and preconstructed reader/recorder instances installed before provider discovery. Scoped contract defaults resolve the existing scoped concrete instance through their own application container. Install a substitute before resolving the host service; late replacement affects newly resolved services. Existing constructed services retain their injected dependencies.
+
+The recording facade caches its resolved root separately from the container. After replacing `ActivityRecorderContract`, clear its accessor before the next facade call:
+
+```php
+use Nvl\Activity\Contracts\ActivityRecorderContract;
+use Nvl\Activity\Facades\ActivityLog;
+
+$this->app->instance(ActivityRecorderContract::class, $recorder);
+ActivityLog::clearResolvedInstance(ActivityRecorderContract::class);
+```
+
+Laravel's next request/job scope discards scoped defaults and late substitutions. A host instance installed before discovery keeps the host's chosen lifetime. Clear facade roots when manually changing application/scope lifecycles in tests.
+
+For a raw read or recording substitute, build an unsaved `Nvl\Activity\Models\ActivityLog` handle in the test and set its identity with `setRawAttributes(['id' => 'activity-1'])`; this performs no persistence. Return the actual declared collection, paginator, or Spatie Activity contract handle. Obtain normalized DTOs through listing workflows and keep model query/relationship/serialization restrictions in application code.
+
+Use `Queue::fake()` and `Event::fake()` when testing application code that runs real purge dispatch. Keep real recording, ownership, authorization, and retention tests backed by the appropriate schema; interface substitution proves the host's orchestration and does not prove those package invariants.
+
+Enable the opt-in [Core consumer PHPStan extension](../core/support/consumer-audit.neon) in the host's PHPStan configuration:
+
+```neon
+includes:
+    - vendor/nvl/core/support/consumer-audit.neon
+
+parameters:
+    nvlConsumer:
+        testPaths:
+            - tests
+```
+
+The extension checks declared package API and known persistence boundaries. Dynamic SQL, authorization, and unknown `mixed` receiver provenance still require explicit application tests. See [UPGRADING.md](UPGRADING.md#major-5-focused-workflow-contracts) for the concrete-to-contract migration.
 
 ## License
 

@@ -8,11 +8,17 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Nvl\Activity\Actions\Activity\ListActivitiesAction;
+use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
 use Nvl\Activity\Console\Commands\ActivityDoctorCommand;
 use Nvl\Activity\Console\Commands\PurgeActivityLogsCommand;
 use Nvl\Activity\Console\Commands\PurgeSystemActivityLogsCommand;
+use Nvl\Activity\Contracts\ActivityReadContract;
+use Nvl\Activity\Contracts\ActivityRecorderContract;
 use Nvl\Activity\Contracts\ActivityTenantWorklist;
+use Nvl\Activity\Contracts\ListActivitiesContract;
+use Nvl\Activity\Contracts\ListActivityCauserSuggestionsContract;
 use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Policies\ActivityLogPolicy;
@@ -76,7 +82,9 @@ final class ActivityServiceProvider extends ServiceProvider
             }
         });
 
-        $this->app->bind(QueueActivityLogPurgeContract::class, QueueActivityLogPurgeAction::class);
+        $this->app->bindIf(ListActivitiesContract::class, ListActivitiesAction::class);
+        $this->app->bindIf(ListActivityCauserSuggestionsContract::class, ListActivityCauserSuggestionsAction::class);
+        $this->app->bindIf(QueueActivityLogPurgeContract::class, QueueActivityLogPurgeAction::class);
         $this->app->bindIf(ActivityTenantWorklist::class, ConfiguredActivityTenantWorklist::class);
 
         $this->registerSingletons();
@@ -169,7 +177,8 @@ final class ActivityServiceProvider extends ServiceProvider
         $this->app->singleton(MappingRegistry::class);
         $this->app->singleton(CauserNormalizer::class);
         $this->app->singleton(TimelineFilter::class);
-        $this->app->scoped(ActivityReadService::class);
+        $this->app->scopedIf(ActivityReadService::class);
+        $this->app->scopedIf(ActivityReadContract::class, static fn (Application $app): ActivityReadContract => $app->make(ActivityReadService::class));
         $this->app->scoped(ActivityRelationLoader::class);
         $this->app->scoped(ActivityOwnershipGuard::class);
 
@@ -214,7 +223,8 @@ final class ActivityServiceProvider extends ServiceProvider
             return $service;
         });
 
-        $this->app->scoped(ActivityRecorder::class);
+        $this->app->scopedIf(ActivityRecorder::class);
+        $this->app->scopedIf(ActivityRecorderContract::class, static fn (Application $app): ActivityRecorderContract => $app->make(ActivityRecorder::class));
     }
 
     /**
@@ -265,6 +275,11 @@ final class ActivityServiceProvider extends ServiceProvider
     public function provides(): array
     {
         return [
+            ListActivitiesContract::class,
+            ListActivityCauserSuggestionsContract::class,
+            QueueActivityLogPurgeContract::class,
+            ActivityReadContract::class,
+            ActivityRecorderContract::class,
             MappingRegistry::class,
             ActivityDiffBuilder::class,
             ActivityEntryNormalizer::class,

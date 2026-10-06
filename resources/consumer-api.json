@@ -54,6 +54,52 @@
             "properties": [],
             "constants": []
         },
+        "Nvl\\Activity\\Contracts\\ActivityReadContract": {
+            "kind": "interface",
+            "file": "src/Contracts/ActivityReadContract.php",
+            "methods": [
+                "forSubject",
+                "forSubjectBatch",
+                "forSubjectInDateRange",
+                "forSubjectKey",
+                "latest",
+                "paginateForSubjectKey",
+                "paginateForSubjectOrCauserKey",
+                "paginateForSubjectReferences",
+                "paginateIndex"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\ActivityRecorderContract": {
+            "kind": "interface",
+            "file": "src/Contracts/ActivityRecorderContract.php",
+            "methods": [
+                "record",
+                "recordEnvelope",
+                "recordForSubjectReference"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\ListActivitiesContract": {
+            "kind": "interface",
+            "file": "src/Contracts/ListActivitiesContract.php",
+            "methods": [
+                "execute"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\ListActivityCauserSuggestionsContract": {
+            "kind": "interface",
+            "file": "src/Contracts/ListActivityCauserSuggestionsContract.php",
+            "methods": [
+                "execute"
+            ],
+            "properties": [],
+            "constants": []
+        },
         "Nvl\\Activity\\Contracts\\MergeableActivityData": {
             "kind": "interface",
             "file": "src/Contracts/MergeableActivityData.php",

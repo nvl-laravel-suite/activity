@@ -6,6 +6,7 @@ namespace Nvl\Activity\Actions\Activity;
 
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Nvl\Activity\Contracts\ListActivitiesContract;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Data\Display\ActivityItem;
 use Nvl\Activity\Services\ActivityReadService;
@@ -16,7 +17,7 @@ use Nvl\Activity\Services\ActivityTransformService;
  *
  * @api
  */
-final class ListActivitiesAction
+final class ListActivitiesAction implements ListActivitiesContract
 {
     /**
      * Create the activity listing action with its read and transformation capabilities.
