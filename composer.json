@@ -3,7 +3,12 @@
     "description": "Activity capture and merged timelines for Laravel models",
     "type": "library",
     "license": "MIT",
-    "keywords": ["laravel", "activity", "audit-log", "timeline"],
+    "keywords": [
+        "laravel",
+        "activity",
+        "audit-log",
+        "timeline"
+    ],
     "require": {
         "php": "^8.4",
         "ext-filter": "*",
@@ -11,7 +16,6 @@
         "laravel/framework": "^13.0",
         "nesbot/carbon": "^2.72 || ^3.0",
         "nvl/core": "^2.0",
-        "nvl/tenancy": "^2.0",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.23",
         "spatie/typescript-transformer": "^3.3",
@@ -21,6 +25,7 @@
         "ext-pdo": "*",
         "larastan/larastan": "^3.10",
         "laravel/pint": "^1.27",
+        "nvl/tenancy": "^2.0",
         "orchestra/testbench": "^11.0",
         "pestphp/pest": "^4.0",
         "pestphp/pest-plugin-laravel": "^4.0"
@@ -82,5 +87,8 @@
         ]
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "suggest": {
+        "nvl/tenancy": "Enables enforcing tenant ownership, scoped execution, adoption, and captured tenant queue contexts."
+    }
 }

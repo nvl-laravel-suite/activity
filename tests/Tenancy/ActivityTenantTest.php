@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
 use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
+use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityTimelineException;
 use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
@@ -48,12 +49,12 @@ use Nvl\Tenancy\ValueObjects\TenantResourceDefinition;
 
 test('selected adoption adds the immutable ownership schema and refuses nonempty legacy storage', function (): void {
     $schema = $this->app['db']->connection()->getSchemaBuilder();
-    $columns = collect($schema->getColumns('activity_log'))->keyBy('name');
+    $columns = collect($schema->getColumns(ActivityTables::ActivityLog))->keyBy('name');
 
     expect(config('activity.migrations.enabled'))->toBeTrue()
         ->and($columns)->toHaveKeys(['tenant_id', 'ownership_key'])
         ->and($columns->get('ownership_key')['nullable'])->toBeFalse()
-        ->and($schema->hasIndex('activity_log', 'activity_ownership_created_idx'))->toBeTrue();
+        ->and($schema->hasIndex(ActivityTables::ActivityLog, 'activity_ownership_created_idx'))->toBeTrue();
 
     app(TenantRunner::class)->run(
         new TenantId(TenantScenario::A),

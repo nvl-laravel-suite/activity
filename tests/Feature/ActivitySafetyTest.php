@@ -28,7 +28,7 @@ use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Tenancy\Services\TenantBoundary;
 
 test('the package migration rejects an incompatible existing activity table', function (): void {
-    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
+    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
 
     Schema::drop(ActivityTables::ActivityLog);
     Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
@@ -47,8 +47,8 @@ test('the package migration rejects an incompatible existing activity table', fu
 });
 
 test('the package baselines compatible canonical storage and bridges v5 changes non destructively', function (): void {
-    $baseline = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
-    $versionFiveBridge = require dirname(__DIR__, 2).'/database/migrations/2026_08_10_123558_add_activitylog_v5_attribute_changes.php';
+    $baseline = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
+    $versionFiveBridge = require dirname(__DIR__, 2).'/database/migrations/2026_08_10_123558_nvl_activity_add_activitylog_v5_attribute_changes.php';
 
     Schema::drop(ActivityTables::ActivityLog);
     Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
@@ -96,24 +96,21 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
     }
 });
 
-test('package managed migrations reject mutable custom storage targets before ddl', function (): void {
-    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
-    config()->set('activity.storage.table', 'custom_activity_log');
-
+test('package managed migrations create explicitly configured fresh storage', function (): void {
+    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
+    config()->set('activity.tables.log', 'custom_activity_log');
     try {
-        expect(fn () => $migration->up())->toThrow(
-            LogicException::class,
-            'use an application-owned migration for custom storage',
-        )->and(Schema::hasTable('custom_activity_log'))->toBeFalse()
-            ->and(collect(app(ActivityDoctor::class)->inspect())
-                ->firstWhere('key', 'configuration.values')?->passed)->toBeFalse();
+        $migration->up();
+        expect(Schema::hasTable('custom_activity_log'))->toBeTrue()
+            ->and(collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'configuration.values')?->passed)->toBeTrue();
     } finally {
-        config()->set('activity.storage.table', ActivityTables::ActivityLog);
+        Schema::dropIfExists('custom_activity_log');
+        config()->set('activity.tables.log', ActivityTables::ActivityLog);
     }
 });
 
 test('package managed migrations reject malformed storage settings before ddl', function (string $key, mixed $value): void {
-    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
+    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
     $originalValue = config($key);
 
     Schema::drop(ActivityTables::ActivityLog);
@@ -121,8 +118,7 @@ test('package managed migrations reject malformed storage settings before ddl', 
 
     try {
         expect(fn () => $migration->up())->toThrow(
-            LogicException::class,
-            'use an application-owned migration for custom storage',
+            InvalidArgumentException::class,
         )->and(Schema::hasTable(ActivityTables::ActivityLog))->toBeFalse();
     } finally {
         config()->set($key, $originalValue);
@@ -137,24 +133,30 @@ test('package managed migrations reject malformed storage settings before ddl', 
 ]);
 
 test('the activity model rejects malformed runtime storage instead of falling back silently', function (): void {
-    config()->set('activity.storage.table', null);
+    $originalConfiguration = config('activity');
 
-    expect(fn () => (new ActivityLog)->getTable())->toThrow(
-        ActivityConfigurationException::class,
-        'Activity table name cannot be empty.',
-    );
+    try {
+        config()->set('activity.storage.table', null);
 
-    config()->set('activity.storage.table', ActivityLog::DEFAULT_TABLE);
-    config()->set('activity.storage.connection', ' ');
+        expect(fn () => (new ActivityLog)->getTable())->toThrow(
+            ActivityConfigurationException::class,
+            'Activity table name cannot be empty.',
+        );
 
-    expect(fn () => (new ActivityLog)->getConnectionName())->toThrow(
-        ActivityConfigurationException::class,
-        'Activity storage connection must be null or a non-empty connection name.',
-    );
+        config()->set('activity.storage.table', ActivityLog::DEFAULT_TABLE);
+        config()->set('activity.storage.connection', ' ');
+
+        expect(fn () => (new ActivityLog)->getConnectionName())->toThrow(
+            ActivityConfigurationException::class,
+            'Activity storage connection must be null or a non-empty connection name.',
+        );
+    } finally {
+        config()->set('activity', $originalConfiguration);
+    }
 });
 
 test('rollback never destroys the immutable managed activity target after storage config changes', function (): void {
-    $migrationPath = dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
+    $migrationPath = dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
     $migration = require $migrationPath;
 
     Schema::drop(ActivityTables::ActivityLog);
@@ -337,7 +339,7 @@ test('purge queue actions reject invalid retention before dispatch', function ()
 });
 
 test('doctor rejects incompatible adopted schemas instead of reporting a false healthy state', function (): void {
-    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
+    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
 
     Schema::drop(ActivityTables::ActivityLog);
     Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
@@ -368,7 +370,7 @@ test('doctor rejects incompatible adopted schemas instead of reporting a false h
 });
 
 test('doctor requires a primary activity id and compatible batch identifier storage', function (): void {
-    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_create_activity_log_table.php';
+    $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
 
     Schema::drop(ActivityTables::ActivityLog);
     Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {

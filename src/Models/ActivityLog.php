@@ -13,14 +13,16 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 use LogicException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Tenancy\ActivityMorphTo;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
-use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
-use Nvl\Tenancy\Services\TenantBoundary;
+use Nvl\Support\Config\PackageStorage;
+use Nvl\Support\Tenancy\Contracts\TenantBoundary;
+use Nvl\Support\Tenancy\Exceptions\TenantBoundaryViolation;
 use Spatie\Activitylog\Models\Activity;
 
 /**
@@ -105,13 +107,11 @@ final class ActivityLog extends Activity
      */
     public function getTable(): string
     {
-        $table = config('activity.storage.table', ActivityTables::ActivityLog);
-
-        if (! is_string($table) || trim($table) === '') {
+        try {
+            return ActivityTables::get(ActivityTables::ActivityLog);
+        } catch (InvalidArgumentException) {
             throw ActivityConfigurationException::emptyTableName();
         }
-
-        return trim($table);
     }
 
     /**
@@ -119,17 +119,11 @@ final class ActivityLog extends Activity
      */
     public function getConnectionName(): ?string
     {
-        $connection = config('activity.storage.connection');
-
-        if ($connection === null) {
-            return parent::getConnectionName();
-        }
-
-        if (! is_string($connection) || trim($connection) === '') {
+        try {
+            return PackageStorage::connectionName($this->connection ?? PackageStorage::connection('activity') ?? parent::getConnectionName());
+        } catch (InvalidArgumentException) {
             throw ActivityConfigurationException::invalidConnectionName();
         }
-
-        return trim($connection);
     }
 
     /**

@@ -6,8 +6,8 @@ namespace Nvl\Activity\Tenancy;
 
 use Illuminate\Database\Migrations\Migrator;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Support\Tenancy\Exceptions\TenantBoundaryViolation;
 use Nvl\Tenancy\Contracts\TenantAdoptionAdapter;
-use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
 use Nvl\Tenancy\Services\TenantAdoptionBoundary;
 use Nvl\Tenancy\ValueObjects\TenantAdoptionPlan;
 use Nvl\Tenancy\ValueObjects\TenantBackfillResult;

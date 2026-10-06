@@ -15,11 +15,11 @@ use Illuminate\Support\Facades\Log;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
-use Nvl\Tenancy\Contracts\TenantQueuedJob;
-use Nvl\Tenancy\Enums\TenantContextMode;
-use Nvl\Tenancy\Services\TenantBoundary;
-use Nvl\Tenancy\ValueObjects\TenantContextSnapshot;
-use Nvl\Tenancy\ValueObjects\TenantJobEnvelope;
+use Nvl\Support\Tenancy\Contracts\TenantBoundary;
+use Nvl\Support\Tenancy\Contracts\TenantQueuedJob;
+use Nvl\Support\Tenancy\Enums\TenantContextMode;
+use Nvl\Support\Tenancy\ValueObjects\TenantContextSnapshot;
+use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
 use Throwable;
 use UnexpectedValueException;
 

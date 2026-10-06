@@ -6,12 +6,19 @@ use Illuminate\Container\Container;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Support\Config\PackageStorage;
 use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
 use Nvl\Tenancy\Services\TenantAdoptionScope;
 
 /** Adds immutable audit ownership only inside the selected adoption workflow. */
 return new class extends Migration
 {
+    /** Use the effective package connection for Laravel's migration transaction. */
+    public function getConnection(): ?string
+    {
+        return PackageStorage::connection('activity');
+    }
+
     /** Prepare the ownership columns without changing the normal migration default. */
     public function up(): void
     {

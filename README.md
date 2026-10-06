@@ -707,3 +707,17 @@ See [UPGRADING.md](UPGRADING.md), [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](
 ## License
 
 Released under the [MIT License](LICENSE).
+
+## Shared consumer diagnostics
+
+Run `php artisan nvl:doctor --strict --format=json` to combine the read-only checks from loaded NVL package providers. Errors fail the gate, and strict mode also fails warnings. This package's existing Doctor command remains available and uses the same package-owned inspection service.
+
+## Next major: isolated schema identities
+
+Use `activity.tables.<logical-key>` for every table and `activity.connection` for its database connection. Null connection inherits `nvl-core.connection`, then Laravel's default. Tables are resolved at runtime by the package table definition helper.
+
+| Logical key | New default | Previous name |
+| --- | --- | --- |
+| `log` | `nvl_activity_log` | `activity_log` |
+
+Migration filenames contain `nvl_activity_`. Existing installations must complete the upgrade in `UPGRADING.md` before running new migrations. A pending creator rejects an existing target before any migration in the batch runs; legacy storage with old history needs an ownership decision.

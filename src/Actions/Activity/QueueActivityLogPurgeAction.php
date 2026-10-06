@@ -9,8 +9,8 @@ use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
 use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
-use Nvl\Tenancy\Contracts\TenantContext;
-use Nvl\Tenancy\ValueObjects\TenantJobEnvelope;
+use Nvl\Support\Tenancy\Contracts\TenantContext;
+use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
 
 /**
  * Queue purge work for activity logs.

@@ -50,7 +50,7 @@ test('migration publishing is timestamp-aware and doctor detects duplicate owner
         ->and($publishableMigrationPaths)->toContain($migrationPath);
 
     $published = database_path(
-        'migrations/2099_01_01_000000_create_activity_log_table.php',
+        'migrations/2099_01_01_000000_nvl_activity_create_activity_log_table.php',
     );
     file_put_contents($published, "<?php\n");
 

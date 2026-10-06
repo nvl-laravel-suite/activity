@@ -6,9 +6,16 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
+use Nvl\Support\Config\PackageStorage;
 
 return new class extends Migration
 {
+    /** Use the effective package connection for Laravel's migration transaction. */
+    public function getConnection(): ?string
+    {
+        return PackageStorage::connection('activity');
+    }
+
     /**
      * Make a compatible Activitylog v4 schema ready for required v5 writes.
      */
@@ -16,17 +23,17 @@ return new class extends Migration
     {
         $this->assertCanonicalManagedStorage();
 
-        if (! Schema::hasTable(ActivityTables::ActivityLog)) {
+        if (! Schema::connection(PackageStorage::connection('activity'))->hasTable(ActivityTables::get(ActivityTables::ActivityLog))) {
             throw new LogicException(
                 'The Activitylog v5 bridge requires the canonical [activity_log] table.',
             );
         }
 
-        if (Schema::hasColumn(ActivityTables::ActivityLog, 'attribute_changes')) {
+        if (Schema::connection(PackageStorage::connection('activity'))->hasColumn(ActivityTables::get(ActivityTables::ActivityLog), 'attribute_changes')) {
             return;
         }
 
-        Schema::table(ActivityTables::ActivityLog, function (Blueprint $table): void {
+        Schema::connection(PackageStorage::connection('activity'))->table(ActivityTables::get(ActivityTables::ActivityLog), function (Blueprint $table): void {
             $table->json('attribute_changes')->nullable();
         });
     }
@@ -41,14 +48,6 @@ return new class extends Migration
      */
     private function assertCanonicalManagedStorage(): void
     {
-        $connection = config('activity.storage.connection');
-        $table = config('activity.storage.table', ActivityTables::ActivityLog);
-
-        if ($connection !== null || ! is_string($table) || trim($table) !== ActivityTables::ActivityLog) {
-            throw new LogicException(
-                'The package-managed Activity migration only owns [activity_log] on the default connection; '.
-                'disable activity.migrations.enabled and use an application-owned migration for custom storage.',
-            );
-        }
+        PackageStorage::connection('activity');
     }
 };

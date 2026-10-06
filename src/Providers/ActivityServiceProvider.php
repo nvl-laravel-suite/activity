@@ -17,6 +17,7 @@ use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Policies\ActivityLogPolicy;
 use Nvl\Activity\Services\ActivityDiffBuilder;
+use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Services\ActivityEntryNormalizer;
 use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Services\ActivityRecorder;
@@ -34,10 +35,11 @@ use Nvl\Activity\Support\ModelActivityTimelineResolver;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tenancy\ActivityResourceRegistrar;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
+use Nvl\Support\Doctor\PackageDoctorContributor;
+use Nvl\Support\Providers\TenantServiceProvider;
+use Nvl\Support\Tenancy\Services\TenantResourceRegistry;
 use Nvl\Support\Traits\MergesPackageConfiguration;
-use Nvl\Tenancy\Providers\TenancyServiceProvider;
 use Nvl\Tenancy\Services\TenantAdoptionRegistry;
-use Nvl\Tenancy\Services\TenantResourceRegistry;
 
 /**
  * Registers the standalone activity package services and extensions.
@@ -55,14 +57,21 @@ final class ActivityServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        PackageDoctorContributor::register($this->app, 'nvl/activity', fn (): array => $this->app->make(ActivityDoctor::class)->inspect());
+
         $this->mergePackageConfiguration(__DIR__.'/../../config/activity.php', 'activity');
         config([
             'activitylog.activity_model' => ActivityLog::class,
         ]);
 
-        $this->app->register(TenancyServiceProvider::class);
+        $this->app->register(TenantServiceProvider::class);
         $this->app->register(RouteServiceProvider::class);
-        (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class), $this->app->make(TenantAdoptionRegistry::class));
+        (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class));
+        $this->app->booted(function (): void {
+            if ($this->app->bound(TenantAdoptionRegistry::class)) {
+                (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class), $this->app->make(TenantAdoptionRegistry::class));
+            }
+        });
 
         $this->app->bind(QueueActivityLogPurgeContract::class, QueueActivityLogPurgeAction::class);
         $this->app->bindIf(ActivityTenantWorklist::class, ConfiguredActivityTenantWorklist::class);

@@ -18,6 +18,7 @@ use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityDoctorSeverity;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Support\Config\PackageStorage;
 use ReflectionClass;
 use Throwable;
 
@@ -143,23 +144,27 @@ final class ActivityDoctor
      */
     private function configurationCheck(): ActivityDoctorCheckData
     {
-        $connection = config('activity.storage.connection');
-        $table = config('activity.storage.table');
+        try {
+            $connection = PackageStorage::connection('activity');
+            $table = ActivityTables::get(ActivityTables::ActivityLog);
+            $storageValid = true;
+        } catch (\InvalidArgumentException) {
+            $connection = null;
+            $table = '';
+            $storageValid = false;
+        }
         $migrationsEnabled = config('activity.migrations.enabled');
         $externalVisibilityTimeout = config(
             'activity.retention.external_visibility_timeout_seconds',
         );
-        $usesCanonicalManagedStorage = $migrationsEnabled !== true
-            || ($connection === null && $table === ActivityTables::ActivityLog);
         $passed = is_bool($migrationsEnabled)
             && is_bool(config('activity.routes.enabled'))
             && is_bool(config('activity.retention.schedule.enabled'))
             && ($externalVisibilityTimeout === null
                 || (is_int($externalVisibilityTimeout) && $externalVisibilityTimeout > 0))
-            && is_string($table)
             && trim($table) !== ''
-            && ($connection === null || (is_string($connection) && trim($connection) !== ''))
-            && $usesCanonicalManagedStorage;
+            && ($connection === null || trim($connection) !== '')
+            && $storageValid;
 
         return new ActivityDoctorCheckData(
             key: 'configuration.values',

@@ -7,14 +7,21 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Schema\Builder;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
+use Nvl\Support\Config\PackageStorage;
 
 return new class extends Migration
 {
+    /** Use the effective package connection for Laravel's migration transaction. */
+    public function getConnection(): ?string
+    {
+        return PackageStorage::connection('activity');
+    }
+
     public function up(): void
     {
         $this->assertCanonicalManagedStorage();
 
-        if (Schema::hasTable(ActivityTables::ActivityLog)) {
+        if (Schema::connection(PackageStorage::connection('activity'))->hasTable(ActivityTables::get(ActivityTables::ActivityLog))) {
             $defaultConnection = config('database.default');
 
             if (! is_string($defaultConnection) || trim($defaultConnection) === '') {
@@ -26,7 +33,7 @@ return new class extends Migration
             return;
         }
 
-        Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
+        Schema::connection(PackageStorage::connection('activity'))->create(ActivityTables::get(ActivityTables::ActivityLog), function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('log_name')->nullable()->index();
             $table->text('description');
@@ -57,17 +64,7 @@ return new class extends Migration
      */
     private function assertCanonicalManagedStorage(): void
     {
-        $connection = config('activity.storage.connection');
-        $table = config('activity.storage.table', ActivityTables::ActivityLog);
-        $usesDefaultConnection = $connection === null;
-        $usesCanonicalTable = is_string($table) && trim($table) === ActivityTables::ActivityLog;
-
-        if (! $usesDefaultConnection || ! $usesCanonicalTable) {
-            throw new LogicException(
-                'The package-managed Activity migration only owns [activity_log] on the default connection; '.
-                'disable activity.migrations.enabled and use an application-owned migration for custom storage.',
-            );
-        }
+        PackageStorage::connection('activity');
     }
 
     /**
@@ -91,23 +88,23 @@ return new class extends Migration
         ];
         $missingColumns = array_values(array_filter(
             $requiredColumns,
-            static fn (string $column): bool => ! $schema->hasColumn(ActivityTables::ActivityLog, $column),
+            static fn (string $column): bool => ! $schema->hasColumn(ActivityTables::get(ActivityTables::ActivityLog), $column),
         ));
 
         if ($missingColumns !== []) {
             throw new LogicException(sprintf(
                 'Existing Activity table [%s] cannot be baselined; missing columns: %s.',
-                ActivityTables::ActivityLog,
+                ActivityTables::get(ActivityTables::ActivityLog),
                 implode(', ', $missingColumns),
             ));
         }
 
-        $columns = collect($schema->getColumns(ActivityTables::ActivityLog))->keyBy('name');
+        $columns = collect($schema->getColumns(ActivityTables::get(ActivityTables::ActivityLog)))->keyBy('name');
         $id = $columns->get('id');
         $subjectId = $columns->get('subject_id');
         $causerId = $columns->get('causer_id');
         $batchUuid = $columns->get('batch_uuid');
-        $indexes = $schema->getIndexes(ActivityTables::ActivityLog);
+        $indexes = $schema->getIndexes(ActivityTables::get(ActivityTables::ActivityLog));
         $hasPrimaryId = collect($indexes)->contains(
             static fn (array $index): bool => $index['primary'] === true
                 && $index['columns'] === ['id'],
@@ -129,7 +126,7 @@ return new class extends Migration
         }
 
         $jsonColumns = ['properties'];
-        if ($schema->hasColumn(ActivityTables::ActivityLog, 'attribute_changes')) {
+        if ($schema->hasColumn(ActivityTables::get(ActivityTables::ActivityLog), 'attribute_changes')) {
             $jsonColumns[] = 'attribute_changes';
         }
 
@@ -139,7 +136,7 @@ return new class extends Migration
         $invalidJsonColumns = array_values(array_filter(
             $jsonColumns,
             static fn (string $column): bool => ! in_array(
-                strtolower($schema->getColumnType(ActivityTables::ActivityLog, $column)),
+                strtolower($schema->getColumnType(ActivityTables::get(ActivityTables::ActivityLog), $column)),
                 $compatibleJsonTypes,
                 true,
             ),
@@ -148,7 +145,7 @@ return new class extends Migration
         if ($invalidJsonColumns !== []) {
             throw new LogicException(sprintf(
                 'Existing Activity table [%s] cannot be baselined; non-JSON-compatible columns: %s.',
-                ActivityTables::ActivityLog,
+                ActivityTables::get(ActivityTables::ActivityLog),
                 implode(', ', $invalidJsonColumns),
             ));
         }
@@ -168,7 +165,7 @@ return new class extends Migration
         if ($missingIndexes !== []) {
             throw new LogicException(sprintf(
                 'Existing Activity table [%s] cannot be baselined; missing indexes: %s.',
-                ActivityTables::ActivityLog,
+                ActivityTables::get(ActivityTables::ActivityLog),
                 implode(', ', array_map(
                     static fn (array $indexColumns): string => '('.implode(', ', $indexColumns).')',
                     $missingIndexes,

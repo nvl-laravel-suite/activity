@@ -7,7 +7,7 @@ namespace Nvl\Activity\Services;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Str;
 use Nvl\Activity\Contracts\ActivityTenantWorklist;
-use Nvl\Tenancy\Exceptions\TenantConfigurationInvalid;
+use Nvl\Support\Tenancy\Exceptions\TenantConfigurationInvalid;
 
 /** Conservative worklist populated only by reviewed deployment configuration. */
 final readonly class ConfiguredActivityTenantWorklist implements ActivityTenantWorklist
