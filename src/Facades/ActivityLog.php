@@ -18,6 +18,8 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
  * @method static ActivityContract recordEnvelope(ActivityRecordEnvelope $envelope)
  *
  * @see ActivityRecorder
+ *
+ * @api
  */
 final class ActivityLog extends Facade
 {

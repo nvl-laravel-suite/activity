@@ -17,6 +17,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Typed read contract for stable metadata attached to an activity timeline item.
+ *
+ * @api
  */
 #[MapOutputName(CamelCaseMapper::class)]
 #[MapInputName(CamelCaseMapper::class)]

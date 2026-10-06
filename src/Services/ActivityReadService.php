@@ -18,6 +18,8 @@ use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 
 /**
  * Use-case oriented read service for Activity log retrieval.
+ *
+ * @api
  */
 final class ActivityReadService
 {

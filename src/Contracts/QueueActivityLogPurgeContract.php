@@ -6,6 +6,8 @@ namespace Nvl\Activity\Contracts;
 
 /**
  * Defines the application boundary for queuing validated activity retention work.
+ *
+ * @api
  */
 interface QueueActivityLogPurgeContract
 {

@@ -26,7 +26,10 @@ use Spatie\Activitylog\Support\LogOptions;
  * logging seam instead of mixing raw `LogsActivity` usage with host-specific
  * abstractions.
  *
- * @method \Illuminate\Database\Eloquent\Relations\MorphMany<\Nvl\Activity\Models\ActivityLog, $this> activitiesAsSubject()
+ *
+ * @api
+ *
+ * @nvl-consumer-relation activitiesAsSubject
  */
 trait HasModelActivity
 {
@@ -85,7 +88,11 @@ trait HasModelActivity
         return $validated;
     }
 
-    /** @return MorphMany<ActivityLog, $this> */
+    /**
+     * @return MorphMany<ActivityLog, $this>
+     *
+     * @internal
+     */
     public function activitiesAsSubject(): MorphMany
     {
         return $this->morphMany(ActivityLog::class, 'subject');

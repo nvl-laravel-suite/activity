@@ -45,6 +45,8 @@ use Spatie\Activitylog\Models\Activity;
  * @property Carbon|null $updated_at Last update timestamp
  *
  * @method static ActivityLogBuilder query()
+ *
+ * @api
  */
 final class ActivityLog extends Activity
 {

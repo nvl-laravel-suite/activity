@@ -6,6 +6,8 @@ namespace Nvl\Activity\Enums;
 
 /**
  * Defines where an activity entry is intended to appear.
+ *
+ * @api
  */
 enum ActivityVisibility: string
 {

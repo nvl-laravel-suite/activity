@@ -9,7 +9,11 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use JsonException;
 
-/** Holds the immutable, JSON-safe facts needed to deliver one activity exactly once. */
+/**
+ * Holds the immutable, JSON-safe facts needed to deliver one activity exactly once.
+ *
+ * @api
+ */
 final readonly class ActivityRecordEnvelope
 {
     /**

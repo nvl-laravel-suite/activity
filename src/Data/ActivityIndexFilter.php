@@ -17,6 +17,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Normalized filter contract for the activity index listing.
+ *
+ * @api
  */
 #[MapInputName(CamelCaseMapper::class)]
 #[MapOutputName(CamelCaseMapper::class)]

@@ -14,6 +14,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Typed representation of the activity causer identity for frontend payloads.
+ *
+ * @api
  */
 #[MapOutputName(CamelCaseMapper::class)]
 #[MapInputName(CamelCaseMapper::class)]

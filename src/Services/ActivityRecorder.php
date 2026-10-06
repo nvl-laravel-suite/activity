@@ -25,6 +25,8 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
  *
  * This service is the only shared writer behind the `ActivityLog` facade.
  * Semantic event factories delegate actual persistence here.
+ *
+ * @api
  */
 final class ActivityRecorder
 {

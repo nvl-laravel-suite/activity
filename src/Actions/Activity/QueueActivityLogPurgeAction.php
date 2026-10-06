@@ -14,6 +14,8 @@ use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
 
 /**
  * Queue purge work for activity logs.
+ *
+ * @api
  */
 final readonly class QueueActivityLogPurgeAction implements QueueActivityLogPurgeContract
 {

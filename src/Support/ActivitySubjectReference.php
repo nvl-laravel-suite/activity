@@ -6,7 +6,11 @@ namespace Nvl\Activity\Support;
 
 use InvalidArgumentException;
 
-/** Identifies one activity subject without requiring its Eloquent model. */
+/**
+ * Identifies one activity subject without requiring its Eloquent model.
+ *
+ * @api
+ */
 final readonly class ActivitySubjectReference
 {
     public string $type;

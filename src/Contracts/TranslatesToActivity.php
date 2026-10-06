@@ -8,6 +8,8 @@ use Nvl\Activity\Data\Display\ActivityItem;
 
 /**
  * Translates a source-specific DTO into the canonical activity timeline item.
+ *
+ * @api
  */
 interface TranslatesToActivity
 {

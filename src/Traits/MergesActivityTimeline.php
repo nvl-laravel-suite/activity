@@ -16,6 +16,8 @@ use Nvl\Activity\Support\ActivityTimelineData;
  * rules centralized so controllers never shape timelines directly.
  *
  * @method array<int, ActivityItem> mergedActivities(?int $limit = null)
+ *
+ * @api
  */
 trait MergesActivityTimeline
 {
@@ -23,6 +25,8 @@ trait MergesActivityTimeline
      * Return additional already-translated activity sources for the host model.
      *
      * @return array<int, iterable<int|string, ActivityItem>>
+     *
+     * @api
      */
     abstract protected function mergedActivitySources(?int $limit = null): array;
 
@@ -36,6 +40,8 @@ trait MergesActivityTimeline
      * ]
      *
      * @return array<string, array<int, string>>
+     *
+     * @api
      */
     protected function mergedActivitySupersededBaseEvents(): array
     {

@@ -15,6 +15,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Typed semantic segment for rendering an activity headline without string parsing.
+ *
+ * @api
  */
 #[MapOutputName(CamelCaseMapper::class)]
 #[MapInputName(CamelCaseMapper::class)]

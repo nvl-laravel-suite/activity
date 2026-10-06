@@ -6,6 +6,8 @@ namespace Nvl\Activity\Enums;
 
 /**
  * Identifies the origin of a normalized timeline entry.
+ *
+ * @api
  */
 enum EntrySource: string
 {

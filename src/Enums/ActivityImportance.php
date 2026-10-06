@@ -6,6 +6,8 @@ namespace Nvl\Activity\Enums;
 
 /**
  * Defines the semantic importance level of an activity entry.
+ *
+ * @api
  */
 enum ActivityImportance: string
 {

@@ -10,6 +10,8 @@ use Nvl\Activity\Exceptions\ActivityConfigurationException;
 
 /**
  * Collects registered ActivityMapping implementations for model-aware resolution.
+ *
+ * @api
  */
 final class MappingRegistry
 {

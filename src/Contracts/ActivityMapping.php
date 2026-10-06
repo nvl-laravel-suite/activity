@@ -12,6 +12,8 @@ use Spatie\Activitylog\Support\LogOptions;
  *
  * Replaces ad-hoc trait hooks (registerPropertyMappings, customActivityKeyLabel,
  * registerValueMappings) with a typed, discoverable contract.
+ *
+ * @api
  */
 interface ActivityMapping
 {

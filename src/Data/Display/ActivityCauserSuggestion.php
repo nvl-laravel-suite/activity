@@ -21,6 +21,8 @@ use Stringable;
  *
  * Keeps the Activity causer endpoint independent from Auth module selector DTOs
  * while still reading users as the historical causer source.
+ *
+ * @api
  */
 #[MapOutputName(CamelCaseMapper::class)]
 #[MapInputName(CamelCaseMapper::class)]

@@ -13,6 +13,8 @@ use Nvl\Activity\Services\ActivityTransformService;
 
 /**
  * Lists system activities with pagination and filtering.
+ *
+ * @api
  */
 final class ListActivitiesAction
 {

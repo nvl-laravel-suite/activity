@@ -18,6 +18,8 @@ use Stringable;
 
 /**
  * List historical user causers represented in the activity log.
+ *
+ * @api
  */
 final class ListActivityCauserSuggestionsAction
 {

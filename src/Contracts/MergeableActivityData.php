@@ -10,6 +10,8 @@ use Nvl\Activity\Data\Display\ActivityItem;
 
 /**
  * Defines a DTO that can collect and translate host-owned records into activity items.
+ *
+ * @api
  */
 interface MergeableActivityData extends TranslatesToActivity
 {

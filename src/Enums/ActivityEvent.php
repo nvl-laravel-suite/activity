@@ -9,6 +9,8 @@ namespace Nvl\Activity\Enums;
  *
  * Sent and resent describe business actions performed on the activity subject.
  * Mail transport lifecycle remains owned by the native mail notification source.
+ *
+ * @api
  */
 enum ActivityEvent: string
 {

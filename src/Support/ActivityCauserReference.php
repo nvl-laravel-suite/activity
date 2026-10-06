@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Support;
 
-/** Identifies the native polymorphic causer of an activity without loading a model. */
+/**
+ * Identifies the native polymorphic causer of an activity without loading a model.
+ *
+ * @api
+ */
 final readonly class ActivityCauserReference
 {
     public string $type;

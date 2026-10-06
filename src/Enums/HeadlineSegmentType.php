@@ -6,6 +6,8 @@ namespace Nvl\Activity\Enums;
 
 /**
  * Defines the semantic role of one activity headline segment.
+ *
+ * @api
  */
 enum HeadlineSegmentType: string
 {

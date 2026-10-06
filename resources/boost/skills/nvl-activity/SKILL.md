@@ -27,8 +27,10 @@ Use this package for generic structured audit capture and semantic timelines on 
 
 ## Capture activity
 
-- Use `ActivityLog::record(...)` or the underlying `ActivityRecorder` as the canonical model-backed writer.
-- When only stable subject identity is available, use `ActivityLog::recordForSubjectReference(new ActivitySubjectReference($type, $id), ...)`. It inserts without instantiating or querying the subject and never infers model diffs. This value-only seam accepts `context`, `actor`, and `importance`, but not `attributes`, `old`, or `resolveChanges`; keep value-only change metadata in `context`, or use the model-backed writer when Eloquent diffs are required.
+The recording facade is `Nvl\Activity\Facades\ActivityLog`. The distinct `Nvl\Activity\Models\ActivityLog` is an identity-only result handle; it does not grant consumer model queries, writes, or relationship traversal. Read timelines through the supported Activity Actions/read service and authorized C1 host scopes.
+
+- Use `Nvl\Activity\Facades\ActivityLog::record(...)` or the underlying `ActivityRecorder` as the canonical model-backed writer.
+- When only stable subject identity is available, use `Nvl\Activity\Facades\ActivityLog::recordForSubjectReference(new ActivitySubjectReference($type, $id), ...)`. It inserts without instantiating or querying the subject and never infers model diffs. This value-only seam accepts `context`, `actor`, and `importance`, but not `attributes`, `old`, or `resolveChanges`; keep value-only change metadata in `context`, or use the model-backed writer when Eloquent diffs are required.
 - Use `ActivityEvent` for package-wide meanings shared across domains. Define a domain-owned string-backed enum for business-specific events rather than adding application vocabulary to the package enum.
 - Omit `description` for normal writes; it defaults to the stable event key. Never use it to persist translated labels or final timeline sentences.
 - Let `ActivityEvent::Updated`, `ActivityEvent::DetailsUpdated`, and status-change events infer `attributes` and `old` from the saved subject. Supply explicit arrays only for domain-specific or multi-model changes, and pair a complete explicit payload with `resolveChanges=false`.

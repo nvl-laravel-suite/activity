@@ -19,6 +19,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * Every host timeline source must eventually translate into this DTO so the
  * frontend can render mixed activity, comment, and mail rows from one contract.
+ *
+ * @api
  */
 #[MapOutputName(CamelCaseMapper::class)]
 #[MapInputName(CamelCaseMapper::class)]

@@ -14,6 +14,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Typed representation of a single field diff within an activity entry.
+ *
+ * @api
  */
 #[MapOutputName(CamelCaseMapper::class)]
 #[MapInputName(CamelCaseMapper::class)]

@@ -6,6 +6,7 @@ All notable changes to `nvl/activity` are documented here.
 
 ### Changed
 
+- Classify the supported consumer PHP surface with explicit source annotations and restrict package model handles to declared identity and in-memory read fields; preserve existing workflow behavior and concrete signatures.
 - Isolate owned cache and lock keys under `nvl:activity:`; preserve generic host entries and explicit store choices.
 
 - Prepare lockstep major 5 with required and development NVL peer floors of `^5.0`. This candidate has not been tagged or published.

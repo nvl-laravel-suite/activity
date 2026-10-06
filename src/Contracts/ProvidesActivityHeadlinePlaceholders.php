@@ -9,6 +9,8 @@ namespace Nvl\Activity\Contracts;
  *
  * This extends the flat eventDisplayValue pattern for events that need more
  * than one meaningful token, such as old/new names or feed type + locale.
+ *
+ * @api
  */
 interface ProvidesActivityHeadlinePlaceholders
 {

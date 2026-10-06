@@ -8,6 +8,8 @@ use Nvl\Activity\Data\Display\ActivityItem;
 
 /**
  * Exposes a unified host-owned activity timeline for an entity.
+ *
+ * @api
  */
 interface MergesActivity
 {
