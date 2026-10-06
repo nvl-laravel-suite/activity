@@ -9,6 +9,8 @@ use Illuminate\Http\Response;
 use Nvl\Activity\Enums\ActivityResponseCode;
 
 /**
+ * @api
+
  * Reports safe failures while resolving an allowlisted activity timeline host.
  */
 final class ActivityTimelineException extends ActivityException implements ShouldntReport

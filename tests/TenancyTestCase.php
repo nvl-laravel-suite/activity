@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Tests\Fixtures\TenantScenario;
 use Nvl\Data\Providers\DataServiceProvider;
+use Nvl\Support\Providers\LocaleServiceProvider;
 use Nvl\Support\Providers\SupportServiceProvider;
 use Nvl\Tenancy\Providers\TenancyServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -22,7 +23,8 @@ abstract class TenancyTestCase extends Orchestra
     /** @return list<class-string> */
     protected function getPackageProviders($app): array
     {
-        return [DataServiceProvider::class, SupportServiceProvider::class,
+        return [
+            LocaleServiceProvider::class, DataServiceProvider::class, SupportServiceProvider::class,
             TenancyServiceProvider::class, ActivitylogServiceProvider::class,
             ActivityServiceProvider::class];
     }

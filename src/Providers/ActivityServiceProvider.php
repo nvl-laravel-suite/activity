@@ -20,6 +20,8 @@ use Nvl\Activity\Contracts\ActivityTenantWorklist;
 use Nvl\Activity\Contracts\ListActivitiesContract;
 use Nvl\Activity\Contracts\ListActivityCauserSuggestionsContract;
 use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
+use Nvl\Activity\Events\ActivityLogPurgeQueued;
+use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Policies\ActivityLogPolicy;
 use Nvl\Activity\Services\ActivityDiffBuilder;
@@ -42,6 +44,7 @@ use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tenancy\ActivityResourceRegistrar;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
 use Nvl\Support\Doctor\PackageDoctorContributor;
+use Nvl\Support\Events\EventAliases;
 use Nvl\Support\Globals\GlobalNames;
 use Nvl\Support\Providers\TenantServiceProvider;
 use Nvl\Support\Tenancy\Services\TenantResourceRegistry;
@@ -95,6 +98,7 @@ final class ActivityServiceProvider extends ServiceProvider
      */
     public function boot(TypeScriptSourceRegistry $typeScriptSources): void
     {
+        $this->app->make(EventAliases::class)->register(ActivityLogPurgeQueued::class, ActivityLogPurgeQueuedEvent::class);
         $typeScriptSources->register(__DIR__.'/..', 'nvl/activity');
 
         $this->publishes([

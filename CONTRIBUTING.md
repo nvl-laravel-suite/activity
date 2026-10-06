@@ -1,15 +1,5 @@
-# Contributing to NVL Activity
+# Contributing
 
-This public repository is a publication mirror of private source. Open an issue
-here for a bug or proposal; include a reproduction and, if helpful, a patch.
-Maintainers apply accepted changes in source and publish a mirror release.
-Direct mirror pull requests do not update source. See the
-[organization contribution guide](https://github.com/nvl-laravel-suite/.github/blob/main/CONTRIBUTING.md).
+This repository is a read-only release mirror. Pull requests to the mirror are not accepted. Open a public issue with a reproducible example or a proposed patch. Maintainers apply reviewed changes in the private source repository and publish immutable releases from there.
 
-Changes must remain generic, internally isolated, and compatible with PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Do not add consumer models, event vocabulary, authorization assumptions, or presentation rules to the module.
-
-Add or update Pest coverage for every behavior. From the suite root, run `composer quality` or the documented package-aware Pest command. Also run Composer validation, dependency analysis, suite distribution validation, and the relevant integration checks before submitting a change. Exercise installation and documented integration paths in a clean consumer when public module wiring changes.
-
-The canonical activity model and package-managed migration are invariants. Keep `Nvl\Activity\Models\ActivityLog` as Spatie's activity model; do not restore an `activity.model` option. The vendor migration may own only the literal `activity_log` table on the default connection. Custom storage, adopted schemas, and published migrations belong to the application, require `activity.migrations.enabled=false`, and must use frozen literal connection and table targets. Never edit a migration that consumers may already have deployed.
-
-Public APIs require typed parameters and returns, complete PHPDoc, a changelog entry, README and bundled-skill updates, and an upgrade note when compatibility changes. Keep English and Bulgarian translation keys and placeholders in exact parity, and regenerate/check `Nvl.Activity.*` declarations after changing a DTO or enum. New integrations must use contracts, registries, events, or explicit provider registration.
+Report vulnerabilities privately through the [security policy](https://github.com/nvl-laravel-suite/activity/security/policy). Public issues must not contain undisclosed vulnerability details.

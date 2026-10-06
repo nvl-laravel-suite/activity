@@ -8,6 +8,8 @@ use Illuminate\Http\Response;
 use Nvl\Activity\Enums\ActivityResponseCode;
 
 /**
+ * @api
+
  * Reports invalid package, mapping, or activity-model configuration.
  */
 final class ActivityConfigurationException extends ActivityException

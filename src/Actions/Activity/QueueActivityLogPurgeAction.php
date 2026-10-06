@@ -6,9 +6,11 @@ namespace Nvl\Activity\Actions\Activity;
 
 use Illuminate\Support\Facades\DB;
 use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
-use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
+use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Support\Config\PackageStorage;
+use Nvl\Support\Events\DomainEventDispatcher;
 use Nvl\Support\Tenancy\Contracts\TenantContext;
 use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
 
@@ -20,7 +22,7 @@ use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
 final readonly class QueueActivityLogPurgeAction implements QueueActivityLogPurgeContract
 {
     /** Create the tenant-aware queue boundary. */
-    public function __construct(private TenantContext $tenantContext) {}
+    public function __construct(private TenantContext $tenantContext, private DomainEventDispatcher $domainEvents) {}
 
     /**
      * Queue the activity log purge job.
@@ -39,8 +41,6 @@ final readonly class QueueActivityLogPurgeAction implements QueueActivityLogPurg
         $envelope = TenantJobEnvelope::capture($this->tenantContext);
         PurgeActivityLogsJob::dispatch($days, $systemOnly, $criteria, $envelope);
 
-        DB::afterCommit(static function () use ($days, $systemOnly, $includeImportant): void {
-            event(new ActivityLogPurgeQueuedEvent($days, $systemOnly, $includeImportant));
-        });
+        $this->domainEvents->dispatch(new ActivityLogPurgeQueued($days, $systemOnly, $includeImportant), DB::connection(PackageStorage::connection('activity')));
     }
 }

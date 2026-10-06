@@ -1,0 +1,43 @@
+{
+    "schema_version": 1,
+    "configs": {
+        "nvl-activity": {
+            "required": [],
+            "common": [
+                "adoption.spatie",
+                "authorization.abilities.purge",
+                "authorization.abilities.timeline",
+                "authorization.abilities.view",
+                "migrations.enabled",
+                "queue.connection",
+                "queue.name",
+                "retention.schedule.enabled",
+                "routes.enabled",
+                "routes.management_middleware",
+                "routes.middleware",
+                "routes.prefix",
+                "routes.timeline_subjects",
+                "storage.connection",
+                "storage.table",
+                "tenancy.active_tenant_worklist"
+            ],
+            "advanced": [
+                "capture.ignored_attributes",
+                "causer_suggestions.label_attribute",
+                "causer_suggestions.model",
+                "causer_suggestions.scan_limit",
+                "causer_suggestions.search_attributes",
+                "causer_suggestions.sublabel_attribute",
+                "causer_suggestions.type_attribute",
+                "name",
+                "retention.allowed_purge_options",
+                "retention.default_days",
+                "retention.external_visibility_timeout_seconds",
+                "retention.lock_seconds",
+                "retention.queue",
+                "retention.schedule.time",
+                "retention.system_logs_days"
+            ]
+        }
+    }
+}

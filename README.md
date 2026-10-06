@@ -1,5 +1,28 @@
 # NVL Activity — API and usage
 
+## Quickstart
+
+```sh
+composer require nvl/activity:^5.0
+php artisan nvl:install activity --dry-run
+php artisan nvl:install activity
+```
+
+Required NVL dependencies: `nvl/core` (`^5.0`). Configure subject/causer identity and the native host activity policy. Package reads do not authorize your page by themselves.
+Review the published common config, select one migration owner, and run schema preflight before existing-table upgrades. The installer does not enable features or run migrations. Follow the detailed installation and capability sections below before invoking a storage/provider operation.
+
+Inject `Nvl\Activity\Contracts\ActivityReadContract` in a host service. After supplying the trusted inputs described above, the first public call is:
+
+```php
+use Nvl\Activity\Contracts\ActivityReadContract;
+
+/** @var ActivityReadContract $capability */
+$result = $capability->latest(12);
+```
+
+Use the [event catalog](docs/events.md) and [Testing your app](#testing-your-app) below. The suite [getting-started guide](https://github.com/nvl-laravel-suite/laravel-suite/blob/main/docs/getting-started.md) provides a complete Comments host fixture; package archives retain their own local references.
+
+
 [← NVL Laravel Suite](https://github.com/nvl-laravel-suite)
 
 For support, [open an issue](https://github.com/nvl-laravel-suite/activity/issues). For vulnerabilities, use
@@ -774,7 +797,7 @@ For a raw read or recording substitute, build an unsaved `Nvl\Activity\Models\Ac
 
 Use `Queue::fake()` and `Event::fake()` when testing application code that runs real purge dispatch. Keep real recording, ownership, authorization, and retention tests backed by the appropriate schema; interface substitution proves the host's orchestration and does not prove those package invariants.
 
-Enable the opt-in [Core consumer PHPStan extension](../core/support/consumer-audit.neon) in the host's PHPStan configuration:
+Enable the opt-in [Core consumer PHPStan extension](https://github.com/nvl-laravel-suite/core/blob/main/support/consumer-audit.neon) in the host's PHPStan configuration:
 
 ```neon
 includes:
@@ -787,10 +810,6 @@ parameters:
 ```
 
 The extension checks declared package API and known persistence boundaries. Dynamic SQL, authorization, and unknown `mixed` receiver provenance still require explicit application tests. See [UPGRADING.md](UPGRADING.md#major-5-focused-workflow-contracts) for the concrete-to-contract migration.
-
-## License
-
-Released under the [MIT License](LICENSE).
 
 ## Shared consumer diagnostics
 
@@ -811,3 +830,76 @@ Owned cache and lock identities follow `nvl:<package>:<purpose>:…`. Purge lock
 ## Canonical configuration ownership
 
 Use `nvl-activity` settings in `config/nvl-activity.php` and canonical package environment names. Old generic roots are foreign unless an upgrading NVL host explicitly selects them in Core's default-off compatibility. Canonical false/null/empty values win; no old roots are populated or written back. Keep logical package/resource IDs unchanged. Review [Core's rename inventory and cache/worker cutover](https://github.com/nvl-laravel-suite/core/blob/main/UPGRADING.md#major-5-canonical-configuration-and-environment).
+
+## Testing your app
+
+Inject the supported contract rather than constructing its concrete Action or querying package tables. Replace `Nvl\Activity\Contracts\ActivityReadContract` in Laravel's native container for a host-workflow test:
+
+```php
+use Nvl\Activity\Contracts\ActivityReadContract;
+
+$double = Mockery::mock(ActivityReadContract::class);
+$this->app->instance(ActivityReadContract::class, $double);
+// Configure the exact latest arguments and documented return value for your host case.
+```
+
+The package's conditional native binding preserves host substitutions. Production uses the real contract; test doubles do not prove its storage/authorization behavior.
+
+A detached fixture for a returned identity/data handle is:
+
+```php
+use Nvl\Activity\Models\ActivityLog;
+$fixture = ActivityLog::factory()->withoutParents()->make();
+```
+
+Ordinary `make()` may persist declared package parents. `withoutParents()->make()` disables parent expansion/admission for detached fixtures; use explicit persisted parents/owners and matching effective connections for a real `create()`. Factories do not authorize workflows, call Stripe, create backing Media objects or publish Template artifacts. Enabled tenancy requires explicit admitted persisted tenants/parents. Your host test installation supplies Faker; no test runner is a runtime package dependency.
+
+Use Laravel `Event::fake()`, `Queue::fake()`, `Mail::fake()` or `Storage::fake()` only for the effects the host test intends to isolate. Use real commits/listeners for timing proof. Add the optional Core consumer boundary rules to host PHPStan:
+
+```neon
+includes:
+    - vendor/nvl/core/support/consumer-audit.neon
+parameters:
+    nvlConsumer:
+        testPaths: [tests]
+        tableNames: []
+        exceptions: []
+```
+
+Rules read installed public metadata without suite boot. They flag internal symbols, package model queries/writes, capability relations and owned tables; they cannot prove dynamic code or runtime authorization. Exact exceptions require `file`, `identifier`, `symbol`, and a documented `reason`. New C3/C4/E tests, archives and guide execution remain pending until the integration phase records results.
+
+### Shipped factory states
+
+These runtime builders keep Laravel's native Factory API. The listed methods name explicit supported parent/owner/lifecycle states; follow each factory's native admission requirements. Detached examples above do not assert persistence validity.
+
+| Factory | Explicit states |
+| --- | --- |
+| [`ActivityLogFactory`](database/factories/ActivityLogFactory.php) | `forOwner(Model $owner)` |
+
+## Error codes and events
+
+All recognized package failures implement `Nvl\Support\Contracts\PackageException`; only `RespondableException` opts into safe response metadata. Keep native PHP programmer errors and Laravel/SDK exceptions distinct. The optional `PackageExceptionRenderer` is registered by the host in `withExceptions`; it leaves unrelated, marker-only and non-JSON handling to the host. Its JSON envelope is `{message:string, code:string, context:object}`. Request locale is host-owned; diagnostics/previous exceptions are not public copy. Event schemas and source connections are documented in [events](docs/events.md).
+
+The table lists enum discriminators, including any successful codes retained for compatibility. A code is not itself an HTTP status; the throwing exception's `suggestedStatus()` is authoritative, especially legacy/custom constructors. Empty context renders as `{}`; only documented JSON-safe context is presented.
+
+| Code | Suggested status | Public context | Translation key |
+| --- | --- | --- | --- |
+| `operation_failed` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.operation_failed` |
+| `purge_queued` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.purge_queued` |
+| `purge_system_queued` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.purge_system_queued` |
+| `invalid_configuration` | 500 | {} | `nvl-activity::responsecode.invalid_configuration` |
+| `invalid_mapping` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.invalid_mapping` |
+| `invalid_batch_identifier` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.invalid_batch_identifier` |
+| `invalid_activity_metadata` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.invalid_activity_metadata` |
+| `conflicting_activity_envelope` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.conflicting_activity_envelope` |
+| `invalid_purge_criteria` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.invalid_purge_criteria` |
+| `timeline_subject_not_found` | Exception-defined; see `suggestedStatus()` | Declared safe scalar/array map; otherwise `{}` | `nvl-activity::responsecode.timeline_subject_not_found` |
+
+### Operational logging
+
+`nvl-core.logging` defaults to channel `nvl`, normal verbosity and a CSV quiet override. Configure package `channel`/`verbosity` overrides under `packages`; verbosity is `quiet`, `normal` or `verbose`. Warnings/errors survive every setting. The absent `nvl` channel becomes a stack of the host default; a configured host channel wins. Do not configure a self-referential stack. Doctor diagnoses missing/cyclic channels without logging to them. Stable `nvl.<package>.<operation>.<result>` keys carry bounded diagnostics, never retained tenant/job context. CSV logs one failed-row warning summary per chunk; row details require verbose mode and contain no raw row values.
+
+
+## License
+
+Released under the [MIT License](LICENSE).

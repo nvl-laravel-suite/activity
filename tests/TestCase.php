@@ -7,6 +7,7 @@ namespace Nvl\Activity\Tests;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Data\Providers\DataServiceProvider;
+use Nvl\Support\Providers\LocaleServiceProvider;
 use Nvl\Support\Providers\SupportServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Spatie\Activitylog\ActivitylogServiceProvider;
@@ -24,6 +25,7 @@ abstract class TestCase extends Orchestra
     protected function getPackageProviders($app): array
     {
         return [
+            LocaleServiceProvider::class,
             DataServiceProvider::class,
             SupportServiceProvider::class,
             ActivitylogServiceProvider::class,

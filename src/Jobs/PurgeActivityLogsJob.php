@@ -11,11 +11,11 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Support\Config\PackageOptions;
+use Nvl\Support\Facades\PackageLog;
 use Nvl\Support\Tenancy\Contracts\TenantBoundary;
 use Nvl\Support\Tenancy\Contracts\TenantQueuedJob;
 use Nvl\Support\Tenancy\Enums\TenantContextMode;
@@ -99,7 +99,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
         );
 
         if (! $lock->get()) {
-            Log::notice('Activity log purge delayed because another purge owns the lock.');
+            PackageLog::log('activity', 'notice', 'nvl.activity.purge.delayed', [], 'normal');
             $this->release(self::LOCK_RETRY_DELAY_SECONDS);
 
             return;
@@ -144,14 +144,14 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
      */
     public function failed(?Throwable $exception): void
     {
-        Log::error('Activity log purge failed.', [
+        PackageLog::log('activity', 'error', 'nvl.activity.purge.failed', [
             'days' => $this->days,
             'system_only' => $this->systemOnly,
             'include_important' => $this->criteria instanceof ActivityPurgeCriteria
                 ? $this->criteria->includeImportant
                 : false,
             'exception' => $exception?->getMessage(),
-        ]);
+        ], 'normal');
     }
 
     /**
@@ -189,7 +189,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
             }
         }
 
-        Log::info('Activity log purge completed.', [
+        PackageLog::log('activity', 'info', 'nvl.activity.purge.completed', [
             'deleted' => $totalDeleted,
             'days' => $criteria->days,
             'before' => $criteria->cutoff()->toIso8601String(),
@@ -202,7 +202,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
             'subject_ids' => $criteria->subjectIds,
             'causer_types' => $criteria->causerTypes,
             'causer_ids' => $criteria->causerIds,
-        ]);
+        ], 'normal');
     }
 
     /**

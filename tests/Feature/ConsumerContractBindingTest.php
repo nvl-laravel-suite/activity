@@ -33,9 +33,9 @@ use Nvl\Activity\Services\NvlActivityLogger;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
+use Nvl\Activity\Tests\Fixtures\ActivityConsumerWorkflow;
 use Nvl\Activity\Tests\TestCase;
 use Nvl\Support\Tenancy\Contracts\TenantContext;
-use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\LaravelData\DataCollection;
 
 if (! in_array(dirname(__DIR__).'/Pest.php', get_included_files(), true)) {
@@ -318,61 +318,3 @@ test('two application lifecycles keep scoped defaults and facade substitutes ind
 
     expect(ActivityLogFacade::getFacadeRoot())->toBe($recorder);
 });
-
-/** A host-owned workflow resolved through ordinary constructor injection. */
-final readonly class ActivityConsumerWorkflow
-{
-    /** Receive only supported package use-case boundaries. */
-    public function __construct(
-        private ListActivitiesContract $listing,
-        private ListActivityCauserSuggestionsContract $causers,
-        private QueueActivityLogPurgeContract $purge,
-        private ActivityReadContract $reader,
-        private ActivityRecorderContract $recorder,
-    ) {}
-
-    /** @return LengthAwarePaginator<int, ActivityItem> */
-    public function index(ActivityIndexFilter $filters): LengthAwarePaginator
-    {
-        return $this->listing->execute($filters);
-    }
-
-    /** @return DataCollection<int, ActivityCauserSuggestion> */
-    public function suggestions(string $search, int $limit): DataCollection
-    {
-        return $this->causers->execute($search, $limit);
-    }
-
-    /** @return EloquentCollection<int, ActivityLog> */
-    public function history(ActivitySubjectReference $subject): EloquentCollection
-    {
-        return $this->reader->forSubjectKey($subject->type, $subject->id, 5);
-    }
-
-    /** Record a review through the value-only writer boundary. */
-    public function record(ActivitySubjectReference $subject): ?ActivityContract
-    {
-        return $this->recorder->recordForSubjectReference($subject, 'reviewed');
-    }
-
-    /** Continue host orchestration after the package's void queue boundary. */
-    public function purgeSystemHistory(): string
-    {
-        $this->purge->execute(365, true, false);
-
-        return 'queued';
-    }
-
-    /** Expose injected identity solely for the host replacement regression. */
-    public function dependency(string $contract): object
-    {
-        return match ($contract) {
-            ListActivitiesContract::class => $this->listing,
-            ListActivityCauserSuggestionsContract::class => $this->causers,
-            QueueActivityLogPurgeContract::class => $this->purge,
-            ActivityReadContract::class => $this->reader,
-            ActivityRecorderContract::class => $this->recorder,
-            default => throw new InvalidArgumentException('Unknown Activity workflow contract.'),
-        };
-    }
-}

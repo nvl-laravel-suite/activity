@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 
+/** Complete runtime defaults; publication sections are declared in ../resources/config/sections.json. */
 return [
     'queue' => ['connection' => null, 'name' => null],
     'adoption' => ['spatie' => false],

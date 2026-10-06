@@ -8,6 +8,7 @@ use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -16,6 +17,7 @@ use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use LogicException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
+use Nvl\Activity\Database\Factories\ActivityLogFactory;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Tenancy\ActivityMorphTo;
@@ -50,6 +52,9 @@ use Spatie\Activitylog\Models\Activity;
  */
 final class ActivityLog extends Activity
 {
+    /** @use HasFactory<ActivityLogFactory> */
+    use HasFactory;
+
     use HasUuids;
 
     public const string DEFAULT_TABLE = ActivityTables::ActivityLog;
@@ -303,5 +308,15 @@ final class ActivityLog extends Activity
         $decoded = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
 
         return is_array($decoded) ? collect($decoded) : null;
+    }
+
+    /**
+     * Return the package's runtime fixture factory.
+     *
+     * @internal
+     */
+    protected static function newFactory(): ActivityLogFactory
+    {
+        return ActivityLogFactory::new();
     }
 }

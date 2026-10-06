@@ -7,10 +7,13 @@ namespace Nvl\Activity\Enums;
 use Nvl\Support\Contracts\ResponseCode;
 
 /**
+ * @api
  * Catalog of stable Activity API response discriminators.
  */
 enum ActivityResponseCode: string implements ResponseCode
 {
+    case OperationFailed = 'operation_failed';
+
     case PurgeQueued = 'purge_queued';
     case PurgeSystemQueued = 'purge_system_queued';
 
@@ -27,6 +30,6 @@ enum ActivityResponseCode: string implements ResponseCode
      */
     public function getMessage(): string
     {
-        return (string) trans("nvl-activity::activity/general.responses.{$this->value}");
+        return (string) trans("nvl-activity::responsecode.{$this->value}");
     }
 }
