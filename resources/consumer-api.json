@@ -1,0 +1,565 @@
+{
+    "schema_version": 1,
+    "package": "nvl/activity",
+    "psr4": {
+        "Nvl\\Activity\\": "src",
+        "Nvl\\Activity\\Database\\Factories\\": "database/factories",
+        "Nvl\\Activity\\Database\\Seeders\\": "database/seeders"
+    },
+    "symbols": {
+        "Nvl\\Activity\\Actions\\Activity\\ListActivitiesAction": {
+            "kind": "class",
+            "file": "src/Actions/Activity/ListActivitiesAction.php",
+            "methods": [
+                "__construct",
+                "execute"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Actions\\Activity\\ListActivityCauserSuggestionsAction": {
+            "kind": "class",
+            "file": "src/Actions/Activity/ListActivityCauserSuggestionsAction.php",
+            "methods": [
+                "__construct",
+                "execute"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Actions\\Activity\\QueueActivityLogPurgeAction": {
+            "kind": "class",
+            "file": "src/Actions/Activity/QueueActivityLogPurgeAction.php",
+            "methods": [
+                "__construct",
+                "execute"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\ActivityMapping": {
+            "kind": "interface",
+            "file": "src/Contracts/ActivityMapping.php",
+            "methods": [
+                "entityLabel",
+                "eventDisplayValue",
+                "eventTemplates",
+                "fieldLabel",
+                "fieldValue",
+                "logName",
+                "logOptions",
+                "modelClass",
+                "subjectLabel"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\MergeableActivityData": {
+            "kind": "interface",
+            "file": "src/Contracts/MergeableActivityData.php",
+            "methods": [
+                "collectToActivityFor",
+                "toActivityItem"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\MergesActivity": {
+            "kind": "interface",
+            "file": "src/Contracts/MergesActivity.php",
+            "methods": [
+                "buildActivityTimeline"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\ProvidesActivityHeadlinePlaceholders": {
+            "kind": "interface",
+            "file": "src/Contracts/ProvidesActivityHeadlinePlaceholders.php",
+            "methods": [
+                "eventHeadlinePlaceholders"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\QueueActivityLogPurgeContract": {
+            "kind": "interface",
+            "file": "src/Contracts/QueueActivityLogPurgeContract.php",
+            "methods": [
+                "execute"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Contracts\\TranslatesToActivity": {
+            "kind": "interface",
+            "file": "src/Contracts/TranslatesToActivity.php",
+            "methods": [
+                "toActivityItem"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\ActivityIndexFilter": {
+            "kind": "class",
+            "file": "src/Data/ActivityIndexFilter.php",
+            "methods": [
+                "__construct",
+                "fromInput",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages"
+            ],
+            "properties": [
+                "causerId",
+                "createdAtFrom",
+                "createdAtTo",
+                "event",
+                "events",
+                "perPage",
+                "search",
+                "subjectId",
+                "subjectType"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\Display\\ActivityCauser": {
+            "kind": "class",
+            "file": "src/Data/Display/ActivityCauser.php",
+            "methods": [
+                "__construct",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages"
+            ],
+            "properties": [
+                "email",
+                "id",
+                "name"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\Display\\ActivityCauserSuggestion": {
+            "kind": "class",
+            "file": "src/Data/Display/ActivityCauserSuggestion.php",
+            "methods": [
+                "__construct",
+                "fromModel",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages"
+            ],
+            "properties": [
+                "id",
+                "label",
+                "sublabel",
+                "type"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\Display\\ActivityChangeDetail": {
+            "kind": "class",
+            "file": "src/Data/Display/ActivityChangeDetail.php",
+            "methods": [
+                "__construct",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages"
+            ],
+            "properties": [
+                "description",
+                "key",
+                "label",
+                "new",
+                "old"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\Display\\ActivityItem": {
+            "kind": "class",
+            "file": "src/Data/Display/ActivityItem.php",
+            "methods": [
+                "__construct",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages",
+                "withSource"
+            ],
+            "properties": [
+                "causer",
+                "changes",
+                "changesDetailed",
+                "createdAt",
+                "createdAtHuman",
+                "description",
+                "event",
+                "eventLabel",
+                "headline",
+                "headlineSegments",
+                "id",
+                "log",
+                "properties",
+                "source",
+                "subjectId",
+                "subjectLabel",
+                "subjectType",
+                "summary"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\Display\\ActivityItemProperties": {
+            "kind": "class",
+            "file": "src/Data/Display/ActivityItemProperties.php",
+            "methods": [
+                "__construct",
+                "attributesArray",
+                "contextArray",
+                "fromPayload",
+                "oldArray",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages"
+            ],
+            "properties": [
+                "attributeChanges",
+                "attributes",
+                "comment",
+                "context",
+                "descriptionOverride",
+                "extra",
+                "fromStatus",
+                "importance",
+                "new",
+                "newStatus",
+                "old",
+                "resourceId",
+                "resourceType",
+                "source",
+                "status",
+                "statusLabel",
+                "subject",
+                "toStatus",
+                "visibility"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Data\\Display\\HeadlineSegment": {
+            "kind": "class",
+            "file": "src/Data/Display/HeadlineSegment.php",
+            "methods": [
+                "__construct",
+                "scopedRules",
+                "toArray",
+                "toModel",
+                "toModelFiltered",
+                "toModelPatch",
+                "translatedAttributes",
+                "translatedMessages"
+            ],
+            "properties": [
+                "causerId",
+                "text",
+                "type"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Enums\\ActivityEvent": {
+            "kind": "enum",
+            "file": "src/Enums/ActivityEvent.php",
+            "methods": [
+                "cases",
+                "from",
+                "getLabel",
+                "tryFrom"
+            ],
+            "properties": [
+                "name",
+                "value"
+            ],
+            "constants": [
+                "Activated",
+                "Archived",
+                "Assigned",
+                "Created",
+                "Deactivated",
+                "Deleted",
+                "DetailsUpdated",
+                "Disabled",
+                "Enabled",
+                "Resent",
+                "Restored",
+                "Retried",
+                "Sent",
+                "StatusChanged",
+                "StatusOverride",
+                "StatusTransition",
+                "Triggered",
+                "Unarchived",
+                "Updated",
+                "Viewed"
+            ]
+        },
+        "Nvl\\Activity\\Enums\\ActivityImportance": {
+            "kind": "enum",
+            "file": "src/Enums/ActivityImportance.php",
+            "methods": [
+                "cases",
+                "from",
+                "getLabel",
+                "tryFrom"
+            ],
+            "properties": [
+                "name",
+                "value"
+            ],
+            "constants": [
+                "Important",
+                "Low",
+                "Normal"
+            ]
+        },
+        "Nvl\\Activity\\Enums\\ActivityVisibility": {
+            "kind": "enum",
+            "file": "src/Enums/ActivityVisibility.php",
+            "methods": [
+                "cases",
+                "from",
+                "getLabel",
+                "tryFrom"
+            ],
+            "properties": [
+                "name",
+                "value"
+            ],
+            "constants": [
+                "AuditOnly",
+                "Hidden",
+                "Timeline"
+            ]
+        },
+        "Nvl\\Activity\\Enums\\EntrySource": {
+            "kind": "enum",
+            "file": "src/Enums/EntrySource.php",
+            "methods": [
+                "cases",
+                "from",
+                "getLabel",
+                "tryFrom"
+            ],
+            "properties": [
+                "name",
+                "value"
+            ],
+            "constants": [
+                "ActivityLog",
+                "Comment",
+                "Mail"
+            ]
+        },
+        "Nvl\\Activity\\Enums\\HeadlineSegmentType": {
+            "kind": "enum",
+            "file": "src/Enums/HeadlineSegmentType.php",
+            "methods": [
+                "cases",
+                "from",
+                "tryFrom"
+            ],
+            "properties": [
+                "name",
+                "value"
+            ],
+            "constants": [
+                "Actor",
+                "Field",
+                "Status",
+                "Text",
+                "Value"
+            ]
+        },
+        "Nvl\\Activity\\Facades\\ActivityLog": {
+            "kind": "class",
+            "file": "src/Facades/ActivityLog.php",
+            "methods": [
+                "record",
+                "recordEnvelope",
+                "recordForSubjectReference"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Models\\ActivityLog": {
+            "kind": "class",
+            "file": "src/Models/ActivityLog.php",
+            "methods": [
+                "getKey",
+                "getKeyName",
+                "getMorphClass",
+                "getRouteKey",
+                "getRouteKeyName",
+                "is",
+                "isNot",
+                "relationLoaded"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Services\\ActivityReadService": {
+            "kind": "class",
+            "file": "src/Services/ActivityReadService.php",
+            "methods": [
+                "__construct",
+                "forSubject",
+                "forSubjectBatch",
+                "forSubjectInDateRange",
+                "forSubjectKey",
+                "latest",
+                "paginateForSubjectKey",
+                "paginateForSubjectOrCauserKey",
+                "paginateForSubjectReferences",
+                "paginateIndex"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Services\\ActivityRecorder": {
+            "kind": "class",
+            "file": "src/Services/ActivityRecorder.php",
+            "methods": [
+                "__construct",
+                "record",
+                "recordEnvelope",
+                "recordForSubjectReference"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Services\\MappingRegistry": {
+            "kind": "class",
+            "file": "src/Services/MappingRegistry.php",
+            "methods": [
+                "all",
+                "forModel",
+                "has",
+                "register"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Support\\ActivityCauserReference": {
+            "kind": "class",
+            "file": "src/Support/ActivityCauserReference.php",
+            "methods": [
+                "__construct"
+            ],
+            "properties": [
+                "id",
+                "type"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Support\\ActivityRecordEnvelope": {
+            "kind": "class",
+            "file": "src/Support/ActivityRecordEnvelope.php",
+            "methods": [
+                "__construct",
+                "fromArray",
+                "toArray"
+            ],
+            "properties": [
+                "attributes",
+                "causer",
+                "context",
+                "event",
+                "id",
+                "logName",
+                "occurredAt",
+                "old",
+                "scalarActorId",
+                "subject"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Support\\ActivitySubjectReference": {
+            "kind": "class",
+            "file": "src/Support/ActivitySubjectReference.php",
+            "methods": [
+                "__construct"
+            ],
+            "properties": [
+                "id",
+                "type"
+            ],
+            "constants": []
+        },
+        "Nvl\\Activity\\Traits\\HasModelActivity": {
+            "kind": "trait",
+            "file": "src/Traits/HasModelActivity.php",
+            "methods": [
+                "getActivitylogOptions",
+                "mergedActivities"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Traits\\MergesActivityTimeline": {
+            "kind": "trait",
+            "file": "src/Traits/MergesActivityTimeline.php",
+            "methods": [
+                "buildActivityTimeline",
+                "mergedActivities",
+                "mergedActivitySources",
+                "mergedActivitySupersededBaseEvents"
+            ],
+            "properties": [],
+            "constants": []
+        }
+    },
+    "models": {
+        "Nvl\\Activity\\Models\\ActivityLog": {
+            "read": [],
+            "identity_methods": [
+                "getKey",
+                "getKeyName",
+                "getMorphClass",
+                "getRouteKey",
+                "getRouteKeyName",
+                "is",
+                "isNot",
+                "relationLoaded"
+            ],
+            "capability_relations": []
+        }
+    },
+    "capability_relations": {
+        "Nvl\\Activity\\Traits\\HasModelActivity": [
+            "activitiesAsSubject"
+        ]
+    },
+    "tables": {
+        "log": "nvl_activity_log"
+    }
+}
