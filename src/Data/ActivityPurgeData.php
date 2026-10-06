@@ -22,7 +22,7 @@ final class ActivityPurgeData extends ActivityInputData
     public static function rules(): array
     {
         /** @var list<int> $options */
-        $options = config('activity.retention.allowed_purge_options', [90, 365, 730]);
+        $options = config('nvl-activity.retention.allowed_purge_options', [90, 365, 730]);
 
         return [
             'days' => ['required', 'integer', 'in:'.implode(',', $options)],

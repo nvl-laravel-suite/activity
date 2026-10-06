@@ -106,8 +106,8 @@ test('rolled back model mutations never leave automatic activity rows behind', f
 test('separate activity storage cannot share a business connection rollback', function (): void {
     $storageConnection = 'activity_capture_storage';
     $storageTable = 'activity_capture_log';
-    $originalConnection = config('activity.storage.connection');
-    $originalTable = config('activity.storage.table');
+    $originalConnection = config('nvl-activity.storage.connection');
+    $originalTable = config('nvl-activity.storage.table');
 
     config()->set("database.connections.{$storageConnection}", [
         'driver' => 'sqlite',
@@ -115,8 +115,8 @@ test('separate activity storage cannot share a business connection rollback', fu
         'prefix' => '',
         'foreign_key_constraints' => true,
     ]);
-    config()->set('activity.storage.connection', $storageConnection);
-    config()->set('activity.storage.table', $storageTable);
+    config()->set('nvl-activity.storage.connection', $storageConnection);
+    config()->set('nvl-activity.storage.table', $storageTable);
     Schema::connection($storageConnection)->create($storageTable, function (Blueprint $table): void {
         $table->uuid('id')->primary();
         $table->string('log_name')->nullable();
@@ -148,8 +148,8 @@ test('separate activity storage cannot share a business connection rollback', fu
         expect(TestActivitySubjectWithHasModelActivity::query()->count())->toBe(0)
             ->and(ActivityLog::query()->count())->toBe(1);
     } finally {
-        config()->set('activity.storage.connection', $originalConnection);
-        config()->set('activity.storage.table', $originalTable);
+        config()->set('nvl-activity.storage.connection', $originalConnection);
+        config()->set('nvl-activity.storage.table', $originalTable);
         DB::purge($storageConnection);
         config()->set("database.connections.{$storageConnection}", null);
     }

@@ -82,7 +82,7 @@ final class LabelResolver
      */
     public function resolveEventLabel(string $event, Activity $activity): string
     {
-        $activitiesKey = "activity::activity/general.events.{$event}";
+        $activitiesKey = "nvl-activity::activity/general.events.{$event}";
         $label = trans($activitiesKey);
         if ($label !== $activitiesKey) {
             return (string) $label;

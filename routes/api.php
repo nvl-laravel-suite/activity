@@ -9,7 +9,7 @@ use Nvl\Activity\Http\Middleware\ForceActivityJsonResponse;
 
 $middleware = array_values(array_filter(array_map(
     static fn (mixed $value): mixed => is_string($value) ? trim($value) : $value,
-    (array) config('activity.routes.management_middleware', ['auth']),
+    (array) config('nvl-activity.routes.management_middleware', ['auth']),
 ), static fn (mixed $value): bool => is_string($value) && $value !== ''));
 
 Route::middleware([
@@ -17,7 +17,7 @@ Route::middleware([
     ...$middleware,
 ])
     ->group(function (): void {
-        Route::prefix('activities')->name('activities.')->group(function (): void {
+        Route::prefix('activity')->name('activities.')->group(function (): void {
             Route::get('/', [ActivityLogsApiController::class, 'index'])->name('index');
             Route::get('timeline', [ActivityLogsApiController::class, 'timeline'])->name('timeline');
             Route::get('causers/suggestions', ActivityCauserSuggestionsApiController::class)

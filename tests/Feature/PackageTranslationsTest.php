@@ -17,19 +17,19 @@ test('activity headlines and source labels ship with standalone English translat
     app()->setLocale('en');
 
     $keys = [
-        'activity::activity/general.headline',
-        'activity::activity/general.summary.single_attribute',
-        'activity::activity/general.summary.multiple_attributes',
-        'activity::activity/general.changes.from_to',
-        'activity::activity/general.changes.to_only',
-        'activity::activity/general.changes.from_only',
-        'activity::activity/general.changes.empty_value',
-        'activity::activity/general.changes.unknown_attribute',
-        'activity::activity/general.templates.updated',
-        'activity::activity/general.templates.updated_field',
-        'activity::activity/general.templates.updated_field_value',
-        'activity::activity/general.templates.updated_fields',
-        'activity::activity/general.templates.status_changed_to',
+        'nvl-activity::activity/general.headline',
+        'nvl-activity::activity/general.summary.single_attribute',
+        'nvl-activity::activity/general.summary.multiple_attributes',
+        'nvl-activity::activity/general.changes.from_to',
+        'nvl-activity::activity/general.changes.to_only',
+        'nvl-activity::activity/general.changes.from_only',
+        'nvl-activity::activity/general.changes.empty_value',
+        'nvl-activity::activity/general.changes.unknown_attribute',
+        'nvl-activity::activity/general.templates.updated',
+        'nvl-activity::activity/general.templates.updated_field',
+        'nvl-activity::activity/general.templates.updated_field_value',
+        'nvl-activity::activity/general.templates.updated_fields',
+        'nvl-activity::activity/general.templates.status_changed_to',
     ];
 
     foreach ($keys as $key) {
@@ -37,7 +37,7 @@ test('activity headlines and source labels ship with standalone English translat
     }
 
     foreach (EntrySource::cases() as $source) {
-        expect($source->getLabel())->not->toContain('activity::');
+        expect($source->getLabel())->not->toContain('nvl-activity::');
     }
 
     foreach ([
@@ -46,11 +46,11 @@ test('activity headlines and source labels ship with standalone English translat
         ...ActivityVisibility::cases(),
         ...ActivityDoctorSeverity::cases(),
     ] as $enum) {
-        expect($enum->getLabel())->not->toContain('activity::');
+        expect($enum->getLabel())->not->toContain('nvl-activity::');
     }
 
     foreach (ActivityResponseCode::cases() as $responseCode) {
-        expect($responseCode->getMessage())->not->toContain('activity::');
+        expect($responseCode->getMessage())->not->toContain('nvl-activity::');
     }
 });
 
@@ -59,9 +59,9 @@ test('standard activity events provide localized labels and headline templates',
         app()->setLocale($locale);
 
         foreach (ActivityEvent::cases() as $event) {
-            $templateKey = "activity::activity/general.templates.{$event->value}";
+            $templateKey = "nvl-activity::activity/general.templates.{$event->value}";
 
-            expect($event->getLabel())->not->toContain('activity::')
+            expect($event->getLabel())->not->toContain('nvl-activity::')
                 ->and(trans($templateKey))->not->toBe($templateKey);
         }
     }

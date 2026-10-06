@@ -18,6 +18,7 @@ use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityDoctorSeverity;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Support\Config\PackageOptions;
 use Nvl\Support\Config\PackageStorage;
 use ReflectionClass;
 use Throwable;
@@ -87,7 +88,7 @@ final class ActivityDoctor
      */
     private function migrationOwnershipCheck(): ActivityDoctorCheckData
     {
-        $duplicates = config('activity.migrations.enabled') === true
+        $duplicates = config('nvl-activity.migrations.enabled') === true
             ? $this->publishedMigrationDuplicates(dirname(__DIR__, 2).'/database/migrations')
             : [];
 
@@ -153,13 +154,14 @@ final class ActivityDoctor
             $table = '';
             $storageValid = false;
         }
-        $migrationsEnabled = config('activity.migrations.enabled');
+        $migrationsEnabled = config('nvl-activity.migrations.enabled');
         $externalVisibilityTimeout = config(
-            'activity.retention.external_visibility_timeout_seconds',
+            'nvl-activity.retention.external_visibility_timeout_seconds',
         );
         $passed = is_bool($migrationsEnabled)
-            && is_bool(config('activity.routes.enabled'))
-            && is_bool(config('activity.retention.schedule.enabled'))
+            && is_bool(config('nvl-activity.adoption.spatie'))
+            && is_bool(config('nvl-activity.routes.enabled'))
+            && is_bool(config('nvl-activity.retention.schedule.enabled'))
             && ($externalVisibilityTimeout === null
                 || (is_int($externalVisibilityTimeout) && $externalVisibilityTimeout > 0))
             && trim($table) !== ''
@@ -383,8 +385,9 @@ final class ActivityDoctor
     private function activityModelCheck(): ActivityDoctorCheckData
     {
         $activityModel = config('activitylog.activity_model');
-        $legacyActivityModel = config('activity.model');
-        $passed = $activityModel === ActivityLog::class
+        $legacyActivityModel = config('nvl-activity.model');
+        $adopted = config('nvl-activity.adoption.spatie') === true;
+        $passed = (! $adopted || $activityModel === ActivityLog::class)
             && ($legacyActivityModel === null || $legacyActivityModel === ActivityLog::class);
 
         return new ActivityDoctorCheckData(
@@ -392,7 +395,7 @@ final class ActivityDoctor
             severity: ActivityDoctorSeverity::Error,
             passed: $passed,
             message: $passed
-                ? $this->translated('activity_model_compatible')
+                ? ($adopted ? 'Explicit global activity model adoption: '.ActivityLog::class : 'NVL writes use package storage; the host global activity model is preserved.')
                 : $this->translated('activity_model_incompatible'),
         );
     }
@@ -434,7 +437,7 @@ final class ActivityDoctor
      */
     private function routeCheck(): ActivityDoctorCheckData
     {
-        $enabled = config('activity.routes.enabled', false) === true;
+        $enabled = config('nvl-activity.routes.enabled', false) === true;
 
         if (! $enabled) {
             return new ActivityDoctorCheckData(
@@ -445,9 +448,9 @@ final class ActivityDoctor
             );
         }
 
-        $middleware = $this->stringList(config('activity.routes.management_middleware', []));
-        $subjects = $this->stringList(config('activity.routes.timeline_subjects', []));
-        $abilities = config('activity.authorization.abilities', []);
+        $middleware = $this->stringList(config('nvl-activity.routes.management_middleware', []));
+        $subjects = $this->stringList(config('nvl-activity.routes.timeline_subjects', []));
+        $abilities = config('nvl-activity.authorization.abilities', []);
         $configuredAbilities = is_array($abilities)
             && collect(['view', 'timeline', 'purge'])->every(function (string $operation) use ($abilities): bool {
                 $ability = $abilities[$operation] ?? null;
@@ -475,15 +478,17 @@ final class ActivityDoctor
      */
     private function queueCheck(): ActivityDoctorCheckData
     {
-        $queue = config('activity.retention.queue');
-        $defaultConnection = config('queue.default');
+        try {
+            $queue = PackageOptions::queueName('activity');
+            $defaultConnection = PackageOptions::queueConnection('activity');
+        } catch (\InvalidArgumentException $exception) {
+            return new ActivityDoctorCheckData('retention.queue', ActivityDoctorSeverity::Warning, false, $exception->getMessage());
+        }
         $connections = config('queue.connections');
         $externalVisibilityTimeout = config(
-            'activity.retention.external_visibility_timeout_seconds',
+            'nvl-activity.retention.external_visibility_timeout_seconds',
         );
-        $passed = is_string($queue)
-            && trim($queue) !== ''
-            && is_string($defaultConnection)
+        $passed = trim($queue) !== ''
             && trim($defaultConnection) !== ''
             && is_array($connections)
             && $this->queueConnectionHasSafeVisibility(
@@ -639,7 +644,7 @@ final class ActivityDoctor
      */
     private function scheduleCheck(): ActivityDoctorCheckData
     {
-        $enabled = config('activity.retention.schedule.enabled', false) === true;
+        $enabled = config('nvl-activity.retention.schedule.enabled', false) === true;
 
         if (! $enabled) {
             return new ActivityDoctorCheckData(
@@ -650,8 +655,8 @@ final class ActivityDoctor
             );
         }
 
-        $time = config('activity.retention.schedule.time');
-        $days = config('activity.retention.system_logs_days');
+        $time = config('nvl-activity.retention.schedule.time');
+        $days = config('nvl-activity.retention.system_logs_days');
         $passed = is_string($time)
             && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) === 1
             && is_int($days)
@@ -767,7 +772,7 @@ final class ActivityDoctor
     private function translated(string $key, array $replacements = []): string
     {
         return (string) trans(
-            "activity::activity/general.doctor.messages.{$key}",
+            "nvl-activity::activity/general.doctor.messages.{$key}",
             $replacements,
         );
     }

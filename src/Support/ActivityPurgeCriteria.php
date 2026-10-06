@@ -134,60 +134,60 @@ final readonly class ActivityPurgeCriteria
     public function summaryParts(): array
     {
         $parts = [
-            (string) trans('activity::activity/general.console.criteria.before', [
+            (string) trans('nvl-activity::activity/general.console.criteria.before', [
                 'value' => $this->cutoff()->format('Y-m-d H:i:s'),
             ]),
-            (string) trans('activity::activity/general.console.criteria.system_only', [
+            (string) trans('nvl-activity::activity/general.console.criteria.system_only', [
                 'value' => trans(
-                    'activity::activity/general.console.boolean.'.($this->systemOnly ? 'yes' : 'no'),
+                    'nvl-activity::activity/general.console.boolean.'.($this->systemOnly ? 'yes' : 'no'),
                 ),
             ]),
-            (string) trans('activity::activity/general.console.criteria.include_important', [
+            (string) trans('nvl-activity::activity/general.console.criteria.include_important', [
                 'value' => trans(
-                    'activity::activity/general.console.boolean.'.($this->includeImportant ? 'yes' : 'no'),
+                    'nvl-activity::activity/general.console.boolean.'.($this->includeImportant ? 'yes' : 'no'),
                 ),
             ]),
         ];
 
         $after = $this->afterCutoff();
         if ($after !== null) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.after', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.after', [
                 'value' => $after->format('Y-m-d H:i:s'),
             ]);
         }
 
         if ($this->events !== []) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.events', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.events', [
                 'value' => implode(', ', $this->events),
             ]);
         }
 
         if ($this->logNames !== []) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.log_names', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.log_names', [
                 'value' => implode(', ', $this->logNames),
             ]);
         }
 
         if ($this->subjectTypes !== []) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.subject_types', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.subject_types', [
                 'value' => implode(', ', $this->subjectTypes),
             ]);
         }
 
         if ($this->subjectIds !== []) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.subject_ids', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.subject_ids', [
                 'value' => implode(', ', $this->subjectIds),
             ]);
         }
 
         if ($this->causerTypes !== []) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.causer_types', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.causer_types', [
                 'value' => implode(', ', $this->causerTypes),
             ]);
         }
 
         if ($this->causerIds !== []) {
-            $parts[] = (string) trans('activity::activity/general.console.criteria.causer_ids', [
+            $parts[] = (string) trans('nvl-activity::activity/general.console.criteria.causer_ids', [
                 'value' => implode(', ', $this->causerIds),
             ]);
         }

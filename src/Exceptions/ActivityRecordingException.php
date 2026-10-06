@@ -16,7 +16,7 @@ final class ActivityRecordingException extends ActivityException
     public static function conflictingEnvelope(): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.recording.conflicting_envelope'),
+            message: (string) trans('nvl-activity::activity/general.errors.recording.conflicting_envelope'),
             responseCode: ActivityResponseCode::ConflictingActivityEnvelope,
             suggestedStatus: Response::HTTP_CONFLICT,
         );
@@ -28,7 +28,7 @@ final class ActivityRecordingException extends ActivityException
     public static function invalidBatchIdentifier(): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.recording.invalid_batch_identifier'),
+            message: (string) trans('nvl-activity::activity/general.errors.recording.invalid_batch_identifier'),
             responseCode: ActivityResponseCode::InvalidBatchIdentifier,
             suggestedStatus: Response::HTTP_UNPROCESSABLE_ENTITY,
             publicContext: ['field' => 'batch_uuid'],
@@ -42,7 +42,7 @@ final class ActivityRecordingException extends ActivityException
     {
         return new self(
             message: (string) trans(
-                'activity::activity/general.errors.recording.invalid_metadata',
+                'nvl-activity::activity/general.errors.recording.invalid_metadata',
                 ['field' => $field],
             ),
             responseCode: ActivityResponseCode::InvalidActivityMetadata,

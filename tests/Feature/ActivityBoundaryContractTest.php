@@ -35,8 +35,8 @@ use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
 use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 test('causer normalization honors configured display attributes and scalar actor metadata', function (): void {
-    config()->set('activity.causer_suggestions.label_attribute', 'display_name');
-    config()->set('activity.causer_suggestions.sublabel_attribute', 'contact');
+    config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
+    config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
 
     $causer = new TestActivityCauser;
     $causer->forceFill([
@@ -65,8 +65,8 @@ test('display reads support causer tables without name or email columns', functi
     });
 
     try {
-        config()->set('activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
         $causer = TestActivityCauser::query()->create([
             'display_name' => 'Custom operator',
             'contact' => 'operator@example.test',
@@ -98,8 +98,8 @@ test('display reads preserve soft deleted historical causers', function (): void
     });
 
     try {
-        config()->set('activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
         $causer = TestSoftDeletedActivityCauser::query()->create([
             'display_name' => 'Historical operator',
             'contact' => 'history@example.test',
@@ -125,8 +125,8 @@ test('display reads preserve soft deleted historical causers', function (): void
 test('display relations use each related model connection when activity storage is separate', function (): void {
     $storageConnection = 'activity_relation_storage';
     $storageTable = 'activity_relation_log';
-    $originalConnection = config('activity.storage.connection');
-    $originalTable = config('activity.storage.table');
+    $originalConnection = config('nvl-activity.storage.connection');
+    $originalTable = config('nvl-activity.storage.table');
 
     config()->set("database.connections.{$storageConnection}", [
         'driver' => 'sqlite',
@@ -134,8 +134,8 @@ test('display relations use each related model connection when activity storage 
         'prefix' => '',
         'foreign_key_constraints' => true,
     ]);
-    config()->set('activity.storage.connection', $storageConnection);
-    config()->set('activity.storage.table', $storageTable);
+    config()->set('nvl-activity.storage.connection', $storageConnection);
+    config()->set('nvl-activity.storage.table', $storageTable);
 
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
@@ -188,8 +188,8 @@ test('display relations use each related model connection when activity storage 
             ->and($loadedSubject)->toBeInstanceOf(TestActivityTimelineSubject::class)
             ->and($loadedSubject->is($subject))->toBeTrue();
     } finally {
-        config()->set('activity.storage.connection', $originalConnection);
-        config()->set('activity.storage.table', $originalTable);
+        config()->set('nvl-activity.storage.connection', $originalConnection);
+        config()->set('nvl-activity.storage.table', $originalTable);
         Schema::dropIfExists('activity_timeline_subjects');
         Schema::dropIfExists('activity_test_causers');
         DB::purge($storageConnection);
@@ -243,7 +243,7 @@ test('authorization uses cacheable named abilities and fails closed when missing
         ->and($policy->viewTimeline($user, $subject))->toBeFalse()
         ->and($policy->delete($user))->toBeFalse();
 
-    config()->set('activity.authorization.abilities', [
+    config()->set('nvl-activity.authorization.abilities', [
         'view' => 'activity.view',
         'timeline' => 'activity.timeline',
         'purge' => 'activity.purge',
@@ -262,7 +262,7 @@ test('authorization uses cacheable named abilities and fails closed when missing
 });
 
 test('timeline resolution requires an explicit subject allowlist', function (): void {
-    config()->set('activity.routes.timeline_subjects', []);
+    config()->set('nvl-activity.routes.timeline_subjects', []);
 
     expect(fn () => app(ActivitySubjectTimelineResolver::class)->resolve(
         TestActivityTimelineSubject::class,
@@ -278,7 +278,7 @@ test('timeline resolution accepts explicitly allowed host models', function (): 
 
     try {
         $subject = TestActivityTimelineSubject::query()->create(['name' => 'Allowed']);
-        config()->set('activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
+        config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
 
         $resolved = app(ActivitySubjectTimelineResolver::class)->resolve(
             TestActivityTimelineSubject::class,
@@ -296,7 +296,7 @@ test('generic capture rules suppress only explicitly configured technical attrib
         ->and(TimelineActivityRules::isNoisyChangeKey('expires_at'))->toBeFalse()
         ->and(TimelineActivityRules::isNoisyChangeKey('customer_id'))->toBeFalse();
 
-    config()->set('activity.capture.ignored_attributes', ['revision']);
+    config()->set('nvl-activity.capture.ignored_attributes', ['revision']);
 
     expect(TimelineActivityRules::isNoisyChangeKey('updated_at'))->toBeFalse()
         ->and(TimelineActivityRules::isNoisyChangeKey('revision'))->toBeTrue();

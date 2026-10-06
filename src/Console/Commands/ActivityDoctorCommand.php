@@ -44,7 +44,7 @@ final class ActivityDoctorCommand extends Command
                 $this->line(sprintf(
                     '[%s] %s: %s',
                     $check->passed
-                        ? (string) trans('activity::activity/general.doctor.status.pass')
+                        ? (string) trans('nvl-activity::activity/general.doctor.status.pass')
                         : mb_strtoupper($check->severity->getLabel()),
                     $check->key,
                     $check->message,

@@ -18,7 +18,7 @@ final class ActivityConfigurationException extends ActivityException
     public static function emptyTableName(): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.configuration.empty_table'),
+            message: (string) trans('nvl-activity::activity/general.errors.configuration.empty_table'),
             responseCode: ActivityResponseCode::InvalidConfiguration,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
             diagnosticContext: ['configuration' => 'activity.storage.table'],
@@ -31,7 +31,7 @@ final class ActivityConfigurationException extends ActivityException
     public static function invalidConnectionName(): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.configuration.invalid_connection'),
+            message: (string) trans('nvl-activity::activity/general.errors.configuration.invalid_connection'),
             responseCode: ActivityResponseCode::InvalidConfiguration,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
             diagnosticContext: ['configuration' => 'activity.storage.connection'],
@@ -44,7 +44,7 @@ final class ActivityConfigurationException extends ActivityException
     public static function nonEloquentActivityModel(): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.configuration.non_eloquent_activity_model'),
+            message: (string) trans('nvl-activity::activity/general.errors.configuration.non_eloquent_activity_model'),
             responseCode: ActivityResponseCode::InvalidConfiguration,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
             diagnosticContext: ['configuration' => 'activitylog.activity_model'],
@@ -57,7 +57,7 @@ final class ActivityConfigurationException extends ActivityException
     public static function invalidMappingModel(string $mappingClass, string $modelClass): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.configuration.invalid_mapping_model'),
+            message: (string) trans('nvl-activity::activity/general.errors.configuration.invalid_mapping_model'),
             responseCode: ActivityResponseCode::InvalidMapping,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
             diagnosticContext: [
@@ -73,7 +73,7 @@ final class ActivityConfigurationException extends ActivityException
     public static function emptyMappingLogName(string $mappingClass): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.configuration.empty_mapping_log_name'),
+            message: (string) trans('nvl-activity::activity/general.errors.configuration.empty_mapping_log_name'),
             responseCode: ActivityResponseCode::InvalidMapping,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
             diagnosticContext: ['mapping_class' => $mappingClass],
@@ -86,7 +86,7 @@ final class ActivityConfigurationException extends ActivityException
     public static function duplicateMapping(string $mappingClass, string $modelClass): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.configuration.duplicate_mapping'),
+            message: (string) trans('nvl-activity::activity/general.errors.configuration.duplicate_mapping'),
             responseCode: ActivityResponseCode::InvalidMapping,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
             diagnosticContext: [

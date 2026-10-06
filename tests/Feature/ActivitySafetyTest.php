@@ -98,14 +98,14 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
 
 test('package managed migrations create explicitly configured fresh storage', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
-    config()->set('activity.tables.log', 'custom_activity_log');
+    config()->set('nvl-activity.tables.log', 'custom_activity_log');
     try {
         $migration->up();
         expect(Schema::hasTable('custom_activity_log'))->toBeTrue()
             ->and(collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'configuration.values')?->passed)->toBeTrue();
     } finally {
         Schema::dropIfExists('custom_activity_log');
-        config()->set('activity.tables.log', ActivityTables::ActivityLog);
+        config()->set('nvl-activity.tables.log', ActivityTables::ActivityLog);
     }
 });
 
@@ -125,33 +125,33 @@ test('package managed migrations reject malformed storage settings before ddl', 
         $migration->up();
     }
 })->with([
-    'blank connection' => ['activity.storage.connection', ' '],
-    'non-string connection' => ['activity.storage.connection', 123],
-    'blank table' => ['activity.storage.table', ' '],
-    'null table' => ['activity.storage.table', null],
-    'non-string table' => ['activity.storage.table', 123],
+    'blank connection' => ['nvl-activity.storage.connection', ' '],
+    'non-string connection' => ['nvl-activity.storage.connection', 123],
+    'blank table' => ['nvl-activity.storage.table', ' '],
+    'null table' => ['nvl-activity.storage.table', null],
+    'non-string table' => ['nvl-activity.storage.table', 123],
 ]);
 
 test('the activity model rejects malformed runtime storage instead of falling back silently', function (): void {
-    $originalConfiguration = config('activity');
+    $originalConfiguration = config('nvl-activity');
 
     try {
-        config()->set('activity.storage.table', null);
+        config()->set('nvl-activity.storage.table', null);
 
         expect(fn () => (new ActivityLog)->getTable())->toThrow(
             ActivityConfigurationException::class,
             'Activity table name cannot be empty.',
         );
 
-        config()->set('activity.storage.table', ActivityLog::DEFAULT_TABLE);
-        config()->set('activity.storage.connection', ' ');
+        config()->set('nvl-activity.storage.table', ActivityLog::DEFAULT_TABLE);
+        config()->set('nvl-activity.storage.connection', ' ');
 
         expect(fn () => (new ActivityLog)->getConnectionName())->toThrow(
             ActivityConfigurationException::class,
             'Activity storage connection must be null or a non-empty connection name.',
         );
     } finally {
-        config()->set('activity', $originalConfiguration);
+        config()->set('nvl-activity', $originalConfiguration);
     }
 });
 
@@ -167,7 +167,7 @@ test('rollback never destroys the immutable managed activity target after storag
 
     try {
         $migration->up();
-        config()->set('activity.storage.table', 'custom_activity_log');
+        config()->set('nvl-activity.storage.table', 'custom_activity_log');
 
         $rollbackMigration = require $migrationPath;
         $rollbackMigration->down();
@@ -175,7 +175,7 @@ test('rollback never destroys the immutable managed activity target after storag
         expect(Schema::hasTable(ActivityTables::ActivityLog))->toBeTrue()
             ->and(Schema::hasColumn('custom_activity_log', 'decoy'))->toBeTrue();
     } finally {
-        config()->set('activity.storage.table', ActivityTables::ActivityLog);
+        config()->set('nvl-activity.storage.table', ActivityTables::ActivityLog);
         Schema::dropIfExists('custom_activity_log');
 
         if (! Schema::hasTable(ActivityTables::ActivityLog)) {
@@ -194,9 +194,9 @@ test('system retention scheduling is disabled by default', function (): void {
 });
 
 test('system retention scheduling requires explicit enablement', function (): void {
-    config()->set('activity.retention.schedule.enabled', true);
-    config()->set('activity.retention.schedule.time', '03:15');
-    config()->set('activity.retention.system_logs_days', 45);
+    config()->set('nvl-activity.retention.schedule.enabled', true);
+    config()->set('nvl-activity.retention.schedule.time', '03:15');
+    config()->set('nvl-activity.retention.system_logs_days', 45);
 
     $provider = new ActivityServiceProvider(app());
     $method = new ReflectionMethod($provider, 'registerCommandSchedules');
@@ -404,7 +404,7 @@ test('doctor requires a primary activity id and compatible batch identifier stor
 });
 
 test('doctor reports an unavailable configured connection without crashing', function (): void {
-    config()->set('activity.storage.connection', 'missing_activity_connection');
+    config()->set('nvl-activity.storage.connection', 'missing_activity_connection');
 
     try {
         $checks = collect(app(ActivityDoctor::class)->inspect())->keyBy('key');
@@ -412,7 +412,7 @@ test('doctor reports an unavailable configured connection without crashing', fun
         expect($checks->get('schema.connection')?->passed)->toBeFalse()
             ->and($checks->get('dependency.spatie_activitylog')?->passed)->toBeTrue();
     } finally {
-        config()->set('activity.storage.connection');
+        config()->set('nvl-activity.storage.connection');
     }
 });
 
@@ -431,7 +431,7 @@ test('doctor rejects text json storage on PostgreSQL connections', function (): 
         'driver' => 'activity-doctor-postgresql',
         'database' => ':memory:',
     ]);
-    config()->set('activity.storage.connection', $connectionName);
+    config()->set('nvl-activity.storage.connection', $connectionName);
 
     try {
         Schema::connection($connectionName)->create(ActivityTables::ActivityLog, function (Blueprint $table): void {
@@ -454,7 +454,7 @@ test('doctor rejects text json storage on PostgreSQL connections', function (): 
         expect($check?->passed)->toBeFalse();
     } finally {
         DB::purge($connectionName);
-        config()->set('activity.storage.connection');
+        config()->set('nvl-activity.storage.connection');
     }
 });
 
@@ -499,6 +499,27 @@ test('system purge deletes only eligible system-originated rows', function (): v
         ->and($user->fresh())->not->toBeNull();
 });
 
+test('purge preserves a foreign generic purge lock while deleting eligible activity', function (): void {
+    $activity = ActivityLog::query()->create([
+        'log_name' => 'test',
+        'description' => 'Namespaced activity purge',
+        'event' => 'synchronized',
+        'properties' => ['source' => ActivitySource::System->value],
+        'created_at' => now()->subDays(120),
+        'updated_at' => now()->subDays(120),
+    ]);
+    $foreignLock = Cache::lock('purge', 60);
+    expect($foreignLock->get())->toBeTrue();
+
+    try {
+        (new PurgeActivityLogsJob(days: 90, systemOnly: true))->handle(app(TenantBoundary::class));
+        expect($activity->fresh())->toBeNull()
+            ->and(Cache::lock('purge', 60)->get())->toBeFalse();
+    } finally {
+        $foreignLock->release();
+    }
+});
+
 test('purge lock contention remains retryable beyond the exception limit', function (): void {
     $createdAt = now()->subDays(120);
     $activity = ActivityLog::query()->create([
@@ -510,7 +531,7 @@ test('purge lock contention remains retryable beyond the exception limit', funct
         'updated_at' => $createdAt,
     ]);
     $lock = Cache::lock(
-        app(TenantBoundary::class)->key('activity.events', 'purge'),
+        'nvl:activity:purge:'.hash('sha256', app(TenantBoundary::class)->key('activity.events', 'purge')),
         60,
     );
 
@@ -525,7 +546,7 @@ test('purge lock contention remains retryable beyond the exception limit', funct
         expect($activity->fresh())->not->toBeNull()
             ->and($job->attempts())->toBe(60)
             ->and($job->retryUntil()->getTimestamp())->toBe(now()->addSeconds(
-                (int) config('activity.retention.lock_seconds')
+                (int) config('nvl-activity.retention.lock_seconds')
                 + (PurgeActivityLogsJob::TIMEOUT_SECONDS * $job->maxExceptions)
                 + (max($job->backoff()) * ($job->maxExceptions - 1))
                 + 60,
@@ -537,7 +558,7 @@ test('purge lock contention remains retryable beyond the exception limit', funct
 });
 
 test('purge jobs are queued on the configured channel after commit', function (): void {
-    config()->set('activity.retention.queue', 'activity-maintenance');
+    config()->set('nvl-activity.retention.queue', 'activity-maintenance');
 
     $job = new PurgeActivityLogsJob(days: 90);
 
@@ -550,13 +571,13 @@ test('purge jobs are queued on the configured channel after commit', function ()
         ->and($job->failOnTimeout)->toBeTrue()
         ->and($job->backoff())->toBe([60, 300, 900, 1800])
         ->and($job->retryUntil()->getTimestamp())->toBeGreaterThan(
-            now()->addSeconds((int) config('activity.retention.lock_seconds'))->getTimestamp(),
+            now()->addSeconds((int) config('nvl-activity.retention.lock_seconds'))->getTimestamp(),
         );
 });
 
 test('strict doctor readiness rejects sync queues even when routes and scheduling are disabled', function (): void {
-    config()->set('activity.routes.enabled', false);
-    config()->set('activity.retention.schedule.enabled', false);
+    config()->set('nvl-activity.routes.enabled', false);
+    config()->set('nvl-activity.retention.schedule.enabled', false);
     config()->set('queue.default', 'sync');
 
     $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
@@ -588,7 +609,7 @@ test('doctor rejects process-local retention locks and validates lock providers'
 });
 
 test('doctor requires queue redelivery visibility to exceed the purge timeout', function (): void {
-    config()->set('activity.retention.queue', 'activity-maintenance');
+    config()->set('nvl-activity.retention.queue', 'activity-maintenance');
     config()->set('queue.connections', [
         'database' => [
             'driver' => 'database',
@@ -623,7 +644,7 @@ test('doctor requires queue redelivery visibility to exceed the purge timeout', 
     $externalMissing = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
 
     config()->set(
-        'activity.retention.external_visibility_timeout_seconds',
+        'nvl-activity.retention.external_visibility_timeout_seconds',
         PurgeActivityLogsJob::TIMEOUT_SECONDS + 1,
     );
     $externalSafe = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
@@ -637,7 +658,7 @@ test('doctor requires queue redelivery visibility to exceed the purge timeout', 
     config()->set('queue.default', 'deferred');
     $nonDurable = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
 
-    config()->set('activity.retention.external_visibility_timeout_seconds', '901');
+    config()->set('nvl-activity.retention.external_visibility_timeout_seconds', '901');
     $invalidConfiguration = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'configuration.values');
 

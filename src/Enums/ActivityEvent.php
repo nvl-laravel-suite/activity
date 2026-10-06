@@ -38,6 +38,6 @@ enum ActivityEvent: string
      */
     public function getLabel(): string
     {
-        return (string) trans("activity::activity/general.events.{$this->value}");
+        return (string) trans("nvl-activity::activity/general.events.{$this->value}");
     }
 }

@@ -21,9 +21,9 @@ enum EntrySource: string
     public function getLabel(): string
     {
         return match ($this) {
-            self::ActivityLog => (string) trans('activity::activity/general.sources.activity_log'),
-            self::Mail => (string) trans('activity::activity/general.sources.mail'),
-            self::Comment => (string) trans('activity::activity/general.sources.comment'),
+            self::ActivityLog => (string) trans('nvl-activity::activity/general.sources.activity_log'),
+            self::Mail => (string) trans('nvl-activity::activity/general.sources.mail'),
+            self::Comment => (string) trans('nvl-activity::activity/general.sources.comment'),
         };
     }
 }

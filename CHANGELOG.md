@@ -4,6 +4,15 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Isolate owned cache and lock keys under `nvl:activity:`; preserve generic host entries and explicit store choices.
+
+- Prepare lockstep major 5 with required and development NVL peer floors of `^5.0`. This candidate has not been tagged or published.
+- Record package activity independently of the host Spatie model setting; global model adoption is explicit.
+- Use namespaced global surfaces and inherited queue destinations for maintenance.
+- Review [UPGRADING.md](UPGRADING.md) before adopting the new names and infrastructure boundaries.
+
 ## [2.3.0] - 2026-09-28
 
 ### Added

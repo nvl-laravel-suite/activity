@@ -27,6 +27,6 @@ enum ActivityResponseCode: string implements ResponseCode
      */
     public function getMessage(): string
     {
-        return (string) trans("activity::activity/general.responses.{$this->value}");
+        return (string) trans("nvl-activity::activity/general.responses.{$this->value}");
     }
 }

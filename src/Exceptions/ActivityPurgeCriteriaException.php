@@ -80,7 +80,7 @@ final class ActivityPurgeCriteriaException extends ActivityException implements 
         ?Throwable $previous = null,
     ): self {
         return new self(
-            message: (string) trans("activity::activity/general.errors.purge.{$key}", $replacements),
+            message: (string) trans("nvl-activity::activity/general.errors.purge.{$key}", $replacements),
             responseCode: ActivityResponseCode::InvalidPurgeCriteria,
             suggestedStatus: Response::HTTP_UNPROCESSABLE_ENTITY,
             publicContext: $publicContext,

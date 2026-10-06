@@ -30,7 +30,7 @@ final class TimelineActivityRules
     public static function isNoisyChangeKey(string $key): bool
     {
         $normalized = strtolower(trim($key));
-        $configured = config('activity.capture.ignored_attributes', self::DEFAULT_IGNORED_ATTRIBUTES);
+        $configured = config('nvl-activity.capture.ignored_attributes', self::DEFAULT_IGNORED_ATTRIBUTES);
         $ignoredAttributes = is_array($configured)
             ? array_values(array_filter(
                 $configured,

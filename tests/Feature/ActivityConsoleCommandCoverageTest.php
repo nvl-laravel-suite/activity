@@ -45,7 +45,7 @@ test('migration publishing is timestamp-aware and doctor detects duplicate owner
 
     expect(ActivityServiceProvider::pathsToPublish(
         ActivityServiceProvider::class,
-        'activity-migrations',
+        'nvl-activity-migrations',
     ))->not->toBeEmpty()
         ->and($publishableMigrationPaths)->toContain($migrationPath);
 
@@ -145,8 +145,8 @@ test('purge command requires explicit inclusion before counting important eviden
 
 test('purge commands dispatch their normalized default retention criteria', function (): void {
     Bus::fake();
-    config()->set('activity.retention.default_days', 120);
-    config()->set('activity.retention.system_logs_days', 'invalid');
+    config()->set('nvl-activity.retention.default_days', 120);
+    config()->set('nvl-activity.retention.system_logs_days', 'invalid');
 
     $this->artisan('nvl:activity:purge')
         ->expectsOutputToContain('Activity log purge job dispatched.')

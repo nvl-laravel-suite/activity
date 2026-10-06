@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 
 return [
+    'queue' => ['connection' => null, 'name' => null],
+    'adoption' => ['spatie' => false],
     'tenancy' => [
         'active_tenant_worklist' => [],
     ],
@@ -12,7 +14,7 @@ return [
 
     'routes' => [
         'enabled' => false,
-        'prefix' => 'api/v1',
+        'prefix' => 'nvl/api/v1',
         'middleware' => ['api'],
         'management_middleware' => ['auth', 'throttle:60,1'],
         'timeline_subjects' => [],
@@ -53,7 +55,7 @@ return [
         'default_days' => 365,
         'system_logs_days' => 90,
         'allowed_purge_options' => [90, 365, 730],
-        'queue' => 'maintenance',
+        'queue' => null,
         'external_visibility_timeout_seconds' => null,
         'lock_seconds' => 3600,
         'schedule' => [

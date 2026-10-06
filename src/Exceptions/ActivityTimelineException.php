@@ -19,7 +19,7 @@ final class ActivityTimelineException extends ActivityException implements Shoul
     public static function subjectNotFound(string $modelClass, string $subjectId): self
     {
         return new self(
-            message: (string) trans('activity::activity/general.errors.timeline.subject_not_found'),
+            message: (string) trans('nvl-activity::activity/general.errors.timeline.subject_not_found'),
             responseCode: ActivityResponseCode::TimelineSubjectNotFound,
             suggestedStatus: Response::HTTP_NOT_FOUND,
             diagnosticContext: [

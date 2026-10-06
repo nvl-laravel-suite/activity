@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Support\Config\PackageOptions;
 use Nvl\Support\Tenancy\Contracts\TenantBoundary;
 use Nvl\Support\Tenancy\Contracts\TenantQueuedJob;
 use Nvl\Support\Tenancy\Enums\TenantContextMode;
@@ -73,8 +74,8 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
         ?TenantJobEnvelope $envelope = null,
     ) {
         $this->envelope = $envelope ?? new TenantJobEnvelope(new TenantContextSnapshot(TenantContextMode::Disabled));
-        $configuredQueue = config('activity.retention.queue', 'maintenance');
-        $this->onQueue(is_string($configuredQueue) ? $configuredQueue : 'maintenance');
+        $this->onConnection(PackageOptions::queueConnection('activity'));
+        $this->onQueue(PackageOptions::queueName('activity'));
         $this->afterCommit();
     }
 
@@ -93,7 +94,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
     {
         $criteria = $this->resolvedCriteria();
         $lock = Cache::lock(
-            $boundary->key('activity.events', 'purge'),
+            'nvl:activity:purge:'.hash('sha256', $boundary->key('activity.events', 'purge')),
             $this->lockSeconds(),
         );
 
@@ -221,7 +222,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
      */
     public static function countPurgeableForCriteria(ActivityPurgeCriteria $criteria, ?TenantBoundary $boundary = null): int
     {
-        if ($boundary === null && config('tenancy.enabled') === true) {
+        if ($boundary === null && config('nvl-tenancy.enabled') === true) {
             throw new UnexpectedValueException('Tenant activity purge counts require an explicit tenant boundary.');
         }
 
@@ -265,7 +266,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
      */
     private function lockSeconds(): int
     {
-        $configuredLockSeconds = config('activity.retention.lock_seconds', 3600);
+        $configuredLockSeconds = config('nvl-activity.retention.lock_seconds', 3600);
 
         return max(
             self::TIMEOUT_SECONDS + self::LOCK_RETRY_DELAY_SECONDS,

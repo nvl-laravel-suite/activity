@@ -68,7 +68,7 @@ final class ActivityEntryNormalizer
         $actorName = $causer->name
             ?? ($causer->id !== null
                 ? (string) $causer->id
-                : (string) trans('activity::activity/general.actors.system'));
+                : (string) trans('nvl-activity::activity/general.actors.system'));
         $resolvedHeadline = $this->headlineRenderer->resolveHeadline(
             event: $event,
             activity: $activity,

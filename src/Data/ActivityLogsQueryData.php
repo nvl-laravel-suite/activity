@@ -61,7 +61,7 @@ final class ActivityLogsQueryData extends ActivityInputData
                     'events' => $input['events'] ?? null,
                 ]);
             } catch (InvalidArgumentException) {
-                $validator->errors()->add('events', (string) trans('activity::activity/general.validation.invalid_events'));
+                $validator->errors()->add('events', (string) trans('nvl-activity::activity/general.validation.invalid_events'));
             }
         });
     }

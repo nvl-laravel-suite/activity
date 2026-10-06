@@ -12,9 +12,9 @@ Version 1.0 removed consumer-specific mappings and model hooks, compatibility wr
 2. Explicitly require `spatie/laravel-activitylog:^5.0`; v4 is not a supported runtime. Replace host imports for `LogsActivity`, `LogOptions`, and `ActivityLogger` with their v5 namespaces under `Models\Concerns` and `Support`, or use `Nvl\Activity\Traits\HasModelActivity` for mapped capture.
 3. Remove any `activity.model` configuration. The provider always binds `Nvl\Activity\Models\ActivityLog` to `activitylog.activity_model`; consumer overrides are unsupported.
 4. Decide who owns the migrations before running them:
-   - For a clean canonical installation, keep the boolean `activity.migrations.enabled=true`; vendor migrations own literal `activity_log` on the default connection.
+   - For a clean canonical installation, keep the boolean `nvl-activity.migrations.enabled=true`; vendor migrations own literal `activity_log` on the default connection.
    - For a compatible existing canonical table, keep the switch enabled. The baseline migration certifies its shape without recreating it, the v5 bridge adds nullable JSON `attribute_changes` when absent, and rollback never drops created or adopted audit evidence.
-   - If `activity-migrations` was published, set the boolean switch to `false`. The copied migration is application-owned and must not be edited after deployment.
+   - If `nvl-activity-migrations` was published, set the boolean switch to `false`. The copied migration is application-owned and must not be edited after deployment.
    - For custom tables, custom connections, or an existing table that fails canonical certification, set the switch to `false` and use a new application-owned migration with frozen literal table and connection names in both `up()` and `down()`.
 5. Never read a migration target from `config()`. If storage configuration changes later, rollback must still address the exact target originally created.
    A separate Activity storage connection cannot participate atomically in a transaction on the business connection. Before cutover, choose an explicit consistency policy such as after-commit best-effort recording or an application-owned transactional outbox.
@@ -27,11 +27,11 @@ Version 1.0 removed consumer-specific mappings and model hooks, compatibility wr
 12. Move extra timeline sources to `MergeableActivityData` and host-owned `MergesActivityTimeline` composition. Preserve the read contract: `null` means complete, and finite limits apply after source filtering and final merge ordering.
 13. Enable routes only after configuring non-empty management middleware, real named `view` / `timeline` / `purge` Gate definitions, and an explicit allowlist of models implementing `MergesActivity`. Re-run Doctor after `config:cache`.
 14. Preview retention with `php artisan nvl:activity:purge --dry-run`. Important activity is excluded by default, including system-only and scheduled purges. Purging it requires explicit API `include_important=true` or CLI `--include-important`, and that choice is retained in queued results and operational audit context. Automatic system retention remains disabled by default.
-15. Configure a real maintenance queue. Purge attempts time out at 900 seconds; a time-based window keeps lock-contention releases valid for at least one configured lock lifetime, while five unhandled execution exceptions remain the failure bound. The queue connection's `retry_after` must be greater than 900 seconds. Configure one canonical LockProvider-backed default cache shared by every worker and scheduler; file is single-host only, and array/null/failover are not production-safe.
+15. Run workers for the effective Activity queue. Package `queue.connection` and `queue.name` overrides take priority, then Core queue defaults, then Laravel's selected connection and queue; null inherits and explicit `sync` is preserved. Move the deprecated `retention.queue` override to `queue.name` before major 6. Purge attempts time out at 900 seconds; a time-based window keeps lock-contention releases valid for at least one configured lock lifetime, while five unhandled execution exceptions remain the failure bound. The queue connection's `retry_after` must be greater than 900 seconds. Configure one canonical LockProvider-backed default cache shared by every worker and scheduler; file is single-host only, and array/null/failover are not production-safe.
 16. Read purge response codes from top-level `code`; `message` is translated copy and purge metadata, including `includeImportant`, is represented by `ActivityPurgeQueuedResult` under `data`.
 17. Treat `ActivityEvent`, `HeadlineSegment::type`, and `ActivityDoctorCheckData::severity` as backed enums in PHP. Their JSON and generated TypeScript values remain stable strings.
-18. If the application overrides package copy, republish or merge `activity-translations`; validation, operational enum, Doctor, API, and scoped error keys are package-owned.
-19. Republish `activity-skills` with `--force`, or manually merge the updated bundled skill when the consumer has customized its published copy. Review local changes before overwriting.
+18. If the application overrides package copy, republish or merge `nvl-activity-translations`; validation, operational enum, Doctor, API, and scoped error keys are package-owned.
+19. Republish `nvl-activity-skills` with `--force`, or manually merge the updated bundled skill when the consumer has customized its published copy. Review local changes before overwriting.
 20. Regenerate and check `Nvl.Activity.*` TypeScript declarations, then run the isolated package quality gate and a clean consumer installation rehearsal.
 
 Do not edit already-deployed package or application migrations. Add a new application migration for every later schema change and document any deliberate forward-only audit-evidence boundary.
@@ -46,12 +46,18 @@ This is a breaking schema identity change. Back up storage and migration history
 
 ```sh
 php artisan nvl:doctor --strict --format=json
-php artisan nvl:schema:upgrade --package=activity --claim-legacy --dry-run --format=json
-php artisan nvl:schema:upgrade --package=activity --claim-legacy --format=json
+php artisan nvl:schema:upgrade --package=activity --claim-legacy --migration-owner=vendor --dry-run --format=json
+php artisan nvl:schema:upgrade --package=activity --claim-legacy --migration-owner=vendor --format=json
 ```
 
 The command validates released columns and relational keys plus creating migration history, renames owned legacy tables to the effective `tables.*` targets and rewrites exact package migration identities while retaining batches and unrelated host records. It refuses foreign/incomplete shapes and conflicting targets. Explicit old table mappings retain those names; remove them when choosing new defaults. A second run is empty.
 
-Unmodified published files, including changed timestamps, map by verified checksum to the exact vendor migration identity and current package migration implementation. Modified host copies remain host-owned. Disable vendor loading when retaining a published owner; duplicate ownership fails before migration. No migration files or stored morph types are rewritten.
+Declare each published path and canonical identity explicitly in `nvl-core.migrations.published`; retimestamped history also needs an exact `legacy` mapping. Use `--migration-owner=vendor` after manually archiving declared copies outside loaded paths, or `--migration-owner=published` after manually replacing executable copies with current migration code and disabling vendor loading. The plan verifies ownership and preserves batches; checksums do not automatically claim files. Modified host copies remain host-owned. No migration files or stored morph types are rewritten.
 
-DDL transactions are driver dependent and per connection. Inspect dry-run warnings for MySQL/MariaDB or split storage; after a failure, inspect completed steps before resuming. Schema-qualified rename targets require an explicit host schema move first. Re-enable your selected migration owner, migrate remaining package changes and rerun Doctor before resuming writes. See the suite upgrade guide for shared owner/locale inputs, Core option defaults and one-major deprecation rules.
+DDL transactions are driver dependent and per connection. Inspect dry-run warnings for MySQL/MariaDB or split storage; after a failure, inspect completed steps before resuming. Schema-qualified rename targets require an explicit host schema move first. Re-enable your selected migration owner, run `nvl:schema:preflight` with the same selected paths and connection, then migrate remaining package changes and rerun Doctor before resuming writes. See the suite upgrade guide for shared owner/locale inputs, Core option defaults and one-major deprecation rules.
+
+## Major 5 cache and lock identities
+
+Purge locks use `nvl:activity:purge:` followed by the hash of the admitted tenant boundary identity instead of the generic `purge` key. Inherited cache stores and Laravel scheduler mutexes are preserved; generic host locks are never acquired or removed.
+
+Drain old mutation workers and maintenance processes, then wait for their outstanding lock leases to end before starting the new major across all nodes. Running old and new lock prefixes concurrently would create independent serialization domains. Restart workers after cutover; preserve host-selected stores and keys, and do not flush a shared cache to remove old NVL entries.

@@ -62,15 +62,15 @@ final class ActivityCauserSuggestion extends Data
         $id = is_string($key) || is_int($key) ? (string) $key : '';
         $label = self::stringAttribute(
             $user,
-            config('activity.causer_suggestions.label_attribute', 'name'),
+            config('nvl-activity.causer_suggestions.label_attribute', 'name'),
         );
         $sublabel = self::stringAttribute(
             $user,
-            config('activity.causer_suggestions.sublabel_attribute', 'email'),
+            config('nvl-activity.causer_suggestions.sublabel_attribute', 'email'),
         );
         $type = self::stringAttribute(
             $user,
-            config('activity.causer_suggestions.type_attribute', 'type'),
+            config('nvl-activity.causer_suggestions.type_attribute', 'type'),
         );
 
         return new self(

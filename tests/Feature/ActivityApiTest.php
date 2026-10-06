@@ -17,18 +17,18 @@ use Nvl\Activity\Tests\Stubs\TestActivityUser;
 
 function enable_activity_test_routes(): void
 {
-    config()->set('activity.routes.enabled', true);
-    config()->set('activity.routes.middleware', []);
-    config()->set('activity.routes.management_middleware', []);
+    config()->set('nvl-activity.routes.enabled', true);
+    config()->set('nvl-activity.routes.middleware', []);
+    config()->set('nvl-activity.routes.management_middleware', []);
 
-    (new RouteServiceProvider(app()))->map();
+    (new RouteServiceProvider(app()))->boot();
 }
 
 function enable_activity_default_middleware_test_routes(): void
 {
-    config()->set('activity.routes.enabled', true);
+    config()->set('nvl-activity.routes.enabled', true);
 
-    (new RouteServiceProvider(app()))->map();
+    (new RouteServiceProvider(app()))->boot();
 }
 
 function activity_test_user(): TestActivityUser
@@ -40,7 +40,7 @@ function activity_test_user(): TestActivityUser
 }
 
 test('activity index aliases are normalized by the request contract', function (): void {
-    config()->set('activity.authorization.abilities.view', ' activity.view ');
+    config()->set('nvl-activity.authorization.abilities.view', ' activity.view ');
     Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
 
@@ -51,13 +51,13 @@ test('activity index aliases are normalized by the request contract', function (
     ]);
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities?perPage=1')
+        ->getJson('/nvl/api/v1/activity?perPage=1')
         ->assertSuccessful()
         ->assertJsonPath('data.activities.meta.perPage', 1);
 });
 
 test('activity index accepts bounded multi-event and legacy event filters', function (): void {
-    config()->set('activity.authorization.abilities.view', 'activity.view');
+    config()->set('nvl-activity.authorization.abilities.view', 'activity.view');
     Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
 
@@ -70,17 +70,17 @@ test('activity index accepts bounded multi-event and legacy event filters', func
     }
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities?events=created,updated')
+        ->getJson('/nvl/api/v1/activity?events=created,updated')
         ->assertSuccessful()
         ->assertJsonCount(2, 'data.activities.items');
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities?events[]=updated&events[]=deleted')
+        ->getJson('/nvl/api/v1/activity?events[]=updated&events[]=deleted')
         ->assertSuccessful()
         ->assertJsonCount(2, 'data.activities.items');
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities?event=created')
+        ->getJson('/nvl/api/v1/activity?event=created')
         ->assertSuccessful()
         ->assertJsonCount(1, 'data.activities.items');
 
@@ -90,7 +90,7 @@ test('activity index accepts bounded multi-event and legacy event filters', func
     ));
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities?events='.$events)
+        ->getJson('/nvl/api/v1/activity?events='.$events)
         ->assertUnprocessable()
         ->assertJsonValidationErrors('events');
 });
@@ -99,7 +99,7 @@ test('activity index authorization fails closed without a configured ability', f
     enable_activity_test_routes();
 
     $this->actingAs(activity_test_user())
-        ->get('/api/v1/activities')
+        ->get('/nvl/api/v1/activity')
         ->assertForbidden()
         ->assertHeader('content-type', 'application/json');
 });
@@ -108,11 +108,11 @@ test('default management middleware rejects anonymous api requests before dispat
     Bus::fake();
     enable_activity_default_middleware_test_routes();
 
-    $this->get('/api/v1/activities')
+    $this->get('/nvl/api/v1/activity')
         ->assertUnauthorized()
         ->assertHeader('content-type', 'application/json');
 
-    $this->post('/api/v1/activities/purge', ['days' => 90])
+    $this->post('/nvl/api/v1/activity/purge', ['days' => 90])
         ->assertUnauthorized()
         ->assertHeader('content-type', 'application/json');
 
@@ -120,10 +120,10 @@ test('default management middleware rejects anonymous api requests before dispat
 });
 
 test('consumer management middleware may short circuit with any symfony response', function (): void {
-    config()->set('activity.routes.management_middleware', [TestActivityShortCircuitMiddleware::class]);
+    config()->set('nvl-activity.routes.management_middleware', [TestActivityShortCircuitMiddleware::class]);
     enable_activity_default_middleware_test_routes();
 
-    $this->get('/api/v1/activities')
+    $this->get('/nvl/api/v1/activity')
         ->assertForbidden()
         ->assertSeeText('Consumer middleware denied the request.');
 });
@@ -136,8 +136,8 @@ test('timeline requests require an allowed subject and authorize the resolved ho
 
     try {
         $subject = TestActivityTimelineSubject::query()->create(['name' => 'Timeline host']);
-        config()->set('activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
-        config()->set('activity.authorization.abilities.timeline', 'activity.timeline');
+        config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
+        config()->set('nvl-activity.authorization.abilities.timeline', 'activity.timeline');
         Gate::define(
             'activity.timeline',
             static fn (TestActivityUser $user, TestActivityTimelineSubject $host): bool => $user->getKey() === 1
@@ -158,7 +158,7 @@ test('timeline requests require an allowed subject and authorize the resolved ho
         ]);
 
         $this->actingAs(activity_test_user())
-            ->getJson('/api/v1/activities/timeline?subjectType='.urlencode(
+            ->getJson('/nvl/api/v1/activity/timeline?subjectType='.urlencode(
                 TestActivityTimelineSubject::class,
             ).'&subjectId='.$subject->getKey())
             ->assertSuccessful()
@@ -177,12 +177,12 @@ test('denied and missing timeline subjects return the same non-enumerable respon
 
     try {
         $subject = TestActivityTimelineSubject::query()->create(['name' => 'Protected timeline host']);
-        config()->set('activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
-        config()->set('activity.authorization.abilities.timeline', 'activity.timeline');
+        config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
+        config()->set('nvl-activity.authorization.abilities.timeline', 'activity.timeline');
         Gate::define('activity.timeline', static fn (): bool => false);
         enable_activity_test_routes();
 
-        $path = '/api/v1/activities/timeline?subjectType='.urlencode(
+        $path = '/nvl/api/v1/activity/timeline?subjectType='.urlencode(
             TestActivityTimelineSubject::class,
         ).'&subjectId=';
         $expected = [
@@ -207,12 +207,12 @@ test('denied and missing timeline subjects return the same non-enumerable respon
 test('purge requests authorize through the policy boundary and dispatch the contract job', function (): void {
     Bus::fake();
     Event::fake([ActivityLogPurgeQueuedEvent::class]);
-    config()->set('activity.authorization.abilities.purge', 'activity.purge');
+    config()->set('nvl-activity.authorization.abilities.purge', 'activity.purge');
     Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
 
     $this->actingAs(activity_test_user())
-        ->postJson('/api/v1/activities/purge', ['days' => 90])
+        ->postJson('/nvl/api/v1/activity/purge', ['days' => 90])
         ->assertSuccessful()
         ->assertJsonPath('data.queued', true)
         ->assertJsonPath('data.days', 90)
@@ -236,12 +236,12 @@ test('purge requests authorize through the policy boundary and dispatch the cont
 test('purge requests expose and audit explicit important-evidence inclusion', function (): void {
     Bus::fake();
     Event::fake([ActivityLogPurgeQueuedEvent::class]);
-    config()->set('activity.authorization.abilities.purge', 'activity.purge');
+    config()->set('nvl-activity.authorization.abilities.purge', 'activity.purge');
     Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
 
     $this->actingAs(activity_test_user())
-        ->postJson('/api/v1/activities/purge', [
+        ->postJson('/nvl/api/v1/activity/purge', [
             'days' => 90,
             'include_important' => true,
         ])
@@ -249,7 +249,7 @@ test('purge requests expose and audit explicit important-evidence inclusion', fu
         ->assertJsonPath('data.includeImportant', true);
 
     $this->actingAs(activity_test_user())
-        ->postJson('/api/v1/activities/purge', ['days' => 90, 'includeImportant' => true])
+        ->postJson('/nvl/api/v1/activity/purge', ['days' => 90, 'includeImportant' => true])
         ->assertSuccessful()
         ->assertJsonPath('data.includeImportant', true);
 
@@ -265,7 +265,7 @@ test('purge requests expose and audit explicit important-evidence inclusion', fu
 
 test('purge and causer suggestion endpoints fail closed when configured gates deny access', function (): void {
     Bus::fake();
-    config()->set('activity.authorization.abilities', [
+    config()->set('nvl-activity.authorization.abilities', [
         'view' => 'activity.view',
         'timeline' => 'activity.timeline',
         'purge' => 'activity.purge',
@@ -276,41 +276,41 @@ test('purge and causer suggestion endpoints fail closed when configured gates de
     enable_activity_test_routes();
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities/causers/suggestions?q=a')
+        ->getJson('/nvl/api/v1/activity/causers/suggestions?q=a')
         ->assertForbidden();
 
     $this->actingAs(activity_test_user())
-        ->postJson('/api/v1/activities/purge', ['days' => 90])
+        ->postJson('/nvl/api/v1/activity/purge', ['days' => 90])
         ->assertForbidden();
 
     Bus::assertNothingDispatched();
 });
 
 test('causer suggestions use an authorized form request with bounded aliases', function (): void {
-    config()->set('activity.authorization.abilities.view', 'activity.view');
+    config()->set('nvl-activity.authorization.abilities.view', 'activity.view');
     Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities/causers/suggestions?q=a')
+        ->getJson('/nvl/api/v1/activity/causers/suggestions?q=a')
         ->assertSuccessful()
         ->assertExactJson(['data' => []]);
 
     $this->actingAs(activity_test_user())
-        ->getJson('/api/v1/activities/causers/suggestions?limit=51')
+        ->getJson('/nvl/api/v1/activity/causers/suggestions?limit=51')
         ->assertUnprocessable()
         ->assertJsonValidationErrors('limit');
 });
 
 test('activity api validation errors use the active package locale and canonical field scope', function (): void {
-    config()->set('activity.authorization.abilities.view', 'activity.view');
+    config()->set('nvl-activity.authorization.abilities.view', 'activity.view');
     Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
     app()->setLocale('bg');
 
     try {
         $this->actingAs(activity_test_user())
-            ->getJson('/api/v1/activities/causers/suggestions?limit=51')
+            ->getJson('/nvl/api/v1/activity/causers/suggestions?limit=51')
             ->assertUnprocessable()
             ->assertJsonPath(
                 'errors.limit.0',
@@ -318,7 +318,7 @@ test('activity api validation errors use the active package locale and canonical
             );
 
         $this->actingAs(activity_test_user())
-            ->getJson('/api/v1/activities/timeline?subjectType=unsupported&subjectId=1')
+            ->getJson('/nvl/api/v1/activity/timeline?subjectType=unsupported&subjectId=1')
             ->assertUnprocessable()
             ->assertJsonPath(
                 'errors.subject_type.0',
@@ -330,12 +330,12 @@ test('activity api validation errors use the active package locale and canonical
 });
 
 test('package api failures negotiate json even when the client omits an accept header', function (): void {
-    config()->set('activity.authorization.abilities.view', 'activity.view');
+    config()->set('nvl-activity.authorization.abilities.view', 'activity.view');
     Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
 
     $this->actingAs(activity_test_user())
-        ->get('/api/v1/activities?perPage=101')
+        ->get('/nvl/api/v1/activity?perPage=101')
         ->assertUnprocessable()
         ->assertHeader('content-type', 'application/json')
         ->assertJsonValidationErrors('per_page');
@@ -348,8 +348,8 @@ test('missing timeline subjects return a safe coded and translated api error', f
     });
 
     try {
-        config()->set('activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
-        config()->set('activity.authorization.abilities.timeline', 'activity.timeline');
+        config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
+        config()->set('nvl-activity.authorization.abilities.timeline', 'activity.timeline');
         Gate::define(
             'activity.timeline',
             static fn (TestActivityUser $user, TestActivityTimelineSubject $host): bool => $user->getKey() === 1
@@ -359,7 +359,7 @@ test('missing timeline subjects return a safe coded and translated api error', f
         app()->setLocale('bg');
 
         $this->actingAs(activity_test_user())
-            ->getJson('/api/v1/activities/timeline?subjectType='.urlencode(
+            ->getJson('/nvl/api/v1/activity/timeline?subjectType='.urlencode(
                 TestActivityTimelineSubject::class,
             ).'&subjectId=999')
             ->assertNotFound()
@@ -380,13 +380,13 @@ test('malformed allowed subject identifiers return a safe not found response', f
     });
 
     try {
-        config()->set('activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
-        config()->set('activity.authorization.abilities.timeline', 'activity.timeline');
+        config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
+        config()->set('nvl-activity.authorization.abilities.timeline', 'activity.timeline');
         Gate::define('activity.timeline', static fn (): bool => true);
         enable_activity_test_routes();
 
         $this->actingAs(activity_test_user())
-            ->getJson('/api/v1/activities/timeline?subjectType='.urlencode(
+            ->getJson('/nvl/api/v1/activity/timeline?subjectType='.urlencode(
                 TestActivityTimelineSubject::class,
             ).'&subjectId=not-an-integer')
             ->assertNotFound()
@@ -401,14 +401,14 @@ test('malformed allowed subject identifiers return a safe not found response', f
 
 test('system purge responses separate stable codes from translated messages', function (): void {
     Bus::fake();
-    config()->set('activity.authorization.abilities.purge', 'activity.purge');
+    config()->set('nvl-activity.authorization.abilities.purge', 'activity.purge');
     Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
     app()->setLocale('bg');
 
     try {
         $this->actingAs(activity_test_user())
-            ->postJson('/api/v1/activities/purge-system', ['days' => 90])
+            ->postJson('/nvl/api/v1/activity/purge-system', ['days' => 90])
             ->assertSuccessful()
             ->assertJsonPath('data.systemOnly', true)
             ->assertJsonPath('code', 'purge_system_queued')

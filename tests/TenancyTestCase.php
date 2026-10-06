@@ -30,9 +30,9 @@ abstract class TenancyTestCase extends Orchestra
     /** Configure tenant ownership before package providers finish booting. */
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('tenancy.enabled', true);
-        $app['config']->set('tenancy.profile', 'application');
-        $app['config']->set('tenancy.resources', ['activity' => 'tenant']);
+        $app['config']->set('nvl-tenancy.enabled', true);
+        $app['config']->set('nvl-tenancy.profile', 'application');
+        $app['config']->set('nvl-tenancy.resources', ['activity' => 'tenant']);
         TenantScenario::bind($app);
     }
 

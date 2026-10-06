@@ -47,7 +47,7 @@ final class ListActivityCauserSuggestionsAction
         /** @var Model $user */
         $user = new $userClass;
 
-        if (config('tenancy.enabled') === true) {
+        if (config('nvl-tenancy.enabled') === true) {
             if (! $this->ownership instanceof ActivityOwnershipGuard) {
                 return ActivityCauserSuggestion::collect([], DataCollection::class);
             }
@@ -80,7 +80,7 @@ final class ListActivityCauserSuggestionsAction
             return ActivityCauserSuggestion::collect([], DataCollection::class);
         }
 
-        $configuredScanLimit = config('activity.causer_suggestions.scan_limit', 5000);
+        $configuredScanLimit = config('nvl-activity.causer_suggestions.scan_limit', 5000);
         $scanLimit = min(50000, max(
             $resolvedLimit,
             is_int($configuredScanLimit) ? $configuredScanLimit : 5000,
@@ -182,7 +182,7 @@ final class ListActivityCauserSuggestionsAction
      */
     private function resolveCauserModelClass(): ?string
     {
-        $configuredModel = config('activity.causer_suggestions.model');
+        $configuredModel = config('nvl-activity.causer_suggestions.model');
 
         if ($configuredModel === null || $configuredModel === '') {
             $configuredModel = config('auth.providers.users.model');
@@ -216,7 +216,7 @@ final class ListActivityCauserSuggestionsAction
      */
     private function searchAttributes(array $columns): array
     {
-        $configuredAttributes = config('activity.causer_suggestions.search_attributes', ['name', 'email']);
+        $configuredAttributes = config('nvl-activity.causer_suggestions.search_attributes', ['name', 'email']);
 
         if (! is_array($configuredAttributes)) {
             return [];

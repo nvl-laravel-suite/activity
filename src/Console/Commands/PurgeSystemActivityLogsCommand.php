@@ -64,7 +64,7 @@ final class PurgeSystemActivityLogsCommand extends Command
         if ((bool) $this->option('dry-run')) {
             $count = $this->purges->count($criteria);
             $this->info((string) trans(
-                'activity::activity/general.console.purge.system_dry_run',
+                'nvl-activity::activity/general.console.purge.system_dry_run',
                 ['count' => $count],
             ));
 
@@ -73,7 +73,7 @@ final class PurgeSystemActivityLogsCommand extends Command
 
         $this->purges->dispatch($criteria);
 
-        $this->info((string) trans('activity::activity/general.console.purge.system_dispatched'));
+        $this->info((string) trans('nvl-activity::activity/general.console.purge.system_dispatched'));
 
         return self::SUCCESS;
     }
@@ -93,7 +93,7 @@ final class PurgeSystemActivityLogsCommand extends Command
      */
     private function configuredDefaultDays(): int
     {
-        $days = config('activity.retention.system_logs_days', 90);
+        $days = config('nvl-activity.retention.system_logs_days', 90);
 
         return is_int($days) && $days > 0 ? $days : 90;
     }

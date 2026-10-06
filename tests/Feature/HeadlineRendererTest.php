@@ -147,7 +147,7 @@ test('package owned activity events render through shared headline templates', f
     $templateEvent = $event === ActivityEvent::DetailsUpdated
         ? ActivityEvent::Updated
         : $event;
-    $template = (string) trans("activity::activity/general.templates.{$templateEvent->value}");
+    $template = (string) trans("nvl-activity::activity/general.templates.{$templateEvent->value}");
     $expectedHeadline = strtr($template, [
         ':actor' => 'Nicolas',
         ':subject' => 'record',

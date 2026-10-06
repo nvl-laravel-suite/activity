@@ -11,11 +11,11 @@ See the [installation and publishing guide](https://github.com/nvl-laravel-suite
 
 | Item | Value |
 |---|---|
-| Installed through | `composer require nvl/activity:^2.0` |
+| Installed through | `composer require nvl/activity:^5.0` |
 | Module identifier | `nvl/activity` |
 | PHP namespace | `Nvl\Activity` |
 | Service provider | `Nvl\Activity\Providers\ActivityServiceProvider` |
-| Configuration | `config/activity.php` |
+| Configuration | `config/nvl-activity.php` |
 
 ## Purpose
 
@@ -23,12 +23,14 @@ See the [installation and publishing guide](https://github.com/nvl-laravel-suite
 
 Activity depends on `nvl/core` and Spatie Activitylog 5.x. Activitylog 4.x is not a supported runtime. Historical v4 rows remain readable after the documented schema and namespace upgrade. The package is not event sourcing, workflow orchestration, authorization policy, or a domain event replacement.
 
+NVL recording and `HasModelActivity` capture always write the package-owned Activity model and storage. Installation preserves the host's `activitylog.activity_model`; `nvl-activity.adoption.spatie` explicitly adopts that global Spatie model and defaults to `false`. Retention schedules remain opt-in.
+
 ## Requirements and installation
 
 Install the stable package from Packagist with:
 
 ```bash
-composer require nvl/activity:^2.0
+composer require nvl/activity:^5.0
 php artisan migrate
 ```
 
@@ -37,18 +39,18 @@ Laravel auto-discovers `ActivityServiceProvider`. On a clean installation, the p
 Optional publish tags:
 
 ```bash
-php artisan vendor:publish --tag=activity-config
-php artisan vendor:publish --tag=activity-migrations
-php artisan vendor:publish --tag=activity-translations
-php artisan vendor:publish --tag=activity-skills
+php artisan vendor:publish --tag=nvl-activity-config
+php artisan vendor:publish --tag=nvl-activity-migrations
+php artisan vendor:publish --tag=nvl-activity-translations
+php artisan vendor:publish --tag=nvl-activity-skills
 ```
 
 Publishing is an ownership transfer:
 
-1. **Automatic vendor loading (default):** do not publish `activity-migrations`; leave `activity.migrations.enabled=true`. The package maintains the migrations and owns the canonical `activity_log` table on the default connection. An existing table may be baselined only when the package migration certifies its columns, identifiers, primary key, JSON storage, and indexes; rollback never drops created or adopted audit evidence.
-2. **Host-owned published migrations:** publish `activity-migrations`, set `activity.migrations.enabled=false` before migrating, and maintain the published file as an application migration. Do not edit it after deployment.
+1. **Automatic vendor loading (default):** do not publish `nvl-activity-migrations`; leave `nvl-activity.migrations.enabled=true`. The package maintains the migrations and owns the canonical `activity_log` table on the default connection. An existing table may be baselined only when the package migration certifies its columns, identifiers, primary key, JSON storage, and indexes; rollback never drops created or adopted audit evidence.
+2. **Host-owned published migrations:** publish `nvl-activity-migrations`, set `nvl-activity.migrations.enabled=false` before migrating, and maintain the published file as an application migration. Do not edit it after deployment.
 
-- Custom tables, custom connections, and existing canonical tables that fail package certification require `activity.migrations.enabled=false` plus an application-owned migration whose `up()` and `down()` methods use frozen literal table and connection names. Never resolve a migration target from mutable runtime configuration.
+- Custom tables, custom connections, and existing canonical tables that fail package certification require `nvl-activity.migrations.enabled=false` plus an application-owned migration whose `up()` and `down()` methods use frozen literal table and connection names. Never resolve a migration target from mutable runtime configuration.
 
 Never run both migration sources. Laravel retimestamps files published through the migration tag. Doctor reports a warning when automatic loading remains enabled and `database/migrations` contains a timestamp-independent name matching the package migration; `--strict` promotes that warning to failure.
 
@@ -85,7 +87,7 @@ The suite enforces Activitylog 5.x and PHP 8.4+. Treat this as an explicit consu
 Disable package migrations first:
 
 ```php
-// config/activity.php
+// config/nvl-activity.php
 'migrations' => [
     'enabled' => false,
 ],
@@ -496,7 +498,7 @@ Management routes are disabled by default:
 ```php
 'routes' => [
     'enabled' => false,
-    'prefix' => 'api/v1',
+    'prefix' => 'nvl/api/v1',
     'middleware' => ['api'],
     'management_middleware' => ['auth', 'throttle:60,1'],
     'timeline_subjects' => [Article::class],
@@ -527,21 +529,21 @@ Gate::define(
 Gate::define('activity.purge', static fn (User $user): bool => $user->can('purge activity'));
 ```
 
-When enabled, routes use `/api/v1/activities` and stable `nvl.activity.activities.*` names. Authorization fails closed unless all three named abilities are configured and defined. Subject timelines additionally require an explicit model or morph-alias allowlist containing only models that implement `MergesActivity`. The package assumes no concrete user model, middleware alias beyond configured values, or identifier type.
+When enabled, routes use `/nvl/api/v1/activity` and stable `nvl.activity.activities.*` names. Authorization fails closed unless all three named abilities are configured and defined. Subject timelines additionally require an explicit model or morph-alias allowlist containing only models that implement `MergesActivity`. The package assumes no concrete user model, middleware alias beyond configured values, or identifier type.
 
 Causer suggestions are optional. Configure an Eloquent model and allowlisted label/search attributes, or allow the package to inspect the configured Eloquent auth provider. If no compatible model exists, suggestions return an empty collection.
 
 ### API request contracts
 
-Every path below is relative to the configured route prefix, which is `/api/v1` by default. Canonical request fields are snake-case; the documented camelCase aliases are accepted only when the canonical field is absent.
+Every path below is relative to the configured route prefix, which is `/nvl/api/v1` by default. Canonical request fields are snake-case; the documented camelCase aliases are accepted only when the canonical field is absent.
 
 | Method and path | Request contract |
 | --- | --- |
-| `GET /activities` | Optional `search` and legacy `event` strings up to 100 characters; optional `events` array or comma-separated string with at most ten unique event names up to 100 characters each; `causer_id` / `causerId` up to 100; `subject_type` / `subjectType` up to 255; `subject_id` / `subjectId` up to 100; valid inclusive dates in `created_at_from` / `createdAtFrom` and `created_at_to` / `createdAtTo`, with the upper bound on or after the lower bound; `per_page` / `perPage` or its `limit` alias from 1 to 100 (default 20); and `page` from 1. A date-only upper bound includes the complete day. |
-| `GET /activities/timeline` | Required `subject_type` / `subjectType` string up to 255 characters and `subject_id` / `subjectId` string up to 100; optional `limit` from 1 to 100 (default 100). The subject type must resolve through `activity.routes.timeline_subjects`. |
-| `GET /activities/causers/suggestions` | Optional `search` or `q`, at most 50 characters; a one-character search intentionally returns no suggestions. Optional `limit` is from 1 to 50 (default 10). |
-| `POST /activities/purge` | Request body requires integer `days` from `activity.retention.allowed_purge_options`; defaults are 90, 365, or 730. Optional boolean `include_important` defaults to `false`. Queues a general purge. |
-| `POST /activities/purge-system` | Same `days` and `include_important` contract; queues a system-origin-only purge. |
+| `GET /activity` | Optional `search` and legacy `event` strings up to 100 characters; optional `events` array or comma-separated string with at most ten unique event names up to 100 characters each; `causer_id` / `causerId` up to 100; `subject_type` / `subjectType` up to 255; `subject_id` / `subjectId` up to 100; valid inclusive dates in `created_at_from` / `createdAtFrom` and `created_at_to` / `createdAtTo`, with the upper bound on or after the lower bound; `per_page` / `perPage` or its `limit` alias from 1 to 100 (default 20); and `page` from 1. A date-only upper bound includes the complete day. |
+| `GET /activity/timeline` | Required `subject_type` / `subjectType` string up to 255 characters and `subject_id` / `subjectId` string up to 100; optional `limit` from 1 to 100 (default 100). The subject type must resolve through `nvl-activity.routes.timeline_subjects`. |
+| `GET /activity/causers/suggestions` | Optional `search` or `q`, at most 50 characters; a one-character search intentionally returns no suggestions. Optional `limit` is from 1 to 50 (default 10). |
+| `POST /activity/purge` | Request body requires integer `days` from `nvl-activity.retention.allowed_purge_options`; defaults are 90, 365, or 730. Optional boolean `include_important` defaults to `false`. Queues a general purge. |
+| `POST /activity/purge-system` | Same `days` and `include_important` contract; queues a system-origin-only purge. |
 
 The index `limit` parameter is an alias for page size, not an unpaginated result cap. Timeline and causer limits are independent bounded result counts.
 
@@ -551,30 +553,31 @@ All boolean switches must be actual booleans so cached configuration preserves t
 
 | Key | Default | Contract |
 | --- | --- | --- |
-| `activity.routes.enabled` | `false` | Enables the package management API only when strictly `true`. |
-| `activity.routes.prefix` | `api/v1` | Prefix for package API routes. |
-| `activity.routes.middleware` | `['api']` | Base route middleware. |
-| `activity.routes.management_middleware` | `['auth', 'throttle:60,1']` | Required management protection; an empty list fails Doctor. |
-| `activity.routes.timeline_subjects` | `[]` | Explicit model or morph-alias allowlist for merged timelines. |
-| `activity.authorization.abilities.*` | `null` | Real Gate names for `view`, `timeline`, and `purge`; missing or undefined abilities fail closed. |
-| `activity.migrations.enabled` | `true` | Loads forward-only vendor migrations only for `activity_log` on the default connection. Compatible canonical tables are certified and baselined; published, custom, or incompatible adopted storage requires boolean `false`. |
-| `activity.storage.connection` | `null` | Runtime model/query connection. A custom value requires application-owned migrations. |
-| `activity.storage.table` | `activity_log` | Runtime model/query table. A custom value requires application-owned migrations. |
-| `activity.causer_suggestions.model` | `null` | Explicit Eloquent causer model, or the configured Eloquent `users` auth-provider model. |
-| `activity.causer_suggestions.label_attribute` | `name` | Allowlisted primary display attribute. |
-| `activity.causer_suggestions.sublabel_attribute` | `email` | Optional secondary display attribute. |
-| `activity.causer_suggestions.type_attribute` | `type` | Optional actor-type attribute. |
-| `activity.causer_suggestions.search_attributes` | `['name', 'email']` | Allowlisted searchable columns; incompatible columns are ignored safely. |
-| `activity.causer_suggestions.scan_limit` | `5000` | Maximum candidate rows inspected before final suggestion limiting. |
-| `activity.retention.default_days` | `365` | Default general purge cutoff. |
-| `activity.retention.system_logs_days` | `90` | Default system-origin purge cutoff and scheduled value. |
-| `activity.retention.allowed_purge_options` | `[90, 365, 730]` | Allowed API purge-day values. |
-| `activity.retention.queue` | `maintenance` | Queue used by purge jobs. |
-| `activity.retention.external_visibility_timeout_seconds` | `null` | Required operator-declared backend visibility timeout for SQS or custom queue drivers without `retry_after`; it must exceed the purge job timeout. |
-| `activity.retention.lock_seconds` | `3600` | Distributed purge-lock lifetime; runtime enforces at least 960 seconds. |
-| `activity.retention.schedule.enabled` | `false` | Opt-in scheduled system retention. |
-| `activity.retention.schedule.time` | `02:00` | Daily 24-hour schedule time. |
-| `activity.capture.ignored_attributes` | timestamps, soft-delete timestamp, remember token | Exact technical fields omitted from inferred update diffs. Replacing the list replaces the defaults. |
+| `nvl-activity.routes.enabled` | `false` | Enables the package management API only when strictly `true`. |
+| `nvl-activity.routes.prefix` | `nvl/api/v1` | Prefix for package API routes. |
+| `nvl-activity.routes.middleware` | `['api']` | Base route middleware. |
+| `nvl-activity.routes.management_middleware` | `['auth', 'throttle:60,1']` | Required management protection; an empty list fails Doctor. |
+| `nvl-activity.routes.timeline_subjects` | `[]` | Explicit model or morph-alias allowlist for merged timelines. |
+| `nvl-activity.authorization.abilities.*` | `null` | Real Gate names for `view`, `timeline`, and `purge`; missing or undefined abilities fail closed. |
+| `nvl-activity.migrations.enabled` | `true` | Loads forward-only vendor migrations only for `activity_log` on the default connection. Compatible canonical tables are certified and baselined; published, custom, or incompatible adopted storage requires boolean `false`. |
+| `nvl-activity.storage.connection` | `null` | Runtime model/query connection. A custom value requires application-owned migrations. |
+| `nvl-activity.storage.table` | `activity_log` | Runtime model/query table. A custom value requires application-owned migrations. |
+| `nvl-activity.causer_suggestions.model` | `null` | Explicit Eloquent causer model, or the configured Eloquent `users` auth-provider model. |
+| `nvl-activity.causer_suggestions.label_attribute` | `name` | Allowlisted primary display attribute. |
+| `nvl-activity.causer_suggestions.sublabel_attribute` | `email` | Optional secondary display attribute. |
+| `nvl-activity.causer_suggestions.type_attribute` | `type` | Optional actor-type attribute. |
+| `nvl-activity.causer_suggestions.search_attributes` | `['name', 'email']` | Allowlisted searchable columns; incompatible columns are ignored safely. |
+| `nvl-activity.causer_suggestions.scan_limit` | `5000` | Maximum candidate rows inspected before final suggestion limiting. |
+| `nvl-activity.retention.default_days` | `365` | Default general purge cutoff. |
+| `nvl-activity.retention.system_logs_days` | `90` | Default system-origin purge cutoff and scheduled value. |
+| `nvl-activity.retention.allowed_purge_options` | `[90, 365, 730]` | Allowed API purge-day values. |
+| `nvl-activity.queue.connection` | `null` | Purge job connection: explicit package override, then `nvl-core.queue.connection`, then Laravel's effective `queue.default`. Explicit `sync` remains valid. |
+| `nvl-activity.queue.name` | `null` | Purge queue name: explicit package override, then `nvl-core.queue.name`, then the selected Laravel connection's queue. The legacy `retention.queue` override is deprecated for removal in major 6. |
+| `nvl-activity.retention.external_visibility_timeout_seconds` | `null` | Required operator-declared backend visibility timeout for SQS or custom queue drivers without `retry_after`; it must exceed the purge job timeout. |
+| `nvl-activity.retention.lock_seconds` | `3600` | Distributed purge-lock lifetime; runtime enforces at least 960 seconds. |
+| `nvl-activity.retention.schedule.enabled` | `false` | Opt-in scheduled system retention. |
+| `nvl-activity.retention.schedule.time` | `02:00` | Daily 24-hour schedule time. |
+| `nvl-activity.capture.ignored_attributes` | timestamps, soft-delete timestamp, remember token | Exact technical fields omitted from inferred update diffs. Replacing the list replaces the defaults. |
 
 There is intentionally no `activity.model` setting. Run Doctor after publishing or changing configuration and after `config:cache`.
 
@@ -615,10 +618,10 @@ Purge supports date, event, log, subject, causer, and system-origin scopes. Impo
 
 With tenancy enabled, every purge job carries a tenant envelope, scopes its
 candidate/delete queries, and uses a tenant-qualified lock. Platform commands
-enumerate only `activity.tenancy.active_tenant_worklist`; there is no implicit
+enumerate only `nvl-activity.tenancy.active_tenant_worklist`; there is no implicit
 all-tenant query.
 
-Automatic system retention is disabled by default. Configure the maintenance queue, run a worker, and explicitly enable it only after previewing the result:
+Automatic system retention is disabled by default. Run a worker for the effective Activity queue, and explicitly enable it only after previewing the result:
 
 ```php
 'retention' => [
@@ -633,7 +636,7 @@ When enabled, Activity registers `nvl:activity:purge-system` with Laravel's
 scheduler at the configured time. The host must not register a duplicate entry.
 When disabled, schedule-specific readiness is not required.
 
-`PurgeActivityLogsJob` runs after commit, deletes in chunks of 1,000, and uses one distributed lock. Lock contention releases the job for 60 seconds instead of silently succeeding. Its time-based retry window covers one complete configured lock lifetime plus bounded execution retries, so legitimate contention cannot exhaust a small attempt count; five unhandled execution exceptions fail the job. Each attempt has a public 900-second timeout contract with failure-on-timeout and exception backoff delays of 60, 300, 900, and 1,800 seconds. Configure database, Redis, or Beanstalkd `retry_after` to a value **greater than 900 seconds** so another worker cannot receive the same job while a valid attempt is still running. SQS and custom drivers without `retry_after` require `activity.retention.external_visibility_timeout_seconds` to declare the backend value configured outside Laravel; Doctor fails until that declared value also exceeds 900. Failover connections are safe only when every target passes the same rule. Supervisors must also allow the worker enough shutdown time for the 900-second job timeout.
+`PurgeActivityLogsJob` runs after commit, deletes in chunks of 1,000, and uses one distributed lock. Lock contention releases the job for 60 seconds instead of silently succeeding. Its time-based retry window covers one complete configured lock lifetime plus bounded execution retries, so legitimate contention cannot exhaust a small attempt count; five unhandled execution exceptions fail the job. Each attempt has a public 900-second timeout contract with failure-on-timeout and exception backoff delays of 60, 300, 900, and 1,800 seconds. Configure database, Redis, or Beanstalkd `retry_after` to a value **greater than 900 seconds** so another worker cannot receive the same job while a valid attempt is still running. SQS and custom drivers without `retry_after` require `nvl-activity.retention.external_visibility_timeout_seconds` to declare the backend value configured outside Laravel; Doctor fails until that declared value also exceeds 900. Failover connections are safe only when every target passes the same rule. Supervisors must also allow the worker enough shutdown time for the 900-second job timeout.
 
 The default cache must provide Laravel atomic locks. In multi-worker or multi-node deployments, every worker and scheduler must use the same canonical shared lock backend, such as Redis, database, Memcached, or DynamoDB. File locks are suitable only when every process runs on one host and shares the same filesystem. `array` and `null` stores are not production-safe. Cache failover is also unsafe for mutual exclusion because different nodes can acquire locks in different backend domains; strict Doctor rejects all three drivers.
 
@@ -662,7 +665,7 @@ The package owns English and Bulgarian catalogs under the `activity` translation
 - request validation attributes and rules;
 - doctor and purge command output.
 
-Publish `activity-translations` to override copy in `lang/vendor/activity/{locale}`. Keep event keys, enum values, response codes, validation field keys, and stored structured properties locale-neutral. Translate only at display, API, or console boundaries. Every new English key must have a Bulgarian counterpart with identical placeholders.
+Publish `nvl-activity-translations` to override copy in `lang/vendor/activity/{locale}`. Keep event keys, enum values, response codes, validation field keys, and stored structured properties locale-neutral. Translate only at display, API, or console boundaries. Every new English key must have a Bulgarian counterpart with identical placeholders.
 
 Do not store translated headlines, labels, or exception messages in `activity_log`. Store canonical enum values and structured context, then let mappings and the package catalog render the active locale. `ActivityEvent::Sent` and `ActivityEvent::Resent` describe business actions on the subject; mail transport delivery, opening, and retry lifecycle remains owned by `nvl/mail-notifications`.
 
@@ -670,7 +673,7 @@ Do not store translated headlines, labels, or exception messages in `activity_lo
 
 An existing canonical `activity_log` table on the default connection can remain package-managed only when the baseline migration certifies the required columns, string-compatible identifiers, UUID/string primary key, JSON storage, and indexes. Laravel then records the baseline as executed without recreating the table, and the v5 bridge adds `attribute_changes` when missing. Both package migration rollbacks are intentionally non-destructive because created or adopted audit evidence is forward-only.
 
-Other Spatie installations may differ in primary key type, morph columns, indexes, table name, connection, or package version. Set the boolean `activity.migrations.enabled=false`, run Doctor, and resolve differences in an application-owned migration with frozen literal targets. Do not assume a table-name match is schema compatibility, and never edit an already-deployed migration.
+Other Spatie installations may differ in primary key type, morph columns, indexes, table name, connection, or package version. Set the boolean `nvl-activity.migrations.enabled=false`, run Doctor, and resolve differences in an application-owned migration with frozen literal targets. Do not assume a table-name match is schema compatibility, and never edit an already-deployed migration.
 
 Preserve identifiers where possible and compare row counts, checksums, representative properties, and rendered timelines before cutover.
 
@@ -678,7 +681,7 @@ Preserve identifiers where possible and compare row counts, checksums, represent
 
 `ActivityException` extends the shared transport-neutral `BusinessException` contract. Scoped configuration, recording, purge-criteria, and timeline exceptions expose a stable response code, suggested status, safe public context, and separate diagnostic context. JSON requests receive the safe canonical error envelope; configuration details and identifiers remain diagnostic-only.
 
-The recorder does not open its own transaction. When activity and the business model use the same database connection, recording participates in the caller's transaction. A separate `activity.storage.connection` cannot be atomic with a transaction on the business connection: rolling back the business mutation may leave an activity row. Consumers using separate storage must choose and implement an explicit consistency policy, such as after-commit best-effort recording or an application-owned transactional outbox. Application write workflows should commit their business mutation before recording activity when an activity failure must not roll back business state. Jobs or events that depend on durable activity must be dispatched after commit. Timeline providers should fail in isolation where partial timelines are acceptable and fail closed where audit completeness is required; make that application policy explicit.
+The recorder does not open its own transaction. When activity and the business model use the same database connection, recording participates in the caller's transaction. A separate `nvl-activity.storage.connection` cannot be atomic with a transaction on the business connection: rolling back the business mutation may leave an activity row. Consumers using separate storage must choose and implement an explicit consistency policy, such as after-commit best-effort recording or an application-owned transactional outbox. Application write workflows should commit their business mutation before recording activity when an activity failure must not roll back business state. Jobs or events that depend on durable activity must be dispatched after commit. Timeline providers should fail in isolation where partial timelines are acceptable and fail closed where audit completeness is required; make that application policy explicit.
 
 ## Verification
 
@@ -690,14 +693,14 @@ composer quality
 composer validate --strict
 ```
 
-Run `php artisan nvl:activity:doctor --strict --format=json` in a consuming Laravel application after configuration. Maintainer CI additionally checks module boundaries and clean-consumer installation of the tagged package archives. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the `maintenance` queue, and execution by a real database queue worker.
+Run `php artisan nvl:activity:doctor --strict --format=json` in a consuming Laravel application after configuration. Maintainer CI additionally checks module boundaries and clean-consumer installation of the tagged package archives. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the effective inherited queue, and execution by a real database queue worker.
 
 Current tests exercise canonical model binding; immutable migration rollback; custom/adopted schema rejection; mapped create, update, and delete capture; structured writers and batches; anonymous, scalar, integer, UUID, and soft-deleted actors; invalid metadata rejection; complete and finite post-filter timelines across keyset batches; bilingual translations and validation; stable API/error envelopes; real named Gate abilities; subject allowlisting; JSON negotiation; dry-run eligibility; system-origin retention; lock contention; retry/backoff/timeout settings; and after-commit dispatch.
 
-When upgrading a consumer that published the bundled skill, republish `activity-skills` with `--force` or merge the updated package skill into the application's customized copy:
+When upgrading a consumer that published the bundled skill, republish `nvl-activity-skills` with `--force` or merge the updated package skill into the application's customized copy:
 
 ```bash
-php artisan vendor:publish --tag=activity-skills --force
+php artisan vendor:publish --tag=nvl-activity-skills --force
 ```
 
 Review local modifications before using `--force`.
@@ -714,10 +717,16 @@ Run `php artisan nvl:doctor --strict --format=json` to combine the read-only che
 
 ## Next major: isolated schema identities
 
-Use `activity.tables.<logical-key>` for every table and `activity.connection` for its database connection. Null connection inherits `nvl-core.connection`, then Laravel's default. Tables are resolved at runtime by the package table definition helper.
+Use `nvl-activity.tables.<logical-key>` for every table and `nvl-activity.connection` for its database connection. Null connection inherits `nvl-core.connection`, then Laravel's default. Tables are resolved at runtime by the package table definition helper.
 
 | Logical key | New default | Previous name |
 | --- | --- | --- |
 | `log` | `nvl_activity_log` | `activity_log` |
 
-Migration filenames contain `nvl_activity_`. Existing installations must complete the upgrade in `UPGRADING.md` before running new migrations. A pending creator rejects an existing target before any migration in the batch runs; legacy storage with old history needs an ownership decision.
+Migration filenames contain `nvl_activity_`. Existing installations must complete the upgrade in `UPGRADING.md` before running new migrations. A pending creator rejects an existing target before that owned migration runs; use `nvl:schema:preflight` for an explicit whole-batch check; legacy storage with old history needs an ownership decision.
+
+Owned cache and lock identities follow `nvl:<package>:<purpose>:…`. Purge locks use `nvl:activity:purge:` followed by the hash of the admitted tenant boundary identity instead of the generic `purge` key. Inherited cache stores and Laravel scheduler mutexes are preserved; generic host locks are never acquired or removed. See [UPGRADING](UPGRADING.md) for coordinated worker and lock lease cutover.
+
+## Canonical configuration ownership
+
+Use `nvl-activity` settings in `config/nvl-activity.php` and canonical package environment names. Old generic roots are foreign unless an upgrading NVL host explicitly selects them in Core's default-off compatibility. Canonical false/null/empty values win; no old roots are populated or written back. Keep logical package/resource IDs unchanged. Review [Core's rename inventory and cache/worker cutover](https://github.com/nvl-laravel-suite/core/blob/main/UPGRADING.md#major-5-canonical-configuration-and-environment).

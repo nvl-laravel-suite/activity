@@ -46,7 +46,7 @@ final readonly class ActivityOwnershipGuard
     /** Report whether subject ownership and the safe global identity projection are required. */
     public function enabled(): bool
     {
-        return $this->configuration->get('tenancy.enabled') === true;
+        return $this->configuration->get('nvl-tenancy.enabled') === true;
     }
 
     /** @return array{tenant_id?: string|null, ownership_key?: string} */
@@ -441,7 +441,7 @@ final readonly class ActivityOwnershipGuard
     /** Resolve the existing explicit causer display seam without loading Auth. */
     private function globalCauserClass(): ?string
     {
-        $class = $this->configuration->get('activity.causer_suggestions.model')
+        $class = $this->configuration->get('nvl-activity.causer_suggestions.model')
             ?: $this->configuration->get('auth.providers.users.model');
 
         return is_string($class) ? $class : null;

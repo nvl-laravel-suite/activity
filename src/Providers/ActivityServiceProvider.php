@@ -36,9 +36,11 @@ use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tenancy\ActivityResourceRegistrar;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
 use Nvl\Support\Doctor\PackageDoctorContributor;
+use Nvl\Support\Globals\GlobalNames;
 use Nvl\Support\Providers\TenantServiceProvider;
 use Nvl\Support\Tenancy\Services\TenantResourceRegistry;
 use Nvl\Support\Traits\MergesPackageConfiguration;
+use Nvl\Support\Traits\RegistersNamespacedResources;
 use Nvl\Tenancy\Services\TenantAdoptionRegistry;
 
 /**
@@ -47,6 +49,7 @@ use Nvl\Tenancy\Services\TenantAdoptionRegistry;
 final class ActivityServiceProvider extends ServiceProvider
 {
     use MergesPackageConfiguration;
+    use RegistersNamespacedResources;
 
     protected string $name = 'Activity';
 
@@ -59,10 +62,10 @@ final class ActivityServiceProvider extends ServiceProvider
     {
         PackageDoctorContributor::register($this->app, 'nvl/activity', fn (): array => $this->app->make(ActivityDoctor::class)->inspect());
 
-        $this->mergePackageConfiguration(__DIR__.'/../../config/activity.php', 'activity');
-        config([
-            'activitylog.activity_model' => ActivityLog::class,
-        ]);
+        $this->mergePackageConfiguration(__DIR__.'/../../config/nvl-activity.php', 'activity');
+        if (config('nvl-activity.adoption.spatie') === true) {
+            config(['activitylog.activity_model' => ActivityLog::class]);
+        }
 
         $this->app->register(TenantServiceProvider::class);
         $this->app->register(RouteServiceProvider::class);
@@ -103,7 +106,7 @@ final class ActivityServiceProvider extends ServiceProvider
         $this->registerConfig();
         $this->registerModelActivityMappingResolver();
         $this->registerModelActivityTimelineResolver();
-        if (config('activity.migrations.enabled', true) === true) {
+        if (config('nvl-activity.migrations.enabled', true) === true) {
             $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
         }
 
@@ -134,7 +137,7 @@ final class ActivityServiceProvider extends ServiceProvider
      */
     protected function registerCommandSchedules(): void
     {
-        if (config('activity.retention.schedule.enabled', false) !== true) {
+        if (config('nvl-activity.retention.schedule.enabled', false) !== true) {
             return;
         }
 
@@ -143,8 +146,8 @@ final class ActivityServiceProvider extends ServiceProvider
             $schedule = $this->app->make(Schedule::class);
 
             /** @var int $days */
-            $days = config('activity.retention.system_logs_days', 90);
-            $configuredTime = config('activity.retention.schedule.time', '02:00');
+            $days = config('nvl-activity.retention.system_logs_days', 90);
+            $configuredTime = config('nvl-activity.retention.schedule.time', '02:00');
             $time = is_string($configuredTime) && $configuredTime !== ''
                 ? $configuredTime
                 : '02:00';
@@ -237,11 +240,10 @@ final class ActivityServiceProvider extends ServiceProvider
     {
         $langPath = __DIR__.'/../../lang';
 
-        $this->loadTranslationsFrom($langPath, $this->nameLower);
-        $this->loadJsonTranslationsFrom($langPath);
+        $this->app->make(GlobalNames::class)->translations('activity', $langPath, $this->app->make('translation.loader'));
 
         $this->publishes([
-            $langPath => lang_path('vendor/'.$this->nameLower),
+            $langPath => lang_path('vendor/nvl-'.$this->nameLower),
         ], 'activity-translations');
     }
 
@@ -251,7 +253,7 @@ final class ActivityServiceProvider extends ServiceProvider
     protected function registerConfig(): void
     {
         $this->publishes([
-            __DIR__.'/../../config/activity.php' => config_path('activity.php'),
+            __DIR__.'/../../config/nvl-activity.php' => config_path('nvl-activity.php'),
         ], 'activity-config');
     }
 

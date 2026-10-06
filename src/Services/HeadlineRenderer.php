@@ -18,7 +18,7 @@ use Spatie\Activitylog\Models\Activity;
  */
 final class HeadlineRenderer
 {
-    private const string TRANS_PREFIX = 'activity::activity/general';
+    private const string TRANS_PREFIX = 'nvl-activity::activity/general';
 
     /**
      * Create the headline renderer with model-aware label resolution.

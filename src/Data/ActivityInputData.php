@@ -31,7 +31,7 @@ abstract class ActivityInputData extends Data
                 $ruleName = Str::before($rule, ':');
 
                 if (in_array($ruleName, self::TRANSLATED_RULES, true)) {
-                    $messages["{$attribute}.{$ruleName}"] = (string) trans("activity::activity/general.validation.rules.{$ruleName}");
+                    $messages["{$attribute}.{$ruleName}"] = (string) trans("nvl-activity::activity/general.validation.rules.{$ruleName}");
                 }
             }
         }
@@ -49,7 +49,7 @@ abstract class ActivityInputData extends Data
                 continue;
             }
 
-            $key = "activity::activity/general.validation.attributes.{$attribute}";
+            $key = "nvl-activity::activity/general.validation.attributes.{$attribute}";
             $translated = trans($key);
 
             if ($translated !== $key) {

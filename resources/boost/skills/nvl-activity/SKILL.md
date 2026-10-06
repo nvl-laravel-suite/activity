@@ -10,9 +10,9 @@ Use this package for generic structured audit capture and semantic timelines on 
 ## Own the model and schema correctly
 
 - `Nvl\Activity\Models\ActivityLog` is the canonical, non-configurable activity model. The provider binds it to Spatie; never add `activity.model` or override `activitylog.activity_model`.
-- With `activity.migrations.enabled=true`, package migrations own only the literal `activity_log` table on the default connection. The baseline certifies a compatible existing canonical table before adopting it, the v5 bridge adds `attribute_changes`, and rollback never drops activity evidence.
-- Publishing `activity-migrations` transfers ownership to the application. Set `activity.migrations.enabled` to the boolean `false`, maintain the copied migration in the application, and never edit it after deployment.
-- A custom table, custom connection, or existing table that fails canonical certification requires `activity.migrations.enabled=false` and an application-owned migration with frozen literal table and connection names.
+- With `nvl-activity.migrations.enabled=true`, package migrations own only the literal `activity_log` table on the default connection. The baseline certifies a compatible existing canonical table before adopting it, the v5 bridge adds `attribute_changes`, and rollback never drops activity evidence.
+- Publishing `nvl-activity-migrations` transfers ownership to the application. Set `nvl-activity.migrations.enabled` to the boolean `false`, maintain the copied migration in the application, and never edit it after deployment.
+- A custom table, custom connection, or existing table that fails canonical certification requires `nvl-activity.migrations.enabled=false` and an application-owned migration with frozen literal table and connection names.
 - A matching table name does not prove schema compatibility. Run `nvl:activity:doctor --strict --format=json` before altering an adopted table. For a brand-new custom schema, migrate the application-owned schema first because Doctor requires the configured table to exist. Run Doctor after migration and before cutover in both cases, then compare identifiers, columns, JSON properties, indexes, row counts, and representative timelines.
 
 ## Configure deliberately
@@ -93,7 +93,7 @@ Gate::define('activity.purge', fn (User $user): bool => $user->can('purge activi
 ## Own strings and public contracts
 
 - Store canonical event keys, enum values, response codes, and structured context; translate only at display, API, and console boundaries.
-- Use `activity::activity/general.*` for package-owned server copy and keep English/Bulgarian keys and placeholders in exact parity.
+- Use `nvl-activity::activity/general.*` for package-owned server copy and keep English/Bulgarian keys and placeholders in exact parity.
 - Shared templates precede consumer mapping templates; do not let an application replace package-wide semantics accidentally.
 - Treat `ActivityEvent::Sent` and `ActivityEvent::Resent` as business actions on the subject. Keep mail transport delivery, opening, and retry lifecycle in `nvl/mail-notifications`.
 - Treat response codes as opaque machine values. Regenerate and check `Nvl.Activity.*` declarations after changing a DTO or enum.
@@ -116,7 +116,7 @@ From the suite root, run `composer quality` or its module-aware Pest command, th
 
 Coverage must include canonical model binding; literal migration up/down behavior; custom/adopted storage rejection; mapped create/update/delete; structured and batch writes; identifier/actor variants; invalid metadata; complete and finite post-filter timelines across keyset batches; real Gates and allowlists; JSON/API/error contracts; EN/BG parity; retention scopes and dry runs; job locking/retry/backoff/timeout; and after-commit dispatch.
 
-Activitylog 4 is not a supported runtime. Before enabling v5 writes, explicitly require Activitylog 5, move host imports to the v5 namespaces, add the nullable JSON `attribute_changes` column, run strict Doctor, and verify historical `properties` fallback reads. When upgrading a consumer that published this skill, republish `activity-skills` with `--force` only after reviewing local changes, or manually merge the newer bundled skill into the customized application copy. Review `CHANGELOG.md` and `UPGRADING.md` before changing storage or public contracts.
+Activitylog 4 is not a supported runtime. Before enabling v5 writes, explicitly require Activitylog 5, move host imports to the v5 namespaces, add the nullable JSON `attribute_changes` column, run strict Doctor, and verify historical `properties` fallback reads. When upgrading a consumer that published this skill, republish `nvl-activity-skills` with `--force` only after reviewing local changes, or manually merge the newer bundled skill into the customized application copy. Review `CHANGELOG.md` and `UPGRADING.md` before changing storage or public contracts.
 
 ## Configurable-tenancy release discipline
 
@@ -130,4 +130,17 @@ Run `php artisan nvl:doctor --strict --format=json` to combine checks from loade
 
 ### Brownfield storage identities
 
-Resolve all package tables through the table helper and canonical `activity.tables.*`, connections through `activity.connection` with Core/Laravel inheritance. Defaults use `nvl_activity_*`; migration filenames include that package slug. Never silently adopt a matching table or generic migration filename. Run shared `nvl:doctor --strict --format=json` and the explicit `nvl:schema:upgrade --package=activity --claim-legacy --dry-run --format=json` before upgrading owned legacy storage. Validate the complete plan and choose one migration owner. Preserve host records, constraint names and stored morph values. Deprecated config inputs last one major; canonical options take precedence.
+Resolve all package tables through the table helper and canonical `nvl-activity.tables.*`, connections through `nvl-activity.connection` with Core/Laravel inheritance. Defaults use `nvl_activity_*`; migration filenames include that package slug. Never silently adopt a matching table or generic migration filename. Run shared `nvl:doctor --strict --format=json` and the explicit `nvl:schema:upgrade --package=activity --claim-legacy --dry-run --format=json` before upgrading owned legacy storage. Validate the complete plan and choose one migration owner. Preserve host records, constraint names and stored morph values. Deprecated config inputs last one major; canonical options take precedence.
+
+## Cache and lock ownership
+
+Purge locks use `nvl:activity:purge:` followed by the hash of the admitted tenant boundary identity instead of the generic `purge` key. Inherited cache stores and Laravel scheduler mutexes are preserved; generic host locks are never acquired or removed.
+
+Drain old mutation workers and maintenance processes, then wait for their outstanding lock leases to end before starting the new major across all nodes. Running old and new lock prefixes concurrently would create independent serialization domains. Restart workers after cutover; preserve host-selected stores and keys, and do not flush a shared cache to remove old NVL entries.
+
+## Canonical configuration ownership
+
+- Read/write `nvl-activity` configuration and publish only canonical `nvl-<package>-<resource>` tags. Keep logical package/tenant resource identifiers unchanged.
+- Generic config roots and unprefixed package environment names are foreign by default. For an upgrading NVL host only, select `nvl-core.compatibility.legacy_config` package IDs and `legacy_env` explicitly; both default off. Canonical presence wins, including false/null/empty values. Legacy inputs are read without writing back and are removed in major 6.
+- Use canonical `NVL_<PACKAGE>_*` variables only in config evaluation, then rebuild configuration caches and restart workers after cutover. Shared Laravel environment variables retain their names. Consult Core's versioned `support/resources/global-names.json` for all renames.
+- Old global aliases and legacy route families require separate explicit `global_aliases`/`legacy_routes` package selections. Preserve collisions and use Doctor diagnostics; never grant generic permissions automatically or claim signed-link compatibility without the same authorization/signature checks.

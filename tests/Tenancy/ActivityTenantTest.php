@@ -51,7 +51,7 @@ test('selected adoption adds the immutable ownership schema and refuses nonempty
     $schema = $this->app['db']->connection()->getSchemaBuilder();
     $columns = collect($schema->getColumns(ActivityTables::ActivityLog))->keyBy('name');
 
-    expect(config('activity.migrations.enabled'))->toBeTrue()
+    expect(config('nvl-activity.migrations.enabled'))->toBeTrue()
         ->and($columns)->toHaveKeys(['tenant_id', 'ownership_key'])
         ->and($columns->get('ownership_key')['nullable'])->toBeFalse()
         ->and($schema->hasIndex(ActivityTables::ActivityLog, 'activity_ownership_created_idx'))->toBeTrue();
@@ -350,7 +350,7 @@ test('adopted Activity storage denies recorder queries and hydration when tenanc
         new TenantId(TenantScenario::A),
         fn () => app(ActivityRecorder::class)->record(null, 'adopted_fact'),
     );
-    config()->set('tenancy.enabled', false);
+    config()->set('nvl-tenancy.enabled', false);
 
     expect(fn () => app(ActivityRecorder::class)->record(null, 'legacy_write'))
         ->toThrow(TenantSchemaNotReady::class)
@@ -407,10 +407,10 @@ test('a configured global causer uses a fixed safe projection in each tenant par
         $table->timestamps();
     });
     config()->set([
-        'activity.causer_suggestions.model' => GlobalActivityCauser::class,
-        'activity.causer_suggestions.label_attribute' => 'name',
-        'activity.causer_suggestions.sublabel_attribute' => 'email',
-        'activity.causer_suggestions.search_attributes' => ['password', 'name'],
+        'nvl-activity.causer_suggestions.model' => GlobalActivityCauser::class,
+        'nvl-activity.causer_suggestions.label_attribute' => 'name',
+        'nvl-activity.causer_suggestions.sublabel_attribute' => 'email',
+        'nvl-activity.causer_suggestions.search_attributes' => ['password', 'name'],
     ]);
     $causer = GlobalActivityCauser::create([
         'name' => 'Shared Operator',
@@ -447,7 +447,7 @@ test('a configured global causer uses a fixed safe projection in each tenant par
 
 test('registered causer association rejects a changed identity without recording a fact', function (): void {
     adoptActivityHost();
-    config()->set('activity.causer_suggestions.model', TenantActivitySubject::class);
+    config()->set('nvl-activity.causer_suggestions.model', TenantActivitySubject::class);
     $runner = app(TenantRunner::class);
     $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
         'name' => 'A causer',
@@ -477,7 +477,7 @@ test('global causer association requires one canonical persisted identity', func
         $table->string('account_audit');
         $table->timestamps();
     });
-    config()->set('activity.causer_suggestions.model', GlobalActivityCauser::class);
+    config()->set('nvl-activity.causer_suggestions.model', GlobalActivityCauser::class);
     config()->set('database.connections.activity_foreign', config('database.connections.sqlite'));
     $canonical = GlobalActivityCauser::create([
         'name' => 'Canonical Operator',
@@ -525,7 +525,7 @@ test('global causer association requires one canonical persisted identity', func
 
 test('configured identity presentation cannot reclassify a registered tenant causer as global', function (): void {
     adoptActivityHost();
-    config()->set('activity.causer_suggestions.model', TenantActivitySubject::class);
+    config()->set('nvl-activity.causer_suggestions.model', TenantActivitySubject::class);
     $runner = app(TenantRunner::class);
     $foreign = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
         'name' => 'B identity',
@@ -540,7 +540,7 @@ test('configured identity presentation cannot reclassify a registered tenant cau
 
 test('timeline host resolution applies canonical tenant ownership before hydration', function (): void {
     adoptActivityHost();
-    config()->set('activity.routes.timeline_subjects', [TenantActivitySubject::class]);
+    config()->set('nvl-activity.routes.timeline_subjects', [TenantActivitySubject::class]);
     $runner = app(TenantRunner::class);
     $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
         'name' => 'A timeline',

@@ -16,7 +16,7 @@ final readonly class ConfiguredActivityTenantWorklist implements ActivityTenantW
 
     public function activeTenantIds(): array
     {
-        $configured = $this->configuration->get('activity.tenancy.active_tenant_worklist', []);
+        $configured = $this->configuration->get('nvl-activity.tenancy.active_tenant_worklist', []);
         if (! is_array($configured) || ! array_is_list($configured)
             || array_any($configured, static fn (mixed $id): bool => ! is_string($id) || ! Str::isUuid($id))) {
             throw new TenantConfigurationInvalid('The Activity tenant worklist must be a list of canonical UUIDs.');

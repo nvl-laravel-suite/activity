@@ -60,7 +60,7 @@ final class ActivityLogPolicy
             return false;
         }
 
-        $ability = config("activity.authorization.abilities.{$operation}");
+        $ability = config("nvl-activity.authorization.abilities.{$operation}");
 
         if (! is_string($ability) || trim($ability) === '') {
             return false;

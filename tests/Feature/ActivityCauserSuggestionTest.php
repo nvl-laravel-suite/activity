@@ -15,7 +15,7 @@ use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestUuidActivitySubject;
 
 test('causer suggestions do not assume a host user model', function (): void {
-    config()->set('activity.causer_suggestions.model');
+    config()->set('nvl-activity.causer_suggestions.model');
     config()->set('auth.providers.users.model');
 
     $suggestions = (new ListActivityCauserSuggestionsAction)->execute();
@@ -24,19 +24,19 @@ test('causer suggestions do not assume a host user model', function (): void {
 });
 
 test('causer suggestions safely reject unavailable configured models', function (): void {
-    config()->set('activity.causer_suggestions.model', AbstractTestActivitySubject::class);
+    config()->set('nvl-activity.causer_suggestions.model', AbstractTestActivitySubject::class);
 
     expect((new ListActivityCauserSuggestionsAction)->execute())->toHaveCount(0);
 
-    config()->set('activity.causer_suggestions.model', TestActivityCauser::class);
+    config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
 
     expect((new ListActivityCauserSuggestionsAction)->execute())->toHaveCount(0);
 });
 
 test('causer suggestion data supports configured attributes and non uuid keys', function (): void {
-    config()->set('activity.causer_suggestions.label_attribute', 'display_name');
-    config()->set('activity.causer_suggestions.sublabel_attribute', 'contact');
-    config()->set('activity.causer_suggestions.type_attribute', 'kind');
+    config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
+    config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
+    config()->set('nvl-activity.causer_suggestions.type_attribute', 'kind');
 
     $causer = new TestActivityCauser;
     $causer->forceFill([
@@ -63,11 +63,11 @@ test('causer suggestions query integer keyed models without cross type joins', f
     });
 
     try {
-        config()->set('activity.causer_suggestions.model', TestActivityCauser::class);
-        config()->set('activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('activity.causer_suggestions.sublabel_attribute', 'contact');
-        config()->set('activity.causer_suggestions.type_attribute', 'kind');
-        config()->set('activity.causer_suggestions.search_attributes', ['display_name', 'contact']);
+        config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.type_attribute', 'kind');
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['display_name', 'contact']);
 
         $causer = TestActivityCauser::query()->create([
             'display_name' => 'Grace Hopper',
@@ -122,11 +122,11 @@ test('causer suggestions isolate malformed historical uuid identifiers and norma
     });
 
     try {
-        config()->set('activity.causer_suggestions.model', TestUuidActivitySubject::class);
-        config()->set('activity.causer_suggestions.label_attribute', 'name');
-        config()->set('activity.causer_suggestions.sublabel_attribute');
-        config()->set('activity.causer_suggestions.type_attribute');
-        config()->set('activity.causer_suggestions.search_attributes', ['name']);
+        config()->set('nvl-activity.causer_suggestions.model', TestUuidActivitySubject::class);
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute');
+        config()->set('nvl-activity.causer_suggestions.type_attribute');
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['name']);
 
         $causer = TestUuidActivitySubject::query()->create(['name' => 'Grace Hopper']);
 
@@ -162,10 +162,10 @@ test('historical causer suggestions include soft deleted actors', function (): v
     });
 
     try {
-        config()->set('activity.causer_suggestions.model', TestSoftDeletedActivityCauser::class);
-        config()->set('activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('activity.causer_suggestions.sublabel_attribute', 'contact');
-        config()->set('activity.causer_suggestions.search_attributes', ['display_name', 'contact']);
+        config()->set('nvl-activity.causer_suggestions.model', TestSoftDeletedActivityCauser::class);
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['display_name', 'contact']);
 
         $causer = TestSoftDeletedActivityCauser::query()->create([
             'display_name' => 'Archived Operator',
@@ -198,8 +198,8 @@ test('unsearchable integer causer configuration returns no false positive sugges
     });
 
     try {
-        config()->set('activity.causer_suggestions.model', TestActivityCauser::class);
-        config()->set('activity.causer_suggestions.search_attributes', ['missing_attribute']);
+        config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['missing_attribute']);
 
         $causer = TestActivityCauser::query()->create(['display_name' => 'Hidden']);
         ActivityLog::query()->create([
@@ -223,8 +223,8 @@ test('causer suggestions never apply fuzzy matching to integer columns', functio
     });
 
     try {
-        config()->set('activity.causer_suggestions.model', TestActivityCauser::class);
-        config()->set('activity.causer_suggestions.search_attributes', ['causer_key']);
+        config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['causer_key']);
 
         $causer = TestActivityCauser::query()->create(['display_name' => 'Integer key']);
         ActivityLog::query()->create([

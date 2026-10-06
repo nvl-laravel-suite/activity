@@ -2,7 +2,7 @@
 
 Submit reports through [this package's private vulnerability reporting form](https://github.com/nvl-laravel-suite/activity/security/advisories/new).
 
-The current `2.x` line targets PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Report vulnerabilities against a specific version or commit.
+The prepared `5.x` line targets PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Report vulnerabilities against a specific version or commit.
 
 Report vulnerabilities privately through the repository host's security-advisory feature. Do not open a public issue containing an exploit, personal data, credentials, storage paths, or audit payloads.
 

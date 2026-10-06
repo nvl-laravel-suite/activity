@@ -83,7 +83,7 @@ final class ActivitySubjectTimelineResolver
      */
     private function resolveModelClass(string $subjectType): string
     {
-        $configuredSubjects = config('activity.routes.timeline_subjects', []);
+        $configuredSubjects = config('nvl-activity.routes.timeline_subjects', []);
         $allowedSubjects = is_array($configuredSubjects)
             ? array_values(array_filter(
                 array_map(
@@ -127,7 +127,7 @@ final class ActivitySubjectTimelineResolver
         throw ValidationException::withMessages([
             'subject_type' => [
                 (string) trans(
-                    'activity::activity/general.validation.unsupported_timeline_subject',
+                    'nvl-activity::activity/general.validation.unsupported_timeline_subject',
                 ),
             ],
         ]);

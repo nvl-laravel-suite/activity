@@ -71,7 +71,7 @@ final class CauserNormalizer
      */
     private function configuredAttribute(string $key, string $fallback): string
     {
-        $attribute = config("activity.causer_suggestions.{$key}", $fallback);
+        $attribute = config("nvl-activity.causer_suggestions.{$key}", $fallback);
 
         return is_string($attribute) && trim($attribute) !== ''
             ? trim($attribute)

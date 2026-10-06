@@ -29,7 +29,10 @@ use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 final class ActivityRecorder
 {
     /** Capture ownership through the same guard used by automatic model logging. */
-    public function __construct(private readonly ActivityOwnershipGuard $ownership) {}
+    public function __construct(
+        private readonly ActivityOwnershipGuard $ownership,
+        private readonly NvlActivityLogger $logger,
+    ) {}
 
     /** Deliver one immutable activity fact and return the same row on an identical retry. */
     public function recordEnvelope(ActivityRecordEnvelope $envelope): ActivityContract
@@ -247,9 +250,10 @@ final class ActivityRecorder
         );
 
         $normalizedLogName = trim($logName ?? '');
-        $logger = $normalizedLogName !== ''
-            ? activity($normalizedLogName)
-            : activity();
+        $logger = clone $this->logger;
+        if ($normalizedLogName !== '') {
+            $logger->useLog($normalizedLogName);
+        }
         $logger->causedByAnonymous();
         $logger->tap(static function (ActivityContract $activity) use ($ownership): void {
             if ($activity instanceof Model) {

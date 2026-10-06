@@ -17,6 +17,6 @@ enum ActivitySource: string
      */
     public function getLabel(): string
     {
-        return (string) trans("activity::activity/general.enums.source.{$this->value}");
+        return (string) trans("nvl-activity::activity/general.enums.source.{$this->value}");
     }
 }

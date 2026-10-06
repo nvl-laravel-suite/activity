@@ -55,7 +55,7 @@ final readonly class ActivityPurgeDispatcher
     /** Execute once in disabled/current tenant mode or once per reviewed platform worklist entry. */
     private function each(callable $operation): int
     {
-        if ($this->config->get('tenancy.enabled') !== true) {
+        if ($this->config->get('nvl-tenancy.enabled') !== true) {
             $operation();
 
             return 1;
