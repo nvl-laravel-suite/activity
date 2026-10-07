@@ -25,7 +25,7 @@ use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Services\ActivityReadService;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
-use Nvl\Tenancy\Services\TenantBoundary;
+use Nvl\Support\Tenancy\Contracts\TenantBoundary;
 
 test('the package migration rejects an incompatible existing activity table', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
