@@ -42,7 +42,7 @@ See the [installation and publishing guide](https://github.com/nvl-laravel-suite
 
 ## Purpose
 
-`nvl/activity` provides generic structured audit capture and readable semantic timelines for Laravel 13 on PHP 8.4–8.5. It builds on Spatie Activitylog without embedding application event names, models, labels, or business rules.
+`nvl/activity` provides generic structured audit capture and readable semantic timelines for Laravel 12–13 on PHP 8.4–8.5. It builds on Spatie Activitylog without embedding application event names, models, labels, or business rules.
 
 Activity depends on `nvl/core` and Spatie Activitylog 5.x. Activitylog 4.x is not a supported runtime. Historical v4 rows remain readable after the documented schema and namespace upgrade. The package is not event sourcing, workflow orchestration, authorization policy, or a domain event replacement.
 
