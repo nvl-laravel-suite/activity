@@ -41,6 +41,6 @@ final readonly class QueueActivityLogPurgeAction implements QueueActivityLogPurg
         $envelope = TenantJobEnvelope::capture($this->tenantContext);
         PurgeActivityLogsJob::dispatch($days, $systemOnly, $criteria, $envelope);
 
-        ($this->domainEvents ?? app(DomainEventDispatcher::class))->dispatch(new ActivityLogPurgeQueued($days, $systemOnly, $includeImportant), DB::connection(PackageStorage::connection('activity')));
+        ($this->domainEvents ?? DomainEventDispatcher::current())->dispatch(new ActivityLogPurgeQueued($days, $systemOnly, $includeImportant), DB::connection(PackageStorage::connection('activity')));
     }
 }
