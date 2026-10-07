@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
-use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
+use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Providers\RouteServiceProvider;
@@ -206,7 +206,7 @@ test('denied and missing timeline subjects return the same non-enumerable respon
 
 test('purge requests authorize through the policy boundary and dispatch the contract job', function (): void {
     Bus::fake();
-    Event::fake([ActivityLogPurgeQueuedEvent::class]);
+    Event::fake([ActivityLogPurgeQueued::class]);
     config()->set('nvl-activity.authorization.abilities.purge', 'activity.purge');
     Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
@@ -226,8 +226,8 @@ test('purge requests authorize through the policy boundary and dispatch the cont
         static fn (PurgeActivityLogsJob $job): bool => $job->days === 90 && $job->systemOnly === false,
     );
     Event::assertDispatched(
-        ActivityLogPurgeQueuedEvent::class,
-        static fn (ActivityLogPurgeQueuedEvent $event): bool => $event->days === 90
+        ActivityLogPurgeQueued::class,
+        static fn (ActivityLogPurgeQueued $event): bool => $event->days === 90
             && $event->systemOnly === false
             && $event->includeImportant === false,
     );
@@ -235,7 +235,7 @@ test('purge requests authorize through the policy boundary and dispatch the cont
 
 test('purge requests expose and audit explicit important-evidence inclusion', function (): void {
     Bus::fake();
-    Event::fake([ActivityLogPurgeQueuedEvent::class]);
+    Event::fake([ActivityLogPurgeQueued::class]);
     config()->set('nvl-activity.authorization.abilities.purge', 'activity.purge');
     Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
     enable_activity_test_routes();
@@ -258,8 +258,8 @@ test('purge requests expose and audit explicit important-evidence inclusion', fu
         static fn (PurgeActivityLogsJob $job): bool => $job->criteria?->includeImportant === true,
     );
     Event::assertDispatched(
-        ActivityLogPurgeQueuedEvent::class,
-        static fn (ActivityLogPurgeQueuedEvent $event): bool => $event->includeImportant,
+        ActivityLogPurgeQueued::class,
+        static fn (ActivityLogPurgeQueued $event): bool => $event->includeImportant,
     );
 });
 

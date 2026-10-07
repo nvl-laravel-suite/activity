@@ -23,7 +23,9 @@ use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Data\Display\ActivityCauserSuggestion;
 use Nvl\Activity\Data\Display\ActivityItem;
+use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
+use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityReadService;
@@ -35,6 +37,7 @@ use Nvl\Activity\Support\ModelKeyIdentifierValidator;
 use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tests\Fixtures\ActivityConsumerWorkflow;
 use Nvl\Activity\Tests\TestCase;
+use Nvl\Support\Events\DomainEventDispatcher;
 use Nvl\Support\Tenancy\Contracts\TenantContext;
 use Spatie\LaravelData\DataCollection;
 
@@ -137,7 +140,7 @@ test('concrete constructors retain their original typed dependencies and default
             ['modelKeyIdentifierValidator', ModelKeyIdentifierValidator::class, true, ModelKeyIdentifierValidator::class],
             ['ownership', '?'.ActivityOwnershipGuard::class, true, null],
         ],
-        QueueActivityLogPurgeAction::class => [['tenantContext', TenantContext::class, false, null]],
+        QueueActivityLogPurgeAction::class => [['tenantContext', TenantContext::class, false, null], ['domainEvents', '?'.DomainEventDispatcher::class, true, null]],
         ActivityReadService::class => [['ownership', ActivityOwnershipGuard::class, false, null]],
         ActivityRecorder::class => [
             ['ownership', ActivityOwnershipGuard::class, false, null],
@@ -317,4 +320,13 @@ test('two application lifecycles keep scoped defaults and facade substitutes ind
     }
 
     expect(ActivityLogFacade::getFacadeRoot())->toBe($recorder);
+});
+
+test('historical manual purge construction retains native queueing and canonical committed events', function (): void {
+    Queue::fake();
+    Event::fake([ActivityLogPurgeQueued::class]);
+    $action = new QueueActivityLogPurgeAction(app(TenantContext::class));
+    $action->execute(90);
+    Queue::assertPushed(PurgeActivityLogsJob::class);
+    Event::assertDispatched(ActivityLogPurgeQueued::class, static fn ($event): bool => $event->days === 90);
 });

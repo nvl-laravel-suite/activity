@@ -15,6 +15,7 @@ use Nvl\Activity\Enums\HeadlineSegmentType;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Support\Http\PackageExceptionRenderer;
 
 test('purge criteria normalize console values and summarize every active filter', function (): void {
     $criteria = ActivityPurgeCriteria::fromConsoleOptions([
@@ -138,7 +139,7 @@ test('activity items can change source without losing normalized display data', 
         ->and($mailItem->properties)->toBe($item->properties);
 });
 
-test('configuration exception factories expose stable diagnostics and safe rendering', function (): void {
+test('configuration exception factories expose stable diagnostics and safe opt-in rendering', function (): void {
     $exceptions = [
         ActivityConfigurationException::emptyTableName(),
         ActivityConfigurationException::invalidConnectionName(),
@@ -165,13 +166,15 @@ test('configuration exception factories expose stable diagnostics and safe rende
 
     $htmlRequest = Request::create('/activity');
     $jsonRequest = Request::create('/activity', server: ['HTTP_ACCEPT' => 'application/json']);
-    $jsonResponse = $exceptions[0]->render($jsonRequest);
+    $renderer = app(PackageExceptionRenderer::class);
+    $jsonResponse = $renderer->render($exceptions[0], $jsonRequest);
 
-    expect($exceptions[0]->render($htmlRequest))->toBeFalse()
+    expect($renderer->render($exceptions[0], $htmlRequest))->toBeNull()
         ->and($jsonResponse)->not->toBeFalse()
         ->and($jsonResponse->getStatusCode())->toBe(500)
         ->and($jsonResponse->getData(true))->toBe([
-            'message' => 'Activity table name cannot be empty.',
+            'message' => ActivityResponseCode::InvalidConfiguration->getMessage(),
             'code' => ActivityResponseCode::InvalidConfiguration->value,
+            'context' => [],
         ]);
 });

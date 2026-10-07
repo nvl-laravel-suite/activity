@@ -16,7 +16,7 @@ use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
-use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
+use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
@@ -673,7 +673,7 @@ test('doctor requires queue redelivery visibility to exceed the purge timeout', 
 });
 
 test('purge work and its queued event execute only after the surrounding transaction commits', function (): void {
-    Event::fake([ActivityLogPurgeQueuedEvent::class]);
+    Event::fake([ActivityLogPurgeQueued::class]);
     $createdAt = now()->subDays(120);
     $activity = ActivityLog::query()->create([
         'log_name' => 'test',
@@ -688,19 +688,19 @@ test('purge work and its queued event execute only after the surrounding transac
         app(QueueActivityLogPurgeAction::class)->execute(90);
 
         expect($activity->fresh())->not->toBeNull();
-        Event::assertNotDispatched(ActivityLogPurgeQueuedEvent::class);
+        Event::assertNotDispatched(ActivityLogPurgeQueued::class);
     });
 
     expect($activity->fresh())->toBeNull();
     Event::assertDispatched(
-        ActivityLogPurgeQueuedEvent::class,
-        static fn (ActivityLogPurgeQueuedEvent $event): bool => $event->days === 90
+        ActivityLogPurgeQueued::class,
+        static fn (ActivityLogPurgeQueued $event): bool => $event->days === 90
             && $event->systemOnly === false,
     );
 });
 
 test('rolled back transactions discard purge work and its queued event', function (): void {
-    Event::fake([ActivityLogPurgeQueuedEvent::class]);
+    Event::fake([ActivityLogPurgeQueued::class]);
     $createdAt = now()->subDays(120);
     $activity = ActivityLog::query()->create([
         'log_name' => 'test',
@@ -715,13 +715,13 @@ test('rolled back transactions discard purge work and its queued event', functio
         app(QueueActivityLogPurgeAction::class)->execute(90);
 
         expect($activity->fresh())->not->toBeNull();
-        Event::assertNotDispatched(ActivityLogPurgeQueuedEvent::class);
+        Event::assertNotDispatched(ActivityLogPurgeQueued::class);
 
         throw new RuntimeException('Rollback the purge request.');
     }))->toThrow(RuntimeException::class, 'Rollback the purge request.');
 
     expect($activity->fresh())->not->toBeNull();
-    Event::assertNotDispatched(ActivityLogPurgeQueuedEvent::class);
+    Event::assertNotDispatched(ActivityLogPurgeQueued::class);
 });
 
 test('purge dry runs report eligibility without deleting rows', function (): void {

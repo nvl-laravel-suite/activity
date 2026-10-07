@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 return [
     'operation_failed' => 'The operation could not be completed.',
-    'purge_queued' => 'The activity purge was queued.',
-    'purge_system_queued' => 'The system activity purge was queued.',
-    'invalid_configuration' => 'This capability is not configured correctly.',
-    'invalid_mapping' => 'The requested activity operation could not be completed.',
-    'invalid_batch_identifier' => 'The requested activity operation could not be completed.',
-    'invalid_activity_metadata' => 'The requested activity operation could not be completed.',
-    'conflicting_activity_envelope' => 'The requested activity operation could not be completed.',
-    'invalid_purge_criteria' => 'The requested activity operation could not be completed.',
-    'timeline_subject_not_found' => 'The requested activity operation could not be completed.',
+    'purge_queued' => 'The activity log purge has been queued.',
+    'purge_system_queued' => 'The system activity log purge has been queued.',
+    'invalid_configuration' => 'The activity package configuration is invalid.',
+    'invalid_mapping' => 'The activity mapping configuration is invalid.',
+    'invalid_batch_identifier' => 'The activity batch identifier is invalid.',
+    'invalid_activity_metadata' => 'The activity metadata is invalid.',
+    'conflicting_activity_envelope' => 'This activity ID already belongs to a different event.',
+    'invalid_purge_criteria' => 'The activity purge criteria are invalid.',
+    'timeline_subject_not_found' => 'The requested activity timeline subject was not found.',
 ];
