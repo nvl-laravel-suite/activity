@@ -3,7 +3,9 @@
 
 All notable changes to `nvl/activity` are documented here.
 
-## [5.0.0] — release candidate (unpublished)
+## [Unreleased]
+
+## [5.0.0] - 2026-10-08
 
 ### Added
 
@@ -22,7 +24,7 @@ All notable changes to `nvl/activity` are documented here.
 - Classify the supported consumer PHP surface with explicit source annotations and restrict package model handles to declared identity and in-memory read fields; preserve existing workflow behavior and concrete signatures.
 - Isolate owned cache and lock keys under `nvl:activity:`; preserve generic host entries and explicit store choices.
 
-- Prepare lockstep major 5 with required and development NVL peer floors of `^5.0`. This candidate has not been tagged or published.
+- Adopt lockstep major 5 with required and development NVL peer floors of `^5.0`.
 - Record package activity independently of the host Spatie model setting; global model adoption is explicit.
 - Use namespaced global surfaces and inherited queue destinations for maintenance.
 - Review [UPGRADING.md](UPGRADING.md) before adopting the new names and infrastructure boundaries.
