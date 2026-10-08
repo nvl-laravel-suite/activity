@@ -716,7 +716,7 @@ composer quality
 composer validate --strict
 ```
 
-Run `php artisan nvl:activity:doctor --strict --format=json` in a consuming Laravel application after configuration. Maintainer CI additionally checks module boundaries and clean-consumer installation of the tagged package archives. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the effective inherited queue, and execution by a real database queue worker.
+Run `php artisan nvl:activity:doctor --strict --format=json` in a consuming Laravel application after configuration. Local Dagger verification checks module boundaries and owning package suites. Tagged-archive consumer installation requires separate publication evidence; it is not part of the ordinary Dagger test command. Activity coverage proves package discovery, cached configuration and routes, strict Doctor readiness, canonical and application-owned custom-connection migration lifecycles, complete mapping registration, exact create/update/delete capture, structured and hidden events, complete and finite merged timelines, authenticated requests to all five API endpoints, serialized purge-job scopes on the effective inherited queue, and execution by a real database queue worker.
 
 Current tests exercise canonical model binding; immutable migration rollback; custom/adopted schema rejection; mapped create, update, and delete capture; structured writers and batches; anonymous, scalar, integer, UUID, and soft-deleted actors; invalid metadata rejection; complete and finite post-filter timelines across keyset batches; bilingual translations and validation; stable API/error envelopes; real named Gate abilities; subject allowlisting; JSON negotiation; dry-run eligibility; system-origin retention; lock contention; retry/backoff/timeout settings; and after-commit dispatch.
 
@@ -866,7 +866,7 @@ parameters:
         exceptions: []
 ```
 
-Rules read installed public metadata without suite boot. They flag internal symbols, package model queries/writes, capability relations and owned tables; they cannot prove dynamic code or runtime authorization. Exact exceptions require `file`, `identifier`, `symbol`, and a documented `reason`. New C3/C4/E tests, archives and guide execution remain pending until the integration phase records results.
+Rules read installed public metadata without suite boot. They flag internal symbols, package model queries/writes, capability relations and owned tables; they cannot prove dynamic code or runtime authorization. Exact exceptions require `file`, `identifier`, `symbol`, and a documented `reason`. The published 5.x family is verified through the local Dagger release gate on PHP 8.4/Laravel 13, including owning suites, MySQL/PostgreSQL persistence contracts and sealed Tenancy consumers. Fresh public Composer installation, discovery and configuration/route caching are verified. PHP 8.5, Laravel 12, MariaDB and the full independent archive matrix require separate evidence. See the [verification and release policy](https://github.com/nvl-laravel-suite/laravel-suite#verification-and-releases).
 
 ### Shipped factory states
 

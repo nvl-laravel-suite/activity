@@ -2,7 +2,7 @@
 
 Submit reports through [this package's private vulnerability reporting form](https://github.com/nvl-laravel-suite/activity/security/advisories/new).
 
-The prepared `5.x` line targets PHP 8.4–8.5, Laravel 13, and Spatie Activitylog 5.x. Report vulnerabilities against a specific version or commit.
+Security fixes are provided for the published `5.x` release line. Composer declares PHP `^8.4` and Laravel `^12.0|^13.0`. The local Dagger release gate verifies PHP 8.4/Laravel 13 with MySQL 8.4 and PostgreSQL 17 persistence contracts; PHP 8.5, Laravel 12 and MariaDB require separate compatibility evidence. Upstream security lifecycle limits still apply. Activity integrates with Spatie Activitylog 5.x. Report vulnerabilities against a specific version or commit.
 
 Report vulnerabilities privately through the repository host's security-advisory feature. Do not open a public issue containing an exploit, personal data, credentials, storage paths, or audit payloads.
 
