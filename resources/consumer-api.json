@@ -487,7 +487,10 @@
             "file": "src/Events/ActivityLogPurgeQueued.php",
             "methods": [
                 "__construct",
-                "schemaVersion"
+                "ownershipJobEnvelope",
+                "ownershipLockKey",
+                "schemaVersion",
+                "uniqueId"
             ],
             "properties": [
                 "days",
@@ -502,7 +505,10 @@
             "file": "src/Events/ActivityLogPurgeQueuedEvent.php",
             "methods": [
                 "__construct",
-                "schemaVersion"
+                "ownershipJobEnvelope",
+                "ownershipLockKey",
+                "schemaVersion",
+                "uniqueId"
             ],
             "properties": [
                 "days",

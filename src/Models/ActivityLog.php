@@ -20,11 +20,11 @@ use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Database\Factories\ActivityLogFactory;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
-use Nvl\Activity\Tenancy\ActivityMorphTo;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
+use Nvl\Activity\Ownership\ActivityMorphTo;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Support\Config\PackageStorage;
-use Nvl\Support\Tenancy\Contracts\TenantBoundary;
-use Nvl\Support\Tenancy\Exceptions\TenantBoundaryViolation;
+use Nvl\Support\Ownership\Contracts\Ownable;
+use Nvl\Support\Ownership\Traits\HasOwnership;
 use Spatie\Activitylog\Models\Activity;
 
 /**
@@ -50,11 +50,12 @@ use Spatie\Activitylog\Models\Activity;
  *
  * @api
  */
-final class ActivityLog extends Activity
+final class ActivityLog extends Activity implements Ownable
 {
     /** @use HasFactory<ActivityLogFactory> */
     use HasFactory;
 
+    use HasOwnership;
     use HasUuids;
 
     public const string DEFAULT_TABLE = ActivityTables::ActivityLog;
@@ -76,9 +77,6 @@ final class ActivityLog extends Activity
     /** Attach the package boundary to every query and Spatie persistence entry. */
     protected static function booted(): void
     {
-        self::addGlobalScope('activity.ownership', static function (Builder $query): void {
-            Container::getInstance()->make(TenantBoundary::class)->query($query, 'activity.events');
-        });
         self::creating(static function (ActivityLog $activity): void {
             Container::getInstance()->make(ActivityOwnershipGuard::class)->stamp($activity);
         });
@@ -250,7 +248,7 @@ final class ActivityLog extends Activity
         if (is_string($storedType) && trim($storedType) !== '') {
             if ($guarded) {
                 $related = $ownership->relationModel($storedType, $causer)
-                    ?? throw new TenantBoundaryViolation('Activity relations require registered canonical storage.');
+                    ?? throw $ownership->violation('Activity relations require registered canonical storage.');
             } else {
                 $relatedClass = self::getActualClassNameForMorph($storedType);
                 if (! is_a($relatedClass, Model::class, true)) {

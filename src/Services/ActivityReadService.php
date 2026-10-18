@@ -14,8 +14,8 @@ use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Contracts\ActivityReadContract;
 use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Support\ActivitySubjectReference;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 
 /**
  * Use-case oriented read service for Activity log retrieval.

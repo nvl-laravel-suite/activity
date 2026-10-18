@@ -23,6 +23,8 @@ use Nvl\Activity\Contracts\QueueActivityLogPurgeContract;
 use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Events\ActivityLogPurgeQueuedEvent;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Ownership\ActivityAdoptionAdapter;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Policies\ActivityLogPolicy;
 use Nvl\Activity\Services\ActivityDiffBuilder;
 use Nvl\Activity\Services\ActivityDoctor;
@@ -40,12 +42,14 @@ use Nvl\Activity\Services\TimelineFilter;
 use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Activity\Support\ModelActivityTimelineResolver;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tenancy\ActivityResourceRegistrar;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
+use Nvl\Ownership\Services\OwnershipAdoptionRegistry;
 use Nvl\Support\Doctor\PackageDoctorContributor;
 use Nvl\Support\Events\EventAliases;
 use Nvl\Support\Globals\GlobalNames;
+use Nvl\Support\Ownership\Contracts\OwnershipIntegratedProvider;
+use Nvl\Support\Ownership\Services\OwnershipResourceRegistry;
 use Nvl\Support\Providers\TenantServiceProvider;
 use Nvl\Support\Tenancy\Services\TenantResourceRegistry;
 use Nvl\Support\Traits\MergesPackageConfiguration;
@@ -55,7 +59,7 @@ use Nvl\Tenancy\Services\TenantAdoptionRegistry;
 /**
  * Registers the standalone activity package services and extensions.
  */
-final class ActivityServiceProvider extends ServiceProvider
+final class ActivityServiceProvider extends ServiceProvider implements OwnershipIntegratedProvider
 {
     use MergesPackageConfiguration;
     use RegistersNamespacedResources;
@@ -80,6 +84,9 @@ final class ActivityServiceProvider extends ServiceProvider
         $this->app->register(RouteServiceProvider::class);
         (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class));
         $this->app->booted(function (): void {
+            if ($this->app->bound(OwnershipAdoptionRegistry::class)) {
+                $this->app->make(OwnershipAdoptionRegistry::class)->register('activity', ActivityAdoptionAdapter::class);
+            }
             if ($this->app->bound(TenantAdoptionRegistry::class)) {
                 (new ActivityResourceRegistrar)->register($this->app->make(TenantResourceRegistry::class), $this->app->make(TenantAdoptionRegistry::class));
             }
@@ -98,6 +105,7 @@ final class ActivityServiceProvider extends ServiceProvider
      */
     public function boot(TypeScriptSourceRegistry $typeScriptSources): void
     {
+        (new \Nvl\Activity\Ownership\ActivityResourceRegistrar)->register($this->app->make(OwnershipResourceRegistry::class), $this->app->make('config')->get('nvl-ownership.enabled') === true);
         $this->app->make(EventAliases::class)->register(ActivityLogPurgeQueued::class, ActivityLogPurgeQueuedEvent::class);
         $typeScriptSources->register(__DIR__.'/..', 'nvl/activity');
 

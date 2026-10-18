@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use ReflectionClass;
 
 /**

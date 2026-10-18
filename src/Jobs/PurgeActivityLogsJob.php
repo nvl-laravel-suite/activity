@@ -16,7 +16,9 @@ use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Support\Config\PackageOptions;
 use Nvl\Support\Facades\PackageLog;
-use Nvl\Support\Tenancy\Contracts\TenantBoundary;
+use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
+use Nvl\Support\Ownership\Contracts\OwnershipQueuedJob;
+use Nvl\Support\Ownership\Traits\CapturesOwnership;
 use Nvl\Support\Tenancy\Contracts\TenantQueuedJob;
 use Nvl\Support\Tenancy\Enums\TenantContextMode;
 use Nvl\Support\Tenancy\ValueObjects\TenantContextSnapshot;
@@ -27,8 +29,9 @@ use UnexpectedValueException;
 /**
  * Queued job that deletes old activity log entries in chunks.
  */
-final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
+final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue, TenantQueuedJob
 {
+    use CapturesOwnership;
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
@@ -73,6 +76,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
         public readonly ?ActivityPurgeCriteria $criteria = null,
         ?TenantJobEnvelope $envelope = null,
     ) {
+        $this->captureOwnership();
         $this->envelope = $envelope ?? new TenantJobEnvelope(new TenantContextSnapshot(TenantContextMode::Disabled));
         $this->onConnection(PackageOptions::queueConnection('activity'));
         $this->onQueue(PackageOptions::queueName('activity'));
@@ -90,7 +94,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
     /**
      * Execute the job: delete old activity logs in chunks.
      */
-    public function handle(TenantBoundary $boundary): void
+    public function handle(OwnershipBoundary $boundary): void
     {
         $criteria = $this->resolvedCriteria();
         $lock = Cache::lock(
@@ -157,7 +161,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
     /**
      * Delete all rows matching the immutable criteria in bounded chunks.
      */
-    private function purge(ActivityPurgeCriteria $criteria, TenantBoundary $boundary): void
+    private function purge(ActivityPurgeCriteria $criteria, OwnershipBoundary $boundary): void
     {
         $totalDeleted = 0;
 
@@ -174,9 +178,18 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
                 break;
             }
 
-            $deleted = $boundary->query(ActivityLog::query(), 'activity.events')
-                ->whereKey($ids)
-                ->delete();
+            $query = $boundary->query(ActivityLog::query(), 'activity.events')->whereKey($ids);
+            if (isset($boundary->attributes('activity.events')['owner_scope_key'])) {
+                $deleted = 0;
+                foreach ($query->get() as $activity) {
+                    if ($activity->delete() !== true) {
+                        throw new UnexpectedValueException('An owned audit deletion was cancelled.');
+                    }
+                    $deleted++;
+                }
+            } else {
+                $deleted = $query->delete();
+            }
 
             if (! is_int($deleted)) {
                 throw new UnexpectedValueException('Activity purge did not return a deletion count.');
@@ -212,7 +225,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
      * @param  bool  $systemOnly  Only count system-generated entries
      * @return int Number of purgeable entries
      */
-    public static function countPurgeable(int $days, bool $systemOnly = false, ?TenantBoundary $boundary = null): int
+    public static function countPurgeable(int $days, bool $systemOnly = false, ?OwnershipBoundary $boundary = null): int
     {
         return self::countPurgeableForCriteria(ActivityPurgeCriteria::fromDays($days, $systemOnly), $boundary);
     }
@@ -220,7 +233,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
     /**
      * Count entries matching the supplied purge criteria without deleting them.
      */
-    public static function countPurgeableForCriteria(ActivityPurgeCriteria $criteria, ?TenantBoundary $boundary = null): int
+    public static function countPurgeableForCriteria(ActivityPurgeCriteria $criteria, ?OwnershipBoundary $boundary = null): int
     {
         if ($boundary === null && config('nvl-tenancy.enabled') === true) {
             throw new UnexpectedValueException('Tenant activity purge counts require an explicit tenant boundary.');
@@ -232,7 +245,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
     /**
      * Build the shared purge eligibility query.
      */
-    private function purgeableQuery(ActivityPurgeCriteria $criteria, TenantBoundary $boundary): ActivityLogBuilder
+    private function purgeableQuery(ActivityPurgeCriteria $criteria, OwnershipBoundary $boundary): ActivityLogBuilder
     {
         return self::newPurgeableQuery($criteria, $boundary);
     }
@@ -240,7 +253,7 @@ final class PurgeActivityLogsJob implements ShouldQueue, TenantQueuedJob
     /**
      * Build the shared purge eligibility query.
      */
-    private static function newPurgeableQuery(ActivityPurgeCriteria $criteria, ?TenantBoundary $boundary): ActivityLogBuilder
+    private static function newPurgeableQuery(ActivityPurgeCriteria $criteria, ?OwnershipBoundary $boundary): ActivityLogBuilder
     {
         $query = ActivityLog::query();
         if ($boundary !== null) {

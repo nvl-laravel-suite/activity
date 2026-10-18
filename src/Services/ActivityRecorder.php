@@ -15,10 +15,10 @@ use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\TimelineActivityRules;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 
 /**

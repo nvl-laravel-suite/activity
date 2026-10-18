@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Validation\ValidationException;
 use Nvl\Activity\Contracts\MergesActivity;
 use Nvl\Activity\Exceptions\ActivityTimelineException;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 
 /**
  * Resolves host models that can expose a merged activity timeline.

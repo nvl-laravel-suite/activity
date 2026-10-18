@@ -19,6 +19,9 @@
         <testsuite name="Tenancy">
             <directory>tests/Tenancy</directory>
         </testsuite>
+        <testsuite name="Ownership">
+            <directory>tests/Ownership</directory>
+        </testsuite>
     </testsuites>
     <php>
         <env name="APP_ENV" value="testing"/>

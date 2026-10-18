@@ -4,28 +4,21 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Services;
 
-use Illuminate\Contracts\Config\Repository;
-use Nvl\Activity\Contracts\ActivityTenantWorklist;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
-use Nvl\Support\Tenancy\Contracts\TenantBoundary;
-use Nvl\Support\Tenancy\Contracts\TenantContext;
-use Nvl\Support\Tenancy\Contracts\TenantRunner;
-use Nvl\Support\Tenancy\Enums\TenantContextMode;
-use Nvl\Support\Tenancy\Exceptions\TenantBoundaryViolation;
-use Nvl\Support\Tenancy\ValueObjects\PlatformOperation;
-use Nvl\Support\Tenancy\ValueObjects\TenantId;
-use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
+use Nvl\Activity\Tenancy\LegacyActivityWorklist;
+use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
+use Nvl\Support\Ownership\Contracts\OwnershipContext;
+use Nvl\Support\Ownership\Enums\OwnershipContextMode;
+use Nvl\Support\Ownership\ValueObjects\OwnershipJobEnvelope;
 
 /** Dispatches/counts retention work only inside explicit bounded tenant scopes. */
 final readonly class ActivityPurgeDispatcher
 {
     public function __construct(
-        private Repository $config,
-        private TenantContext $context,
-        private TenantRunner $tenants,
-        private ActivityTenantWorklist $worklist,
-        private TenantBoundary $boundary,
+        private OwnershipContext $ownership,
+        private OwnershipBoundary $boundary,
+        private LegacyActivityWorklist $legacy,
     ) {}
 
     /** Return the number of bounded jobs dispatched. */
@@ -36,7 +29,7 @@ final readonly class ActivityPurgeDispatcher
                 $criteria->days ?? 0,
                 $criteria->systemOnly,
                 $criteria,
-                TenantJobEnvelope::capture($this->context),
+                $this->legacy->envelope(),
             );
         });
     }
@@ -55,30 +48,13 @@ final readonly class ActivityPurgeDispatcher
     /** Execute once in disabled/current tenant mode or once per reviewed platform worklist entry. */
     private function each(callable $operation): int
     {
-        if ($this->config->get('nvl-tenancy.enabled') !== true) {
+        if ($this->ownership->snapshot()->mode !== OwnershipContextMode::Disabled) {
+            OwnershipJobEnvelope::capture($this->ownership);
             $operation();
 
             return 1;
         }
-        $snapshot = $this->context->snapshot();
-        if ($snapshot->mode === TenantContextMode::Tenant) {
-            $operation();
 
-            return 1;
-        }
-        if (! in_array($snapshot->mode, [TenantContextMode::Unresolved, TenantContextMode::Platform], true)) {
-            throw new TenantBoundaryViolation('Activity retention requires an admitted tenant or platform worklist.');
-        }
-        $ids = $snapshot->mode === TenantContextMode::Platform
-            ? $this->worklist->activeTenantIds()
-            : $this->tenants->platform(
-                new PlatformOperation('activity.retention.enumerate', 'system', 'activity-retention'),
-                fn (): array => $this->worklist->activeTenantIds(),
-            );
-        foreach ($ids as $id) {
-            $this->tenants->run(new TenantId($id), fn (): mixed => $operation());
-        }
-
-        return count($ids);
+        return $this->legacy->each($operation);
     }
 }
