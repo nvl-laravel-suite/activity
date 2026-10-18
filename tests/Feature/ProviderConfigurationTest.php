@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Gate;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
 use Nvl\Activity\Tests\Stubs\TestActivityUser;
 use Spatie\Activitylog\Models\Activity as SpatieActivity;
+
+it('resolves legacy and neutral guard names to one scoped state holder', function (): void {
+    expect(app(ActivityOwnershipGuard::class))
+        ->toBe(app(Nvl\Activity\Tenancy\ActivityOwnershipGuard::class));
+});
 
 test('partial consumer config preserves nested activity defaults', function (): void {
     config()->set('nvl-activity', [

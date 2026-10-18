@@ -192,7 +192,8 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
         $this->app->scopedIf(ActivityReadService::class);
         $this->app->scopedIf(ActivityReadContract::class, static fn (Application $app): ActivityReadContract => $app->make(ActivityReadService::class));
         $this->app->scoped(ActivityRelationLoader::class);
-        $this->app->scoped(ActivityOwnershipGuard::class);
+        $this->app->scoped(\Nvl\Activity\Tenancy\ActivityOwnershipGuard::class);
+        $this->app->alias(\Nvl\Activity\Tenancy\ActivityOwnershipGuard::class, ActivityOwnershipGuard::class);
 
         $this->app->singleton(LabelResolver::class, function (Application $app): LabelResolver {
             return new LabelResolver($app->make(MappingRegistry::class));

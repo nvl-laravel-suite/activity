@@ -19,7 +19,7 @@ use Nvl\Support\Ownership\ValueObjects\OwnershipResourceDefinition;
 use WeakMap;
 
 /** Guards manual and automatic capture and resolves only canonical permitted relation storage. */
-final readonly class ActivityOwnershipGuard
+readonly class ActivityOwnershipGuard
 {
     /** @var WeakMap<Model, array{ownership: array<string, int|string|null>, admission: string}> */
     private WeakMap $deletingSubjects;
