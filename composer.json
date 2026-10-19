@@ -10,12 +10,12 @@
         "timeline"
     ],
     "require": {
-        "php": "^8.4",
         "ext-filter": "*",
         "ext-mbstring": "*",
         "laravel/framework": "^12.0 || ^13.0",
         "nesbot/carbon": "^2.72 || ^3.0",
         "nvl/core": "^5.1",
+        "php": "^8.4",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-data": "^4.23",
         "symfony/http-foundation": "^7.2 || ^8.0"
@@ -98,10 +98,12 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "suggest": {
-        "nvl/tenancy": "Enables enforcing tenant ownership, scoped execution, adoption, and captured tenant queue contexts.",
+        "nvl/ownership": "Adds optional model-declared ownership, isolation, adoption and captured worker contexts.",
+        "nvl/tenancy": "Temporary legacy tenancy bridge for existing tenant installations; native ownership does not require it.",
         "spatie/typescript-transformer": "Consume the declared TypeScript attributes and metadata (^3.3); Core retains the runtime transformation engine."
     },
     "conflict": {
+        "nvl/ownership": "<5.0 || >=6.0",
         "nvl/tenancy": "<5.0 || >=6.0"
     },
     "homepage": "https://github.com/nvl-laravel-suite/activity",
