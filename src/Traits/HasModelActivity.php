@@ -58,12 +58,13 @@ trait HasModelActivity
                 if ($description === '') {
                     return;
                 }
-                $changes = self::nvlActivityChanges($model->buildChanges($eventName));
+                $loggingSubject = $eventName === ActivityEvent::Created->value ? (clone $model)->syncOriginal() : $model;
+                $changes = self::nvlActivityChanges($loggingSubject->buildChanges($eventName));
                 if ($model->shouldSkipEmptyLog($changes)) {
                     return;
                 }
                 app(NvlActivityLogger::class)->useLog($model->getLogNameToUse())
-                    ->event($eventName)->performedOn($model)->withChanges($changes)->log($description);
+                    ->event($eventName)->performedOn($loggingSubject)->withChanges($changes)->log($description);
                 $model->activitylogOptions = null;
             });
         });
