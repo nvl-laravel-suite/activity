@@ -3,12 +3,12 @@
 ## Quickstart
 
 ```sh
-composer require nvl/activity:^5.0
+composer require nvl/activity:^6.0
 php artisan nvl:install activity --dry-run
 php artisan nvl:install activity
 ```
 
-Required NVL dependencies: `nvl/core` (`^5.0`). Configure subject/causer identity and the native host activity policy. Package reads do not authorize your page by themselves.
+Required NVL dependencies: `nvl/core` (`^6.0`). Configure subject/causer identity and the native host activity policy. Package reads do not authorize your page by themselves.
 Review the published common config, select one migration owner, and run schema preflight before existing-table upgrades. The installer does not enable features or run migrations. Follow the detailed installation and capability sections below before invoking a storage/provider operation.
 
 Inject `Nvl\Activity\Contracts\ActivityReadContract` in a host service. After supplying the trusted inputs described above, the first public call is:
@@ -34,7 +34,7 @@ See the [installation and publishing guide](https://github.com/nvl-laravel-suite
 
 | Item | Value |
 |---|---|
-| Installed through | `composer require nvl/activity:^5.0` |
+| Installed through | `composer require nvl/activity:^6.0` |
 | Module identifier | `nvl/activity` |
 | PHP namespace | `Nvl\Activity` |
 | Service provider | `Nvl\Activity\Providers\ActivityServiceProvider` |
@@ -53,7 +53,7 @@ NVL recording and `HasModelActivity` capture always write the package-owned Acti
 Install the stable package from Packagist with:
 
 ```bash
-composer require nvl/activity:^5.0
+composer require nvl/activity:^6.0
 php artisan migrate
 ```
 
