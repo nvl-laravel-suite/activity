@@ -42,6 +42,7 @@ use Nvl\Activity\Services\TimelineFilter;
 use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Activity\Support\ModelActivityTimelineResolver;
+use Nvl\Activity\Tenancy\ActivityOwnershipGuard as LegacyActivityOwnershipGuard;
 use Nvl\Activity\Tenancy\ActivityResourceRegistrar;
 use Nvl\Data\Services\TypeScriptSourceRegistry;
 use Nvl\Ownership\Services\OwnershipAdoptionRegistry;
@@ -192,8 +193,14 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
         $this->app->scopedIf(ActivityReadService::class);
         $this->app->scopedIf(ActivityReadContract::class, static fn (Application $app): ActivityReadContract => $app->make(ActivityReadService::class));
         $this->app->scoped(ActivityRelationLoader::class);
-        $this->app->scoped(\Nvl\Activity\Tenancy\ActivityOwnershipGuard::class);
-        $this->app->alias(\Nvl\Activity\Tenancy\ActivityOwnershipGuard::class, ActivityOwnershipGuard::class);
+        $this->app->scoped(LegacyActivityOwnershipGuard::class);
+        $names = $this->app->make(GlobalNames::class);
+        $names->reserve('activity', 'container', ActivityOwnershipGuard::class,
+            fn (string $name): bool => $this->app->bound($name),
+            function (string $name): void {
+                $this->app->alias(LegacyActivityOwnershipGuard::class, $name);
+            },
+        );
 
         $this->app->singleton(LabelResolver::class, function (Application $app): LabelResolver {
             return new LabelResolver($app->make(MappingRegistry::class));

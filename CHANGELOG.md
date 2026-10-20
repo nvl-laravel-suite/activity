@@ -7,6 +7,10 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [6.0.0] - 2026-10-20
 
+### Release fixes
+
+- Preserve host bindings when registering the canonical ownership guard alias through the collision boundary.
+
 ### Changed
 
 - Capture native owner identity for logs, timelines, purge operations and worker restoration. Preserve canonical subject admission and bounded batch authorization.
