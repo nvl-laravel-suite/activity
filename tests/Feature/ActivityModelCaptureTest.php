@@ -18,7 +18,7 @@ use Nvl\Support\Enums\SystemActor;
 beforeEach(function (): void {
     Schema::create('activity_mapping_subjects', function (Blueprint $table): void {
         $table->id();
-        $table->string('name');
+        $table->string('name')->nullable();
     });
 });
 
@@ -226,4 +226,37 @@ test('mapped capture participates in a shared host outer transaction', function 
         DB::commit();
         expect(TestActivitySubjectWithHasModelActivity::query()->count())->toBe(1)->and(ActivityLog::query()->count())->toBe(1);
     });
+});
+
+test('nullable mapped updates are authorized before source mutation', function (bool $denyPolicy): void {
+    $subject = TestActivitySubjectWithHasModelActivity::query()->create(['name' => null]);
+    app(MappingRegistry::class)->register(new TestActivityMapping(TestActivitySubjectWithHasModelActivity::class));
+    if ($denyPolicy) {
+        $this->app->offsetUnset(ActivityAuthorization::class);
+    }
+    $update = fn () => $subject->update(['name' => 'Pending value']);
+    $operation = $denyPolicy
+        ? fn () => app(ActivityCaptureContext::class)->run(SystemActor::Background, $update)
+        : $update;
+    expect($operation)->toThrow(AuthorizationException::class);
+    expect(DB::transactionLevel())->toBe(0)
+        ->and($subject->fresh()->name)->toBeNull()
+        ->and(ActivityLog::query()->count())->toBe(0);
+})->with(['missing capture context' => false, 'denied host policy' => true]);
+
+test('nullable mapped no op updates remain silent without capture authority', function (): void {
+    $subject = TestActivitySubjectWithHasModelActivity::query()->create(['name' => null]);
+    app(MappingRegistry::class)->register(new TestActivityMapping(TestActivitySubjectWithHasModelActivity::class));
+    $this->app->offsetUnset(ActivityAuthorization::class);
+    $subject->update(['name' => null]);
+    expect($subject->fresh()->name)->toBeNull()->and(ActivityLog::query()->count())->toBe(0);
+});
+
+test('nullable mapped authorized updates preserve pending and original diff facts', function (): void {
+    $subject = TestActivitySubjectWithHasModelActivity::query()->create(['name' => null]);
+    app(MappingRegistry::class)->register(new TestActivityMapping(TestActivitySubjectWithHasModelActivity::class));
+    app(ActivityCaptureContext::class)->run(SystemActor::Background, fn () => $subject->update(['name' => 'Pending value']));
+    $fact = ActivityLog::query()->sole();
+    expect($fact->attribute_changes->get('attributes'))->toBe(['name' => 'Pending value'])
+        ->and($fact->attribute_changes->get('old'))->toBe(['name' => null]);
 });

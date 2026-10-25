@@ -95,15 +95,38 @@ test('automatic capture stamps rows and does not trust supplied subject ownershi
 });
 
 test('hydration reloads the canonical subject and rejects a preloaded foreign event', function (): void {
-    $fact = activityOwner(7, fn () => activityOwnedFact(activityOwnedSubject()));
-    activityOwner(7, fn () => $fact->setRelation('subject', new OwnershipSubject));
+    $fact = activityOwner(7, function (): ActivityLog {
+        $subject = activityOwnedSubject();
+        $fact = activityOwnedFact($subject)->fresh();
+        $forged = clone $subject;
+        $forged->name = 'Forged cached label';
+        $fact->setRelation('subject', $forged);
+        expect($fact->relationLoaded('subject'))->toBeTrue()->and($fact->getRelation('subject'))->toBe($forged);
+        app(ActivityRelationLoader::class)->load(new Collection([$fact]));
+        expect($fact->subject)->not->toBe($forged)
+            ->and($fact->subject->getKey())->toBe($subject->getKey())
+            ->and($fact->subject->name)->toBe('Owned');
+
+        return $fact;
+    });
     expect(fn () => activityOwner(8, fn () => app(ActivityRelationLoader::class)->load(new Collection([$fact]))))->toThrow(OwnershipViolation::class);
 });
 
 test('native subject relations cannot hydrate a foreign registered subject', function (): void {
     $subject = activityOwner(7, fn () => activityOwnedSubject());
     $fact = activityOwner(8, fn () => app(ActivityRecorder::class)->record(['subject' => new ActivitySubjectReference($subject->getMorphClass(), $subject->getKey()), 'event' => 'imported'], SystemActor::Background));
-    activityOwner(8, fn () => expect($fact->fresh()->subject)->toBeNull());
+    $retrieved = [];
+    OwnershipSubject::retrieved(function (OwnershipSubject $hydrated) use (&$retrieved): void {
+        $retrieved[] = $hydrated->getKey();
+    });
+    activityOwner(8, function () use ($fact): void {
+        expect($fact->fresh()->subject)->toBeNull()
+            ->and($fact->fresh()->subject()->first())->toBeNull()
+            ->and(ActivityLog::query()->with('subject')->findOrFail($fact->id)->subject)->toBeNull();
+        app(ActivityRelationLoader::class)->load(new Collection([$fact]));
+        expect($fact->subject)->toBeNull();
+    });
+    expect($retrieved)->toBe([]);
 });
 
 test('native subject relations deny unknown types before model construction', function (): void {
@@ -111,16 +134,39 @@ test('native subject relations deny unknown types before model construction', fu
     expect(fn () => activityOwner(7, fn () => $fact->fresh()->subject))->toThrow(OwnershipViolation::class);
 });
 
-test('trusted native relations are readmitted after an owner context transition', function (): void {
-    $fact = activityOwner(7, function (): ActivityLog {
-        $fact = activityOwnedFact(activityOwnedSubject());
-        expect($fact->fresh()->subject)->not->toBeNull();
+test('trusted native relations are readmitted after an owner context transition', function (string $path): void {
+    $fact = activityOwner(7, function () use ($path): ActivityLog {
+        $fact = activityOwnedFact(activityOwnedSubject())->fresh();
+        if ($path === 'eager') {
+            $fact->load(['subject', 'causer']);
+        } elseif ($path === 'dedicated') {
+            app(ActivityRelationLoader::class)->load(new Collection([$fact]));
+        }
+        expect($fact->subject)->toBeInstanceOf(OwnershipSubject::class)
+            ->and($fact->causer)->toBeInstanceOf(OwnershipActor::class)
+            ->and($fact->relationLoaded('subject'))->toBeTrue()
+            ->and($fact->relationLoaded('causer'))->toBeTrue();
 
-        return $fact->fresh();
+        return $fact;
     });
-    expect(fn () => activityOwner(8, fn () => $fact->subject))->toThrow(OwnershipViolation::class);
-    activityOwner(7, fn () => expect($fact->subject)->not->toBeNull());
-});
+    $identity = spl_object_id($fact);
+    activityOwner(8, function () use ($fact, $identity): void {
+        expect(spl_object_id($fact))->toBe($identity)
+            ->and($fact->relationLoaded('subject'))->toBeTrue()
+            ->and($fact->relationLoaded('causer'))->toBeTrue();
+        expect(fn () => $fact->subject)->toThrow(OwnershipViolation::class);
+        expect(fn () => $fact->causer)->toThrow(OwnershipViolation::class);
+        expect(fn () => app(ActivityRelationLoader::class)->load(new Collection([$fact])))->toThrow(OwnershipViolation::class);
+    });
+    activityOwner(7, function () use ($fact, $identity): void {
+        expect(spl_object_id($fact))->toBe($identity)
+            ->and($fact->subject->getKey())->toBe(70)
+            ->and($fact->causer->getKey())->toBe(1)
+            ->and($fact->causer->getAttributes())->not->toHaveKey('password');
+        app(ActivityRelationLoader::class)->load(new Collection([$fact]));
+        expect($fact->subject->getKey())->toBe(70)->and($fact->causer->getKey())->toBe(1);
+    });
+})->with(['native', 'eager', 'dedicated']);
 
 test('combined native eager loads retain both relations in either order', function (): void {
     activityOwner(7, function (): void {
@@ -134,7 +180,12 @@ test('combined native eager loads retain both relations in either order', functi
 
 test('subject admission rejects foreign ownership before returning its data', function (): void {
     $subject = activityOwner(7, fn () => activityOwnedSubject());
+    $retrieved = [];
+    OwnershipSubject::retrieved(function (OwnershipSubject $hydrated) use (&$retrieved): void {
+        $retrieved[] = $hydrated->getKey();
+    });
     expect(fn () => activityOwner(8, fn () => app(ActivityReader::class)->timeline($subject, SystemActor::Background)))->toThrow(OwnershipViolation::class);
+    expect($retrieved)->toBe([]);
 });
 
 test('supplied subjects cannot replace canonical storage or a persisted identity', function (): void {
@@ -167,9 +218,25 @@ test('automatic deletion retains immutable ownership after its subject is remove
 });
 
 test('configured global causers use a fixed safe identity projection', function (): void {
+    config()->set('nvl-activity.causer_suggestions.label_attribute', 'password');
+    config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'password');
     activityOwner(7, function (): void {
         $fact = activityOwnedFact();
-        expect($fact->fresh()->causer->getAttributes())->toHaveKeys(['id', 'name', 'email'])->not->toHaveKey('password');
+        $expected = ['id' => 1, 'name' => 'Operator', 'email' => 'operator@example.test'];
+        expect($fact->fresh()->causer->getAttributes())->toBe($expected)
+            ->and($fact->fresh()->causer()->firstOrFail()->getAttributes())->toBe($expected)
+            ->and(ActivityLog::query()->with('causer')->findOrFail($fact->id)->causer->getAttributes())->toBe($expected);
+        $preloaded = $fact->fresh();
+        $unsafe = OwnershipActor::query()->firstOrFail();
+        expect($unsafe->getAttributes())->toHaveKey('password');
+        $preloaded->setRelation('causer', $unsafe);
+        expect($preloaded->getRelation('causer'))->toBe($unsafe)
+            ->and($preloaded->causer->getAttributes())->toBe($expected)
+            ->and($preloaded->causer)->not->toBe($unsafe);
+        $preloaded->setRelation('causer', $unsafe);
+        app(ActivityRelationLoader::class)->load(new Collection([$preloaded]));
+        expect($preloaded->causer->getAttributes())->toBe($expected)
+            ->and($preloaded->causer)->not->toBe($unsafe);
     });
 });
 

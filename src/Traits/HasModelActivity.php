@@ -17,6 +17,7 @@ use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Support\Enums\SystemActor;
 use Spatie\Activitylog\Enums\ActivityEvent;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
+use Spatie\Activitylog\Support\ChangeDetector;
 use Spatie\Activitylog\Support\LogOptions;
 
 /**
@@ -54,7 +55,9 @@ trait HasModelActivity
                     if (! $model->shouldLogEvent($eventName) || $model->getDescriptionForEvent($eventName) === '') {
                         return;
                     }
-                    $changes = $model->buildChanges($eventName);
+                    $changes = $eventName === ActivityEvent::Updated->value
+                        ? $model->prospectiveActivityChanges()
+                        : $model->buildChanges($eventName);
                     if ($model->shouldSkipEmptyLog($changes)) {
                         return;
                     }
@@ -98,6 +101,27 @@ trait HasModelActivity
                 $model->activitylogOptions = null;
             });
         });
+    }
+
+    /**
+     * Compare pending attributes with the original snapshot without reloading or consuming post-save state.
+     *
+     * @return array<string, mixed>
+     */
+    private function prospectiveActivityChanges(): array
+    {
+        if ($this->attributesToBeLogged() === []) {
+            return [];
+        }
+        $options = $this->activitylogOptions ?? $this->getActivitylogOptions();
+        $pending = clone $this;
+        $original = (clone $this)->setRawAttributes($this->getRawOriginal())->unsetRelations();
+        $attributes = static::extractChanges($pending);
+        $old = static::extractChanges($original);
+
+        return $options->logOnlyDirty
+            ? self::nvlActivityChanges(ChangeDetector::filterDirty($attributes, $old))
+            : ['attributes' => $attributes, 'old' => $old];
     }
 
     /**

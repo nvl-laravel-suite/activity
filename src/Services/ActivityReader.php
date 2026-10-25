@@ -142,8 +142,23 @@ final readonly class ActivityReader
             $left = is_string($left) ? CarbonImmutable::parse($left)->utc()->format('Y-m-d H:i:s.u') : '';
             $right = is_string($right) ? CarbonImmutable::parse($right)->utc()->format('Y-m-d H:i:s.u') : '';
 
-            return strcmp($right, $left) ?: strcmp($b->getMorphClass().':'.$this->identifier($b->getKey()), $a->getMorphClass().':'.$this->identifier($a->getKey()));
+            return strcmp($right, $left) ?: $this->compareTimelineIdentity($a, $b);
         })->take($limit)->values();
+    }
+
+    /** Match each source's native primary-key SQL order within a stable morph-type order. */
+    private function compareTimelineIdentity(Model $left, Model $right): int
+    {
+        $typeOrder = strcmp($right->getMorphClass(), $left->getMorphClass());
+        if ($typeOrder !== 0) {
+            return $typeOrder;
+        }
+        $leftKey = $this->identifier($left->getKey());
+        $rightKey = $this->identifier($right->getKey());
+
+        return $left->getKeyType() === 'int' && $right->getKeyType() === 'int'
+            ? $rightKey <=> $leftKey
+            : strcmp((string) $rightKey, (string) $leftKey);
     }
 
     /**

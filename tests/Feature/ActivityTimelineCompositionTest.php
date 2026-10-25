@@ -92,3 +92,20 @@ test('merged timeline limits backfill base rows removed by supersession', functi
     $rows = app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'one'), SystemActor::Background, 2, [activityTimelineSource(['comment_recorded'])]);
     expect($rows->pluck('event')->all())->toBe(['reviewed', 'commented']);
 });
+
+test('integer source tie ordering has consistent bounded prefixes when composed with base facts', function (): void {
+    $base = activityTimelineBase();
+    foreach ([9, 10] as $id) {
+        TestTimelineSourceRecord::query()->create(['id' => $id, 'subject_id' => 'one', 'event' => 'commented', 'created_at' => '2026-08-01 12:00:00']);
+    }
+    $reader = app(ActivityReader::class);
+    $subject = new ActivitySubjectReference('external', 'one');
+    $one = $reader->timeline($subject, SystemActor::Background, 1, [activityTimelineSource()]);
+    $two = $reader->timeline($subject, SystemActor::Background, 2, [activityTimelineSource()]);
+    $all = $reader->timeline($subject, SystemActor::Background, 3, [activityTimelineSource()]);
+    expect($one->pluck('id')->all())->toBe([10])
+        ->and($two->pluck('id')->all())->toBe([10, 9])
+        ->and($all->pluck('id')->all())->toBe([10, 9, $base->id])
+        ->and($one->pluck('id')->all())->toBe($two->take(1)->pluck('id')->all())
+        ->and($two->pluck('id')->all())->toBe($all->take(2)->pluck('id')->all());
+});
