@@ -8,10 +8,9 @@ use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivityResponseCode;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Enums\ActivityVisibility;
-use Nvl\Activity\Enums\EntrySource;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityDoctor;
-use Nvl\Activity\Services\ActivityTransformService;
+use Nvl\Activity\Services\HeadlineRenderer;
 
 test('activity headlines and source labels ship with standalone English translations', function (): void {
     app()->setLocale('en');
@@ -34,10 +33,6 @@ test('activity headlines and source labels ship with standalone English translat
 
     foreach ($keys as $key) {
         expect(trans($key))->not->toBe($key);
-    }
-
-    foreach (EntrySource::cases() as $source) {
-        expect($source->getLabel())->not->toContain('nvl-activity::');
     }
 
     foreach ([
@@ -105,9 +100,9 @@ test('system actors use the active package locale', function (): void {
         $activity->setRelation('causer', null);
         $activity->setRelation('subject', null);
 
-        $item = app(ActivityTransformService::class)->normalizeActivity($activity);
+        $headline = app(HeadlineRenderer::class)->resolveHeadline('activity_logged', $activity, (string) trans('nvl-activity::activity/general.actors.system'), null, collect());
 
-        expect($item->headline)->toStartWith('Система ');
+        expect($headline)->toStartWith('Система ');
     } finally {
         app()->setLocale('en');
     }
@@ -125,7 +120,7 @@ test('operational enum labels and doctor messages follow the active package loca
             ->and(ActivityDoctorSeverity::Warning->getLabel())->toBe('Предупреждение')
             ->and(ActivityResponseCode::PurgeQueued->getMessage())
             ->toBe('Почистването на дневника на активността е добавено към опашката.')
-            ->and($checks->get('schema.table')?->message)
+            ->and(($checks->get('schema.table')['message'] ?? null))
             ->toContain('Таблицата');
     } finally {
         app()->setLocale('en');

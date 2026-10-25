@@ -5,26 +5,23 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use Composer\InstalledVersions;
-use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
-use Nvl\Activity\Contracts\MergesActivity;
-use Nvl\Activity\Data\ActivityDoctorCheckData;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityDoctorSeverity;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Support\Config\PackageOptions;
 use Nvl\Support\Config\PackageStorage;
-use ReflectionClass;
 use Throwable;
 
 /**
  * Validates the configured activity schema and runtime adoption contract.
+ *
+ * @api
  */
 final class ActivityDoctor
 {
@@ -37,16 +34,9 @@ final class ActivityDoctor
     ];
 
     /**
-     * Create the readiness inspector with the application's authorization registry.
-     */
-    public function __construct(
-        private readonly Gate $gate,
-    ) {}
-
-    /**
      * Inspect every non-mutating package readiness requirement.
      *
-     * @return list<ActivityDoctorCheckData>
+     * @return list<array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}>
      */
     public function inspect(): array
     {
@@ -75,7 +65,6 @@ final class ActivityDoctor
             $this->migrationOwnershipCheck(),
             $this->activityModelCheck(),
             $this->spatieVersionCheck(),
-            $this->routeCheck(),
             $this->retentionImportanceCheck(),
             $this->queueCheck(),
             $this->cacheLockCheck(),
@@ -85,14 +74,16 @@ final class ActivityDoctor
 
     /**
      * Warn when automatic vendor loading overlaps a published migration copy.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function migrationOwnershipCheck(): ActivityDoctorCheckData
+    private function migrationOwnershipCheck(): array
     {
         $duplicates = config('nvl-activity.migrations.enabled') === true
             ? $this->publishedMigrationDuplicates(dirname(__DIR__, 2).'/database/migrations')
             : [];
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'migrations.ownership',
             severity: ActivityDoctorSeverity::Warning,
             passed: $duplicates === [],
@@ -142,8 +133,10 @@ final class ActivityDoctor
 
     /**
      * Validate strict package switches and storage identity values.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function configurationCheck(): ActivityDoctorCheckData
+    private function configurationCheck(): array
     {
         try {
             $connection = PackageStorage::connection('activity');
@@ -160,7 +153,6 @@ final class ActivityDoctor
         );
         $passed = is_bool($migrationsEnabled)
             && is_bool(config('nvl-activity.adoption.spatie'))
-            && is_bool(config('nvl-activity.routes.enabled'))
             && is_bool(config('nvl-activity.retention.schedule.enabled'))
             && ($externalVisibilityTimeout === null
                 || (is_int($externalVisibilityTimeout) && $externalVisibilityTimeout > 0))
@@ -168,7 +160,7 @@ final class ActivityDoctor
             && ($connection === null || trim($connection) !== '')
             && $storageValid;
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'configuration.values',
             severity: ActivityDoctorSeverity::Error,
             passed: $passed,
@@ -180,10 +172,12 @@ final class ActivityDoctor
 
     /**
      * Report whether the configured activity storage connection can be inspected safely.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function connectionCheck(bool $available): ActivityDoctorCheckData
+    private function connectionCheck(bool $available): array
     {
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'schema.connection',
             severity: ActivityDoctorSeverity::Error,
             passed: $available,
@@ -195,10 +189,12 @@ final class ActivityDoctor
 
     /**
      * Validate the configured activity table exists.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function tableCheck(string $table, bool $exists): ActivityDoctorCheckData
+    private function tableCheck(string $table, bool $exists): array
     {
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'schema.table',
             severity: ActivityDoctorSeverity::Error,
             passed: $exists,
@@ -211,8 +207,10 @@ final class ActivityDoctor
 
     /**
      * Validate required columns for the installed Spatie major version.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function columnCheck(Builder $schema, string $table, bool $exists): ActivityDoctorCheckData
+    private function columnCheck(Builder $schema, string $table, bool $exists): array
     {
         $columns = [
             'id',
@@ -238,7 +236,7 @@ final class ActivityDoctor
             ))
             : $columns;
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'schema.columns',
             severity: ActivityDoctorSeverity::Error,
             passed: $missing === [],
@@ -252,11 +250,13 @@ final class ActivityDoctor
 
     /**
      * Validate UUID primary and polymorphic identifier storage compatibility.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function identifierCheck(Builder $schema, string $table, bool $exists): ActivityDoctorCheckData
+    private function identifierCheck(Builder $schema, string $table, bool $exists): array
     {
         if (! $exists || ! $this->hasColumns($schema, $table, ['id', 'subject_id', 'causer_id', 'batch_uuid'])) {
-            return new ActivityDoctorCheckData(
+            return $this->check(
                 key: 'schema.identifiers',
                 severity: ActivityDoctorSeverity::Error,
                 passed: false,
@@ -284,7 +284,7 @@ final class ActivityDoctor
             && $id['auto_increment'] === false
             && $hasPrimaryId;
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'schema.identifiers',
             severity: ActivityDoctorSeverity::Error,
             passed: $passed,
@@ -296,17 +296,19 @@ final class ActivityDoctor
 
     /**
      * Validate structured activity properties use JSON-compatible columns.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
     private function jsonCheck(
         Builder $schema,
         string $table,
         bool $exists,
         string $driver,
-    ): ActivityDoctorCheckData {
+    ): array {
         $columns = ['properties', 'attribute_changes'];
 
         if (! $exists || ! $this->hasColumns($schema, $table, $columns)) {
-            return new ActivityDoctorCheckData(
+            return $this->check(
                 key: 'schema.json',
                 severity: ActivityDoctorSeverity::Error,
                 passed: false,
@@ -326,7 +328,7 @@ final class ActivityDoctor
             ),
         ));
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'schema.json',
             severity: ActivityDoctorSeverity::Error,
             passed: $invalid === [],
@@ -340,11 +342,13 @@ final class ActivityDoctor
 
     /**
      * Validate indexes used by subject, causer, feed, and purge queries.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function indexCheck(Builder $schema, string $table, bool $exists): ActivityDoctorCheckData
+    private function indexCheck(Builder $schema, string $table, bool $exists): array
     {
         if (! $exists) {
-            return new ActivityDoctorCheckData(
+            return $this->check(
                 key: 'schema.indexes',
                 severity: ActivityDoctorSeverity::Warning,
                 passed: false,
@@ -364,7 +368,7 @@ final class ActivityDoctor
             fn (array $columns): bool => ! $this->hasIndexColumns($indexes, $columns),
         ));
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'schema.indexes',
             severity: ActivityDoctorSeverity::Warning,
             passed: $missing === [],
@@ -381,8 +385,10 @@ final class ActivityDoctor
 
     /**
      * Validate the configured activity model binding.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function activityModelCheck(): ActivityDoctorCheckData
+    private function activityModelCheck(): array
     {
         $activityModel = config('activitylog.activity_model');
         $legacyActivityModel = config('nvl-activity.model');
@@ -390,7 +396,7 @@ final class ActivityDoctor
         $passed = (! $adopted || $activityModel === ActivityLog::class)
             && ($legacyActivityModel === null || $legacyActivityModel === ActivityLog::class);
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'binding.activity_model',
             severity: ActivityDoctorSeverity::Error,
             passed: $passed,
@@ -402,14 +408,16 @@ final class ActivityDoctor
 
     /**
      * Validate the installed Spatie Activitylog major version.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function spatieVersionCheck(): ActivityDoctorCheckData
+    private function spatieVersionCheck(): array
     {
         $major = $this->spatieMajorVersion();
         $passed = $major === 5;
         $version = InstalledVersions::getPrettyVersion('spatie/laravel-activitylog') ?? 'unknown';
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'dependency.spatie_activitylog',
             severity: ActivityDoctorSeverity::Error,
             passed: $passed,
@@ -421,10 +429,12 @@ final class ActivityDoctor
 
     /**
      * Report the fail-safe retention policy for important activity evidence.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function retentionImportanceCheck(): ActivityDoctorCheckData
+    private function retentionImportanceCheck(): array
     {
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'retention.importance',
             severity: ActivityDoctorSeverity::Error,
             passed: true,
@@ -433,56 +443,17 @@ final class ActivityDoctor
     }
 
     /**
-     * Validate fail-closed route, ability, middleware, and subject configuration.
-     */
-    private function routeCheck(): ActivityDoctorCheckData
-    {
-        $enabled = config('nvl-activity.routes.enabled', false) === true;
-
-        if (! $enabled) {
-            return new ActivityDoctorCheckData(
-                key: 'routes.management',
-                severity: ActivityDoctorSeverity::Error,
-                passed: true,
-                message: $this->translated('routes_disabled'),
-            );
-        }
-
-        $middleware = $this->stringList(config('nvl-activity.routes.management_middleware', []));
-        $subjects = $this->stringList(config('nvl-activity.routes.timeline_subjects', []));
-        $abilities = config('nvl-activity.authorization.abilities', []);
-        $configuredAbilities = is_array($abilities)
-            && collect(['view', 'timeline', 'purge'])->every(function (string $operation) use ($abilities): bool {
-                $ability = $abilities[$operation] ?? null;
-
-                return is_string($ability)
-                    && trim($ability) !== ''
-                    && $this->gate->has(trim($ability));
-            });
-        $passed = $middleware !== []
-            && $this->hasValidTimelineSubjects($subjects)
-            && $configuredAbilities;
-
-        return new ActivityDoctorCheckData(
-            key: 'routes.management',
-            severity: ActivityDoctorSeverity::Error,
-            passed: $passed,
-            message: $passed
-                ? $this->translated('routes_safe')
-                : $this->translated('routes_unsafe'),
-        );
-    }
-
-    /**
      * Validate queued maintenance configuration when automated entrypoints are enabled.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function queueCheck(): ActivityDoctorCheckData
+    private function queueCheck(): array
     {
         try {
             $queue = PackageOptions::queueName('activity');
             $defaultConnection = PackageOptions::queueConnection('activity');
         } catch (\InvalidArgumentException $exception) {
-            return new ActivityDoctorCheckData('retention.queue', ActivityDoctorSeverity::Warning, false, $exception->getMessage());
+            return $this->check('retention.queue', ActivityDoctorSeverity::Warning, false, $exception->getMessage());
         }
         $connections = config('queue.connections');
         $externalVisibilityTimeout = config(
@@ -497,7 +468,7 @@ final class ActivityDoctor
                 is_int($externalVisibilityTimeout) ? $externalVisibilityTimeout : null,
             );
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'retention.queue',
             severity: ActivityDoctorSeverity::Warning,
             passed: $passed,
@@ -584,8 +555,10 @@ final class ActivityDoctor
 
     /**
      * Validate that purge and scheduler locks use a production-capable cache store.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function cacheLockCheck(): ActivityDoctorCheckData
+    private function cacheLockCheck(): array
     {
         $defaultStore = config('cache.default');
         $stores = config('cache.stores');
@@ -594,7 +567,7 @@ final class ActivityDoctor
             && is_array($stores)
             && $this->cacheStoreHasSafeLocks(trim($defaultStore), $stores);
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'retention.cache_lock',
             severity: ActivityDoctorSeverity::Warning,
             passed: $passed,
@@ -641,13 +614,15 @@ final class ActivityDoctor
 
     /**
      * Validate opt-in retention scheduling configuration.
+     *
+     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function scheduleCheck(): ActivityDoctorCheckData
+    private function scheduleCheck(): array
     {
         $enabled = config('nvl-activity.retention.schedule.enabled', false) === true;
 
         if (! $enabled) {
-            return new ActivityDoctorCheckData(
+            return $this->check(
                 key: 'retention.schedule',
                 severity: ActivityDoctorSeverity::Warning,
                 passed: true,
@@ -662,7 +637,7 @@ final class ActivityDoctor
             && is_int($days)
             && $days > 0;
 
-        return new ActivityDoctorCheckData(
+        return $this->check(
             key: 'retention.schedule',
             severity: ActivityDoctorSeverity::Warning,
             passed: $passed,
@@ -720,51 +695,6 @@ final class ActivityDoctor
     }
 
     /**
-     * Normalize a configuration value to a non-empty string list.
-     *
-     * @return list<string>
-     */
-    private function stringList(mixed $value): array
-    {
-        if (! is_array($value)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(
-            static fn (mixed $item): mixed => is_string($item) ? trim($item) : $item,
-            $value,
-        ), static fn (mixed $item): bool => is_string($item) && $item !== ''));
-    }
-
-    /**
-     * Determine whether every timeline subject resolves to an instantiable host contract.
-     *
-     * @param  list<string>  $subjects
-     */
-    private function hasValidTimelineSubjects(array $subjects): bool
-    {
-        if ($subjects === []) {
-            return false;
-        }
-
-        return collect($subjects)->every(static function (string $subject): bool {
-            $modelClass = Relation::getMorphedModel($subject) ?? $subject;
-
-            if (! class_exists($modelClass)
-                || ! is_subclass_of($modelClass, Model::class)
-                || ! is_subclass_of($modelClass, MergesActivity::class)) {
-                return false;
-            }
-
-            $modelReflection = new ReflectionClass($modelClass);
-            $constructor = $modelReflection->getConstructor();
-
-            return $modelReflection->isInstantiable()
-                && ($constructor === null || $constructor->getNumberOfRequiredParameters() === 0);
-        });
-    }
-
-    /**
      * Resolve one localized package-doctor message.
      *
      * @param  array<string, scalar>  $replacements
@@ -785,5 +715,11 @@ final class ActivityDoctor
         $version = InstalledVersions::getVersion('spatie/laravel-activitylog');
 
         return is_string($version) ? (int) $version : 0;
+    }
+
+    /** @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string} */
+    private function check(string $key, ActivityDoctorSeverity $severity, bool $passed, string $message): array
+    {
+        return compact('key', 'severity', 'passed', 'message');
     }
 }

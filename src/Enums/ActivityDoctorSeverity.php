@@ -6,6 +6,8 @@ namespace Nvl\Activity\Enums;
 
 /**
  * Defines the severity of one package doctor check.
+ *
+ * @api
  */
 enum ActivityDoctorSeverity: string
 {

@@ -2,36 +2,31 @@
 
 declare(strict_types=1);
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\ValidationException;
-use Nvl\Activity\Data\Display\ActivityItem;
-use Nvl\Activity\Data\Display\ActivityItemProperties;
-use Nvl\Activity\Data\Display\HeadlineSegment;
+use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Enums\ActivityResponseCode;
-use Nvl\Activity\Enums\EntrySource;
-use Nvl\Activity\Enums\HeadlineSegmentType;
+use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
 use Nvl\Activity\Models\ActivityLog;
-use Nvl\Activity\Policies\ActivityLogPolicy;
-use Nvl\Activity\Services\ActivityEntryNormalizer;
+use Nvl\Activity\Services\ActivityReader;
+use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\ActivityRelationLoader;
-use Nvl\Activity\Services\ActivitySubjectTimelineResolver;
-use Nvl\Activity\Services\ActivityTransformService;
-use Nvl\Activity\Services\ModelActivityTimelineService;
+use Nvl\Activity\Services\LabelResolver;
 use Nvl\Activity\Services\TimelineFilter;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\TimelineActivityRules;
 use Nvl\Activity\Tests\Stubs\AbstractTestActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
-use Nvl\Activity\Tests\Stubs\TestActivityUser;
 use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
+use Nvl\Support\Enums\SystemActor;
 use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 test('causer normalization honors configured display attributes and scalar actor metadata', function (): void {
@@ -60,16 +55,16 @@ test('causer normalization honors configured display attributes and scalar actor
 test('display reads support causer tables without name or email columns', function (): void {
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
-        $table->string('display_name');
-        $table->string('contact')->nullable();
+        $table->string('name');
+        $table->string('email')->nullable();
     });
 
     try {
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         $causer = TestActivityCauser::query()->create([
-            'display_name' => 'Custom operator',
-            'contact' => 'operator@example.test',
+            'name' => 'Custom operator',
+            'email' => 'operator@example.test',
         ]);
         ActivityLog::query()->create([
             'log_name' => 'test',
@@ -80,7 +75,8 @@ test('display reads support causer tables without name or email columns', functi
         ]);
 
         $activity = ActivityLog::forDisplay()->firstOrFail();
-        $item = app(ActivityTransformService::class)->normalizeActivity($activity);
+        app(ActivityRelationLoader::class)->load(new EloquentCollection([$activity]));
+        $item = $activity;
 
         expect($item->causer?->name)->toBe('Custom operator')
             ->and($item->causer?->email)->toBe('operator@example.test');
@@ -92,17 +88,17 @@ test('display reads support causer tables without name or email columns', functi
 test('display reads preserve soft deleted historical causers', function (): void {
     Schema::create('activity_soft_deleted_causers', function (Blueprint $table): void {
         $table->id();
-        $table->string('display_name');
-        $table->string('contact')->nullable();
+        $table->string('name');
+        $table->string('email')->nullable();
         $table->softDeletes();
     });
 
     try {
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         $causer = TestSoftDeletedActivityCauser::query()->create([
-            'display_name' => 'Historical operator',
-            'contact' => 'history@example.test',
+            'name' => 'Historical operator',
+            'email' => 'history@example.test',
         ]);
         $activity = ActivityLog::query()->create([
             'log_name' => 'test',
@@ -113,7 +109,8 @@ test('display reads preserve soft deleted historical causers', function (): void
         ]);
         $causer->delete();
 
-        $item = app(ActivityTransformService::class)->normalizeActivity($activity);
+        app(ActivityRelationLoader::class)->load(new EloquentCollection([$activity]));
+        $item = $activity;
 
         expect($item->causer?->name)->toBe('Historical operator')
             ->and($item->causer?->email)->toBe('history@example.test');
@@ -139,7 +136,7 @@ test('display relations use each related model connection when activity storage 
 
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
-        $table->string('display_name');
+        $table->string('name');
     });
     Schema::create('activity_timeline_subjects', function (Blueprint $table): void {
         $table->id();
@@ -162,7 +159,7 @@ test('display relations use each related model connection when activity storage 
 
     try {
         $causer = TestActivityCauser::query()->create([
-            'display_name' => 'Default connection operator',
+            'name' => 'Default connection operator',
         ]);
         $subject = TestActivityTimelineSubject::query()->create([
             'name' => 'Default connection subject',
@@ -198,97 +195,36 @@ test('display relations use each related model connection when activity storage 
 });
 
 test('display reads degrade stale polymorphic model types without failing the feed', function (): void {
-    $activity = ActivityLog::query()->create([
-        'log_name' => 'test',
-        'description' => 'Historical row',
-        'event' => 'created',
-        'subject_type' => 'Removed\\Domain\\HistoricalRecord',
-        'subject_id' => 'record-1',
-        'causer_type' => 'Removed\\Domain\\HistoricalUser',
-        'causer_id' => 'user-1',
-    ]);
-
-    $item = app(ActivityTransformService::class)->normalizeActivity($activity);
-    $collectionItems = app(ActivityTransformService::class)->normalizeActivities(collect([$activity->fresh()]));
-
-    expect($item->subjectLabel)->toBe('Historical Record')
-        ->and($item->causer?->id)->toBeNull()
-        ->and($item->headline)->not->toBeEmpty()
-        ->and($collectionItems)->toHaveCount(1)
-        ->and($collectionItems[0]->subjectLabel)->toBe('Historical Record');
+    $activity = ActivityLog::query()->create(['description' => 'Historical row', 'event' => 'created', 'subject_type' => 'Removed\\Domain\\HistoricalRecord', 'subject_id' => 'one', 'causer_type' => 'Removed\\Domain\\HistoricalUser', 'causer_id' => 'one']);
+    app(ActivityRelationLoader::class)->load(new EloquentCollection([$activity]));
+    expect($activity->getRelation('subject'))->toBeNull()->and($activity->getRelation('causer'))->toBeNull()
+        ->and(app(LabelResolver::class)->resolveSubjectLabel($activity))->toBe('Historical Record');
 });
 
 test('display reads degrade unavailable concrete polymorphic model types', function (): void {
-    $activity = ActivityLog::query()->create([
-        'log_name' => 'test',
-        'description' => 'Historical row',
-        'event' => 'created',
-        'subject_type' => AbstractTestActivitySubject::class,
-        'subject_id' => 'record-1',
-    ]);
-
-    $item = app(ActivityTransformService::class)->normalizeActivity($activity);
-
-    expect($item->subjectLabel)->toBe('Abstract Test Activity Subject')
-        ->and($item->headline)->not->toBeEmpty();
+    $activity = ActivityLog::query()->create(['description' => 'Historical row', 'event' => 'created', 'subject_type' => AbstractTestActivitySubject::class, 'subject_id' => 'one']);
+    app(ActivityRelationLoader::class)->load(new EloquentCollection([$activity]));
+    expect($activity->getRelation('subject'))->toBeNull()->and(app(LabelResolver::class)->resolveSubjectLabel($activity))->toBe('Abstract Test Activity Subject');
 });
 
-test('authorization uses cacheable named abilities and fails closed when missing', function (): void {
-    $user = new TestActivityUser;
-    $user->forceFill(['id' => 1]);
-    $subject = new TestActivityTimelineSubject;
-    $policy = new ActivityLogPolicy;
-
-    expect($policy->viewAny($user))->toBeFalse()
-        ->and($policy->viewTimeline($user, $subject))->toBeFalse()
-        ->and($policy->delete($user))->toBeFalse();
-
-    config()->set('nvl-activity.authorization.abilities', [
-        'view' => 'activity.view',
-        'timeline' => 'activity.timeline',
-        'purge' => 'activity.purge',
-    ]);
-    Gate::define('activity.view', static fn (TestActivityUser $actor): bool => $actor->getKey() === 1);
-    Gate::define(
-        'activity.timeline',
-        static fn (TestActivityUser $actor, TestActivityTimelineSubject $timelineSubject): bool => $actor->getKey() === 1
-            && $timelineSubject->getTable() === 'activity_timeline_subjects',
-    );
-    Gate::define('activity.purge', static fn (TestActivityUser $actor): bool => $actor->getKey() === 1);
-
-    expect($policy->viewAny($user))->toBeTrue()
-        ->and($policy->viewTimeline($user, $subject))->toBeTrue()
-        ->and($policy->delete($user))->toBeTrue();
+test('native service authorization fails closed without a host policy', function (): void {
+    app()->offsetUnset(ActivityAuthorization::class);
+    expect(fn () => app(ActivityReader::class)->paginate([], SystemActor::Background))->toThrow(AuthorizationException::class);
 });
 
-test('timeline resolution requires an explicit subject allowlist', function (): void {
-    config()->set('nvl-activity.routes.timeline_subjects', []);
-
-    expect(fn () => app(ActivitySubjectTimelineResolver::class)->resolve(
-        TestActivityTimelineSubject::class,
-        '1',
-    ))->toThrow(ValidationException::class);
+test('model-free timelines never dynamically construct their historical subject type', function (): void {
+    $reference = new ActivitySubjectReference('Removed\\UntrustedModel', 'one');
+    expect(app(ActivityReader::class)->timeline($reference, SystemActor::Background))->toBeEmpty();
 });
 
-test('timeline resolution accepts explicitly allowed host models', function (): void {
+test('native timeline accepts an explicitly resolved persisted host model', function (): void {
     Schema::create('activity_timeline_subjects', function (Blueprint $table): void {
         $table->id();
         $table->string('name');
     });
-
-    try {
-        $subject = TestActivityTimelineSubject::query()->create(['name' => 'Allowed']);
-        config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
-
-        $resolved = app(ActivitySubjectTimelineResolver::class)->resolve(
-            TestActivityTimelineSubject::class,
-            (string) $subject->getKey(),
-        );
-
-        expect($resolved->is($subject))->toBeTrue();
-    } finally {
-        Schema::dropIfExists('activity_timeline_subjects');
-    }
+    $subject = TestActivityTimelineSubject::query()->create(['name' => 'Allowed']);
+    app(ActivityRecorder::class)->record(['subject' => $subject, 'event' => 'created'], SystemActor::Background);
+    expect(app(ActivityReader::class)->timeline($subject, SystemActor::Background))->toHaveCount(1);
 });
 
 test('generic capture rules suppress only explicitly configured technical attributes', function (): void {
@@ -302,33 +238,13 @@ test('generic capture rules suppress only explicitly configured technical attrib
         ->and(TimelineActivityRules::isNoisyChangeKey('revision'))->toBeTrue();
 });
 
-test('normalization never infers consumer events from descriptions', function (): void {
-    $activity = new ActivityLog;
-    $activity->forceFill([
-        'id' => 'activity-1',
-        'description' => 'Customer deleted after payment message sent',
-        'event' => null,
-        'properties' => [],
-        'attribute_changes' => [],
-    ]);
-    $activity->setRelation('causer', null);
-    $activity->setRelation('subject', null);
-
-    expect(app(ActivityEntryNormalizer::class)->normalize($activity)->event)
-        ->toBe('activity_logged');
+test('native timeline never guesses semantic events from descriptions', function (): void {
+    $activity = new ActivityLog(['description' => 'Customer deleted after payment', 'event' => null, 'properties' => []]);
+    expect((new TimelineFilter)->shouldIncludeInSignalTimeline($activity))->toBeTrue()->and($activity->semanticEvent())->toBe('activity_logged')->and($activity->event)->toBeNull();
 });
 
 test('explicit timeline visibility admits consumer-defined system events', function (): void {
-    $item = new ActivityItem(
-        id: 'activity-1',
-        log: 'consumer',
-        event: 'consumer_semantic_event',
-        source: EntrySource::ActivityLog,
-        properties: ActivityItemProperties::fromPayload([
-            'source' => 'system',
-            'visibility' => 'timeline',
-        ]),
-    );
+    $item = new ActivityLog(['event' => 'consumer_semantic_event', 'properties' => ['source' => 'system', 'visibility' => 'timeline']]);
 
     expect((new TimelineFilter)->shouldIncludeInSignalTimeline($item))->toBeTrue();
 });
@@ -353,7 +269,7 @@ test('timeline reads fall back safely when a custom activity model relation is p
             new EloquentCollection([new SpatieActivity]),
         );
 
-        $timeline = app(ModelActivityTimelineService::class)->forSubject($subject);
+        $timeline = app(ActivityReader::class)->timeline($subject, SystemActor::Background, 1000);
 
         expect($timeline)->toHaveCount(1)
             ->and($timeline[0]->event)->toBe('created');
@@ -383,27 +299,14 @@ test('activity exceptions expose stable scoped metadata without leaking diagnost
         ->and($purge->getPrevious()?->getMessage())->toBe('diagnostic detail');
 });
 
-test('headline segment enum stays strongly typed while serializing to its api value', function (): void {
-    $segment = new HeadlineSegment(
-        type: HeadlineSegmentType::Status,
-        text: 'Published',
-    );
-
-    expect($segment->type)->toBe(HeadlineSegmentType::Status)
-        ->and($segment->toArray())->toMatchArray([
-            'type' => 'status',
-            'text' => 'Published',
-        ]);
+test('native visibility enums persist their exact domain value without presentation segments', function (): void {
+    $visibility = ActivityVisibility::Timeline;
+    $record = app(ActivityRecorder::class)->record(['event' => 'reviewed', 'visibility' => $visibility], SystemActor::Background);
+    expect($record->properties->get('visibility'))->toBe($visibility->value);
 });
 
 test('historical visibility only admits absent or blank strings and exact timeline values', function (mixed $visibility, bool $included): void {
-    $item = new ActivityItem(
-        id: 'historical-activity',
-        log: 'consumer',
-        event: 'created',
-        source: EntrySource::ActivityLog,
-        properties: ActivityItemProperties::fromPayload(['visibility' => $visibility]),
-    );
+    $item = new ActivityLog(['event' => 'created', 'properties' => ['visibility' => $visibility]]);
 
     expect((new TimelineFilter)->shouldIncludeInSignalTimeline($item))->toBe($included);
 })->with([

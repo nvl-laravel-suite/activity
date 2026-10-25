@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
-use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
@@ -23,8 +22,11 @@ use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
-use Nvl\Activity\Services\ActivityReadService;
+use Nvl\Activity\Services\ActivityPurgeDispatcher;
+use Nvl\Activity\Services\ActivityReader;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Activity\Support\ActivitySubjectReference;
+use Nvl\Support\Enums\SystemActor;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
 
 test('the package migration rejects an incompatible existing activity table', function (): void {
@@ -102,7 +104,7 @@ test('package managed migrations create explicitly configured fresh storage', fu
     try {
         $migration->up();
         expect(Schema::hasTable('custom_activity_log'))->toBeTrue()
-            ->and(collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'configuration.values')?->passed)->toBeTrue();
+            ->and((collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'configuration.values')['passed'] ?? null))->toBeTrue();
     } finally {
         Schema::dropIfExists('custom_activity_log');
         config()->set('nvl-activity.tables.log', ActivityTables::ActivityLog);
@@ -332,7 +334,7 @@ test('purge criteria reject fractional days and inverted effective ranges', func
 test('purge queue actions reject invalid retention before dispatch', function (): void {
     Bus::fake();
 
-    expect(fn () => app(QueueActivityLogPurgeAction::class)->execute(0))
+    expect(fn () => app(ActivityPurgeDispatcher::class)->dispatch(ActivityPurgeCriteria::fromDays(0), SystemActor::Background))
         ->toThrow(ActivityPurgeCriteriaException::class, 'Days must be a positive integer.');
 
     Bus::assertNothingDispatched();
@@ -360,9 +362,9 @@ test('doctor rejects incompatible adopted schemas instead of reporting a false h
     try {
         $checks = collect(app(ActivityDoctor::class)->inspect())->keyBy('key');
 
-        expect($checks->get('schema.identifiers')?->passed)->toBeFalse()
-            ->and($checks->get('schema.json')?->passed)->toBeFalse()
-            ->and($checks->get('schema.indexes')?->passed)->toBeFalse();
+        expect(($checks->get('schema.identifiers')['passed'] ?? null))->toBeFalse()
+            ->and(($checks->get('schema.json')['passed'] ?? null))->toBeFalse()
+            ->and(($checks->get('schema.indexes')['passed'] ?? null))->toBeFalse();
     } finally {
         Schema::drop(ActivityTables::ActivityLog);
         $migration->up();
@@ -396,7 +398,7 @@ test('doctor requires a primary activity id and compatible batch identifier stor
     try {
         $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'schema.identifiers');
 
-        expect($check?->passed)->toBeFalse();
+        expect(($check['passed'] ?? null))->toBeFalse();
     } finally {
         Schema::drop(ActivityTables::ActivityLog);
         $migration->up();
@@ -409,8 +411,8 @@ test('doctor reports an unavailable configured connection without crashing', fun
     try {
         $checks = collect(app(ActivityDoctor::class)->inspect())->keyBy('key');
 
-        expect($checks->get('schema.connection')?->passed)->toBeFalse()
-            ->and($checks->get('dependency.spatie_activitylog')?->passed)->toBeTrue();
+        expect(($checks->get('schema.connection')['passed'] ?? null))->toBeFalse()
+            ->and(($checks->get('dependency.spatie_activitylog')['passed'] ?? null))->toBeTrue();
     } finally {
         config()->set('nvl-activity.storage.connection');
     }
@@ -451,7 +453,7 @@ test('doctor rejects text json storage on PostgreSQL connections', function (): 
 
         $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'schema.json');
 
-        expect($check?->passed)->toBeFalse();
+        expect(($check['passed'] ?? null))->toBeFalse();
     } finally {
         DB::purge($connectionName);
         config()->set('nvl-activity.storage.connection');
@@ -459,16 +461,10 @@ test('doctor rejects text json storage on PostgreSQL connections', function (): 
 });
 
 test('zero and negative public read limits never become unbounded queries', function (): void {
-    ActivityLog::query()->create([
-        'log_name' => 'test',
-        'description' => 'Bounded activity',
-        'event' => 'created',
-    ]);
-
-    $reader = app(ActivityReadService::class);
-
-    expect($reader->latest(0))->toHaveCount(0)
-        ->and($reader->latest(-1))->toHaveCount(0);
+    foreach ([0, -1] as $limit) {
+        expect(fn () => app(ActivityReader::class)->paginate(['per_page' => $limit], SystemActor::Background))->toThrow(InvalidArgumentException::class);
+        expect(fn () => app(ActivityReader::class)->timeline(new ActivitySubjectReference('record', 'one'), SystemActor::Background, $limit))->toThrow(InvalidArgumentException::class);
+    }
 });
 
 test('system purge deletes only eligible system-originated rows', function (): void {
@@ -582,7 +578,7 @@ test('strict doctor readiness rejects sync queues even when routes and schedulin
 
     $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
 
-    expect($check?->passed)->toBeFalse();
+    expect(($check['passed'] ?? null))->toBeFalse();
 });
 
 test('doctor rejects process-local retention locks and validates lock providers', function (): void {
@@ -603,9 +599,9 @@ test('doctor rejects process-local retention locks and validates lock providers'
     $unsafeFailover = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'retention.cache_lock');
 
-    expect($processLocal?->passed)->toBeFalse()
-        ->and($fileLock?->passed)->toBeTrue()
-        ->and($unsafeFailover?->passed)->toBeFalse();
+    expect(($processLocal['passed'] ?? null))->toBeFalse()
+        ->and(($fileLock['passed'] ?? null))->toBeTrue()
+        ->and(($unsafeFailover['passed'] ?? null))->toBeFalse();
 });
 
 test('doctor requires queue redelivery visibility to exceed the purge timeout', function (): void {
@@ -662,14 +658,14 @@ test('doctor requires queue redelivery visibility to exceed the purge timeout', 
     $invalidConfiguration = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'configuration.values');
 
-    expect($tooShort?->passed)->toBeFalse()
-        ->and($databaseSafe?->passed)->toBeTrue()
-        ->and($externalMissing?->passed)->toBeFalse()
-        ->and($externalSafe?->passed)->toBeTrue()
-        ->and($failoverSafe?->passed)->toBeTrue()
-        ->and($cycleUnsafe?->passed)->toBeFalse()
-        ->and($nonDurable?->passed)->toBeFalse()
-        ->and($invalidConfiguration?->passed)->toBeFalse();
+    expect(($tooShort['passed'] ?? null))->toBeFalse()
+        ->and(($databaseSafe['passed'] ?? null))->toBeTrue()
+        ->and(($externalMissing['passed'] ?? null))->toBeFalse()
+        ->and(($externalSafe['passed'] ?? null))->toBeTrue()
+        ->and(($failoverSafe['passed'] ?? null))->toBeTrue()
+        ->and(($cycleUnsafe['passed'] ?? null))->toBeFalse()
+        ->and(($nonDurable['passed'] ?? null))->toBeFalse()
+        ->and(($invalidConfiguration['passed'] ?? null))->toBeFalse();
 });
 
 test('purge work and its queued event execute only after the surrounding transaction commits', function (): void {
@@ -685,7 +681,7 @@ test('purge work and its queued event execute only after the surrounding transac
     ]);
 
     DB::transaction(function () use ($activity): void {
-        app(QueueActivityLogPurgeAction::class)->execute(90);
+        app(ActivityPurgeDispatcher::class)->dispatch(ActivityPurgeCriteria::fromDays(90), SystemActor::Background);
 
         expect($activity->fresh())->not->toBeNull();
         Event::assertNotDispatched(ActivityLogPurgeQueued::class);
@@ -712,7 +708,7 @@ test('rolled back transactions discard purge work and its queued event', functio
     ]);
 
     expect(fn () => DB::transaction(function () use ($activity): never {
-        app(QueueActivityLogPurgeAction::class)->execute(90);
+        app(ActivityPurgeDispatcher::class)->dispatch(ActivityPurgeCriteria::fromDays(90), SystemActor::Background);
 
         expect($activity->fresh())->not->toBeNull();
         Event::assertNotDispatched(ActivityLogPurgeQueued::class);

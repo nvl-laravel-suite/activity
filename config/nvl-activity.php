@@ -8,26 +8,7 @@ use Nvl\Activity\Definitions\Tables\ActivityTables;
 return [
     'queue' => ['connection' => null, 'name' => null],
     'adoption' => ['spatie' => false],
-    'tenancy' => [
-        'active_tenant_worklist' => [],
-    ],
     'name' => 'Activity',
-
-    'routes' => [
-        'enabled' => false,
-        'prefix' => 'nvl/api/v1',
-        'middleware' => ['api'],
-        'management_middleware' => ['auth', 'throttle:60,1'],
-        'timeline_subjects' => [],
-    ],
-
-    'authorization' => [
-        'abilities' => [
-            'view' => null,
-            'timeline' => null,
-            'purge' => null,
-        ],
-    ],
 
     'migrations' => [
         'enabled' => true,

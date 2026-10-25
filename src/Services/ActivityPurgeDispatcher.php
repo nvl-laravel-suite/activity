@@ -4,57 +4,55 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Services;
 
+use Illuminate\Contracts\Auth\Authenticatable;
+use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
+use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
-use Nvl\Activity\Tenancy\LegacyActivityWorklist;
+use Nvl\Support\Enums\SystemActor;
+use Nvl\Support\Events\DomainEventDispatcher;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
 use Nvl\Support\Ownership\Contracts\OwnershipContext;
-use Nvl\Support\Ownership\Enums\OwnershipContextMode;
 use Nvl\Support\Ownership\ValueObjects\OwnershipJobEnvelope;
 
-/** Dispatches/counts retention work only inside explicit bounded tenant scopes. */
+/**
+ * Schedules recoverable retention work in exactly the current admitted scope.
+ *
+ * @api
+ */
 final readonly class ActivityPurgeDispatcher
 {
     public function __construct(
         private OwnershipContext $ownership,
         private OwnershipBoundary $boundary,
-        private LegacyActivityWorklist $legacy,
+        private ActivityAccess $access,
+        private DomainEventDispatcher $events,
     ) {}
 
-    /** Return the number of bounded jobs dispatched. */
-    public function dispatch(ActivityPurgeCriteria $criteria): int
+    /** Dispatch after the actual Activity connection's outer commit; rollback cancels delivery. */
+    public function dispatch(ActivityPurgeCriteria $criteria, Authenticatable|SystemActor $actor): int
     {
-        return $this->each(function () use ($criteria): void {
-            PurgeActivityLogsJob::dispatch(
-                $criteria->days ?? 0,
-                $criteria->systemOnly,
-                $criteria,
-                $this->legacy->envelope(),
-            );
-        });
-    }
-
-    /** Count matching rows across the same explicit worklist without widening a query. */
-    public function count(ActivityPurgeCriteria $criteria): int
-    {
-        $count = 0;
-        $this->each(function () use ($criteria, &$count): void {
-            $count += PurgeActivityLogsJob::countPurgeableForCriteria($criteria, $this->boundary);
-        });
-
-        return $count;
-    }
-
-    /** Execute once in disabled/current tenant mode or once per reviewed platform worklist entry. */
-    private function each(callable $operation): int
-    {
-        if ($this->ownership->snapshot()->mode !== OwnershipContextMode::Disabled) {
-            OwnershipJobEnvelope::capture($this->ownership);
-            $operation();
-
-            return 1;
+        $this->access->authorize($actor, 'purge');
+        $this->boundary->attributes('activity.events');
+        OwnershipJobEnvelope::capture($this->ownership);
+        $job = new PurgeActivityLogsJob($criteria->days ?? 0, $criteria->systemOnly, $criteria);
+        $connection = (new ActivityLog)->getConnection();
+        $dispatch = static fn () => dispatch($job);
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit($dispatch);
+        } else {
+            $dispatch();
         }
+        $this->events->dispatch(new ActivityLogPurgeQueued($criteria->days ?? 0, $criteria->systemOnly, $criteria->includeImportant), $connection);
 
-        return $this->legacy->each($operation);
+        return 1;
+    }
+
+    /** Count only the same admitted scope that dispatch will capture. */
+    public function count(ActivityPurgeCriteria $criteria, Authenticatable|SystemActor $actor): int
+    {
+        $this->access->authorize($actor, 'purge');
+
+        return PurgeActivityLogsJob::countPurgeableForCriteria($criteria, $this->boundary);
     }
 }

@@ -5,16 +5,12 @@ declare(strict_types=1);
 namespace Nvl\Activity\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
-use Nvl\Activity\Contracts\MergesActivity;
-use Nvl\Activity\Data\Display\ActivityItem;
 use Nvl\Activity\Traits\HasModelActivity;
-use Nvl\Activity\Traits\MergesActivityTimeline;
 
 /** Represents a host-owned tenant resource using real automatic Activity capture. */
-final class TenantActivitySubject extends Model implements MergesActivity
+final class TenantActivitySubject extends Model
 {
     use HasModelActivity;
-    use MergesActivityTimeline;
 
     public static int $retrievedCount = 0;
 

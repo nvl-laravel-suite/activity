@@ -27,15 +27,15 @@ final class ActivityDoctorCommand extends Command
         $checks = $doctor->inspect();
         $strict = (bool) $this->option('strict');
         $failed = collect($checks)->contains(
-            static fn ($check): bool => ! $check->passed
-                && ($strict || $check->severity === ActivityDoctorSeverity::Error),
+            static fn ($check): bool => ! $check['passed']
+                && ($strict || $check['severity'] === ActivityDoctorSeverity::Error),
         );
 
         if ($this->option('format') === 'json') {
             $this->line((string) json_encode([
                 'healthy' => ! $failed,
                 'checks' => array_map(
-                    static fn ($check): array => $check->toArray(),
+                    static fn (array $check): array => [...$check, 'severity' => $check['severity']->value],
                     $checks,
                 ),
             ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
@@ -43,11 +43,11 @@ final class ActivityDoctorCommand extends Command
             foreach ($checks as $check) {
                 $this->line(sprintf(
                     '[%s] %s: %s',
-                    $check->passed
+                    $check['passed']
                         ? (string) trans('nvl-activity::activity/general.doctor.status.pass')
-                        : mb_strtoupper($check->severity->getLabel()),
-                    $check->key,
-                    $check->message,
+                        : mb_strtoupper($check['severity']->getLabel()),
+                    $check['key'],
+                    $check['message'],
                 ));
             }
         }

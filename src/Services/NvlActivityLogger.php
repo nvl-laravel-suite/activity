@@ -19,7 +19,7 @@ final class NvlActivityLogger extends ActivityLogger
             $this->useLog($this->defaultLogName)
                 ->withChanges([])
                 ->withProperties([])
-                ->causedBy($this->causerResolver->resolve());
+                ->causedByAnonymous();
         }
 
         return $this->activity;

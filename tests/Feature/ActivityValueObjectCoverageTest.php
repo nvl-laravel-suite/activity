@@ -4,17 +4,13 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Nvl\Activity\Data\Display\ActivityCauser;
-use Nvl\Activity\Data\Display\ActivityChangeDetail;
-use Nvl\Activity\Data\Display\ActivityItem;
-use Nvl\Activity\Data\Display\ActivityItemProperties;
-use Nvl\Activity\Data\Display\HeadlineSegment;
+use Illuminate\Support\Str;
 use Nvl\Activity\Enums\ActivityResponseCode;
-use Nvl\Activity\Enums\EntrySource;
-use Nvl\Activity\Enums\HeadlineSegmentType;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Activity\Support\ActivityRecordEnvelope;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Support\Http\PackageExceptionRenderer;
 
 test('purge criteria normalize console values and summarize every active filter', function (): void {
@@ -101,42 +97,9 @@ test('purge criteria reject ambiguous, absent, inverted, and malformed cutoffs',
     ],
 ]);
 
-test('activity items can change source without losing normalized display data', function (): void {
-    $item = new ActivityItem(
-        id: 'activity-1',
-        log: 'audit',
-        event: 'updated',
-        source: EntrySource::ActivityLog,
-        eventLabel: 'Updated',
-        description: 'Order updated',
-        createdAt: '2026-04-02T10:30:00+00:00',
-        createdAtHuman: 'a moment ago',
-        causer: new ActivityCauser(id: '7', name: 'Ada', email: 'ada@example.com'),
-        subjectType: 'App\\Models\\Order',
-        subjectId: 42,
-        subjectLabel: 'Order #42',
-        headline: 'Ada updated Order #42',
-        headlineSegments: [new HeadlineSegment(type: HeadlineSegmentType::Actor, text: 'Ada')],
-        summary: 'Status changed',
-        changes: ['status'],
-        changesDetailed: [new ActivityChangeDetail(
-            key: 'status',
-            label: 'Status',
-            old: 'Draft',
-            new: 'Published',
-            description: 'Status changed from Draft to Published',
-        )],
-        properties: ActivityItemProperties::fromPayload(['visibility' => 'timeline']),
-    );
-
-    $mailItem = $item->withSource(EntrySource::Mail);
-
-    expect($mailItem)->not->toBe($item)
-        ->and($mailItem->source)->toBe(EntrySource::Mail)
-        ->and($mailItem->id)->toBe($item->id)
-        ->and($mailItem->causer)->toBe($item->causer)
-        ->and($mailItem->changesDetailed)->toBe($item->changesDetailed)
-        ->and($mailItem->properties)->toBe($item->properties);
+test('immutable envelopes retain explicit null metadata across delivery serialization', function (): void {
+    $envelope = new ActivityRecordEnvelope((string) Str::uuid(), new ActivitySubjectReference('record', 'one'), null, 'reviewed', 'audit', CarbonImmutable::now(), ['consumer_key' => null]);
+    expect(ActivityRecordEnvelope::fromArray($envelope->toArray())->toArray())->toBe($envelope->toArray());
 });
 
 test('configuration exception factories expose stable diagnostics and safe opt-in rendering', function (): void {

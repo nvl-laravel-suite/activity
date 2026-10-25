@@ -2,18 +2,16 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Gate;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
-use Nvl\Activity\Tests\Stubs\TestActivityUser;
 use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 it('resolves legacy and neutral guard names to one scoped state holder', function (): void {
     expect(app(ActivityOwnershipGuard::class))
-        ->toBe(app(Nvl\Activity\Tenancy\ActivityOwnershipGuard::class));
+        ->toBe(app(ActivityOwnershipGuard::class));
 });
 
 test('partial consumer config preserves nested activity defaults', function (): void {
@@ -44,7 +42,7 @@ test('partial consumer config preserves nested activity defaults', function (): 
     expect(config('nvl-activity.retention.system_logs_days'))->toBe(45)
         ->and(config('nvl-activity.retention.default_days'))->toBe(365)
         ->and(config('nvl-activity.retention.allowed_purge_options'))->toBe([30])
-        ->and(config('nvl-activity.routes.middleware'))->toBe(['api'])
+        ->and(config('nvl-activity.routes.middleware'))->toBeNull()
         ->and(config('nvl-activity.routes.management_middleware'))->toBe([])
         ->and(config('nvl-activity.routes.timeline_subjects'))->toBe([TestActivityTimelineSubject::class])
         ->and(config('nvl-activity.authorization.abilities.view'))->toBe('activity.custom-view')
@@ -65,14 +63,14 @@ test('the provider preserves host activity ownership and rejects deprecated pack
     $legacyOverrideCheck = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'binding.activity_model');
 
-    expect($legacyOverrideCheck?->passed)->toBeFalse();
+    expect(($legacyOverrideCheck['passed'] ?? null))->toBeFalse();
 
     config()->set('nvl-activity.model');
     config()->set('activitylog.activity_model', SpatieActivity::class);
 
     $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'binding.activity_model');
 
-    expect($check?->passed)->toBeTrue();
+    expect(($check['passed'] ?? null))->toBeTrue();
 });
 
 test('management routes are disabled and doctor reports the clean schema', function (): void {
@@ -86,12 +84,12 @@ test('management routes are disabled and doctor reports the clean schema', funct
     $this->getJson('/nvl/api/v1/activity')->assertNotFound();
 
     $failedChecks = collect(app(ActivityDoctor::class)->inspect())
-        ->reject(static fn ($check): bool => $check->passed)
-        ->map(static fn ($check): string => $check->key)
+        ->reject(static fn ($check): bool => $check['passed'])
+        ->map(static fn ($check): string => $check['key'])
         ->values()
         ->all();
 
-    expect(config('nvl-activity.routes.enabled'))->toBeFalse()
+    expect(config('nvl-activity.routes.enabled'))->toBeNull()
         ->and($failedChecks)->toBe([]);
 });
 
@@ -100,40 +98,12 @@ test('doctor rejects stringly typed switches that would be unsafe after config c
 
     $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'configuration.values');
 
-    expect($check?->passed)->toBeFalse();
+    expect(($check['passed'] ?? null))->toBeFalse();
 });
 
-test('doctor requires every configured timeline subject to implement the timeline contract', function (): void {
-    config()->set('nvl-activity.routes.enabled', true);
-    config()->set('nvl-activity.routes.management_middleware', ['auth']);
-    config()->set('nvl-activity.authorization.abilities', [
-        'view' => 'activity.view',
-        'timeline' => 'activity.timeline',
-        'purge' => 'activity.purge',
-    ]);
-    config()->set('nvl-activity.routes.timeline_subjects', [TestActivityUser::class]);
-
-    $invalidCheck = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'routes.management');
-
-    config()->set('nvl-activity.routes.timeline_subjects', [TestActivityTimelineSubject::class]);
-
-    $undefinedAbilitiesCheck = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'routes.management');
-
-    Gate::define('activity.view', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
-    Gate::define(
-        'activity.timeline',
-        static fn (TestActivityUser $user, TestActivityTimelineSubject $subject): bool => $user->getKey() === 1
-            && $subject->exists,
-    );
-
-    $partialAbilitiesCheck = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'routes.management');
-
-    Gate::define('activity.purge', static fn (TestActivityUser $user): bool => $user->getKey() === 1);
-
-    $validCheck = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'routes.management');
-
-    expect($invalidCheck?->passed)->toBeFalse()
-        ->and($undefinedAbilitiesCheck?->passed)->toBeFalse()
-        ->and($partialAbilitiesCheck?->passed)->toBeFalse()
-        ->and($validCheck?->passed)->toBeTrue();
+test('doctor readiness describes native storage without owning consumer routes', function (): void {
+    config(['nvl-activity.routes.enabled' => true]);
+    $checks = collect(app(ActivityDoctor::class)->inspect())->pluck('key')->all();
+    expect($checks)->not->toContain('routes.management');
+    $this->getJson('/nvl/api/v1/activity')->assertNotFound();
 });

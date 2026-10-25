@@ -10,6 +10,8 @@ use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 
 /**
  * Immutable filter set for activity purge maintenance flows.
+ *
+ * @api
  */
 final readonly class ActivityPurgeCriteria
 {

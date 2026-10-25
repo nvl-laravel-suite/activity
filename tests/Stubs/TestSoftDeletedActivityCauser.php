@@ -17,8 +17,8 @@ final class TestSoftDeletedActivityCauser extends Model
     protected $table = 'activity_soft_deleted_causers';
 
     protected $fillable = [
-        'display_name',
-        'contact',
+        'name',
+        'email',
     ];
 
     public $timestamps = false;

@@ -7,7 +7,6 @@ namespace Nvl\Activity\Support;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
-use JsonException;
 
 /**
  * Holds the immutable, JSON-safe facts needed to deliver one activity exactly once.
@@ -52,17 +51,9 @@ final readonly class ActivityRecordEnvelope
             throw new InvalidArgumentException('Activity envelope scalar actor IDs must contain 1 to 255 non-blank characters.');
         }
 
-        try {
-            json_encode([$context, $attributes, $old], JSON_THROW_ON_ERROR);
-        } catch (JsonException $exception) {
-            throw new InvalidArgumentException('Activity envelope metadata must be JSON serializable.', previous: $exception);
-        }
-
-        foreach (['context' => $context, 'attributes' => $attributes, 'old' => $old] as $field => $values) {
-            if ($values !== null && ! self::isJsonValue($values, true)) {
-                throw new InvalidArgumentException("Activity envelope {$field} must be a JSON-safe record.");
-            }
-        }
+        ActivityMetadata::record($context, 'context');
+        ActivityMetadata::nullableRecord($attributes, 'attributes');
+        ActivityMetadata::nullableRecord($old, 'old');
     }
 
     /**

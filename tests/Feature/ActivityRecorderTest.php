@@ -3,22 +3,23 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivitySource;
-use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
-use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Support\ActivityCauserReference;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityUser;
+use Nvl\Support\Enums\SystemActor;
 
 test('record envelopes retain their exact replay payload and native morph identities', function (): void {
     $id = (string) Str::uuid();
@@ -35,8 +36,8 @@ test('record envelopes retain their exact replay payload and native morph identi
     );
 
     $restored = ActivityRecordEnvelope::fromArray(json_decode(json_encode($envelope->toArray(), JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR));
-    $activity = ActivityLogFacade::recordEnvelope($restored);
-    $replayed = ActivityLogFacade::recordEnvelope($restored);
+    $activity = app(ActivityRecorder::class)->recordEnvelope($restored);
+    $replayed = app(ActivityRecorder::class)->recordEnvelope($restored);
 
     expect($restored->toArray())->toBe($envelope->toArray())
         ->and($activity)->toBeInstanceOf(ActivityLog::class)
@@ -69,10 +70,10 @@ test('record envelopes reject reuse of an activity ID for a changed payload', fu
         'scalarActorId' => null,
     ];
 
-    ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
+    app(ActivityRecorder::class)->recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
     $payload['context'] = ['state' => 'closed'];
 
-    expect(fn () => ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload)))
+    expect(fn () => app(ActivityRecorder::class)->recordEnvelope(ActivityRecordEnvelope::fromArray($payload)))
         ->toThrow(ActivityRecordingException::class);
     expect(ActivityLog::query()->count())->toBe(1);
 });
@@ -87,11 +88,11 @@ test('record envelopes reject an existing row whose stored business payload chan
         occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
         context: ['state' => 'active'],
     );
-    $activity = ActivityLogFacade::recordEnvelope($envelope);
+    $activity = app(ActivityRecorder::class)->recordEnvelope($envelope);
     $activity->properties = $activity->properties->put('context', ['state' => 'closed']);
     $activity->save();
 
-    expect(fn () => ActivityLogFacade::recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
+    expect(fn () => app(ActivityRecorder::class)->recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
 });
 
 test('record envelopes reject an existing row with a different timeline timestamp', function (): void {
@@ -103,11 +104,11 @@ test('record envelopes reject an existing row with a different timeline timestam
         logName: 'tasks',
         occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
     );
-    $activity = ActivityLogFacade::recordEnvelope($envelope);
+    $activity = app(ActivityRecorder::class)->recordEnvelope($envelope);
     $activity->created_at = CarbonImmutable::parse('2026-09-29T10:11:12.000000+00:00');
     $activity->save();
 
-    expect(fn () => ActivityLogFacade::recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
+    expect(fn () => app(ActivityRecorder::class)->recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
 });
 
 test('record envelopes reject malformed serialized payloads', function (): void {
@@ -212,37 +213,18 @@ test('record envelope retries tolerate reordered JSON object keys', function ():
         'old' => null,
         'scalarActorId' => null,
     ];
-    ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
+    app(ActivityRecorder::class)->recordEnvelope(ActivityRecordEnvelope::fromArray($payload));
     $payload['context'] = ['after' => 'closed', 'before' => 'open'];
 
-    expect(ActivityLogFacade::recordEnvelope(ActivityRecordEnvelope::fromArray($payload))->getKey())->toBe($payload['id'])
+    expect(app(ActivityRecorder::class)->recordEnvelope(ActivityRecordEnvelope::fromArray($payload))->getKey())->toBe($payload['id'])
         ->and(ActivityLog::query()->count())->toBe(1);
 });
 
-test('the canonical writer records structured scalar actors and caller owned batches', function (): void {
-    $ambientActor = new TestActivityUser;
-    $ambientActor->forceFill(['id' => 99]);
-    $this->actingAs($ambientActor);
-    $batchUuid = (string) Str::uuid();
-
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'consumer.semantic_event',
-        description: 'Consumer semantic event',
-        context: ['reason' => 'manual review'],
-        actor: 'operator-1',
-        logName: 'consumer',
-        batchUuid: $batchUuid,
-    );
-
-    expect($activity)->toBeInstanceOf(ActivityLog::class)
-        ->and($activity?->log_name)->toBe('consumer')
-        ->and($activity?->batch_uuid)->toBe($batchUuid)
-        ->and($activity?->causer_id)->toBeNull()
-        ->and($activity?->causer_type)->toBeNull()
-        ->and($activity?->properties?->get('source'))->toBe(ActivitySource::User->value)
-        ->and($activity?->properties?->get('actor_id'))->toBe('operator-1')
-        ->and($activity?->properties?->get('context'))->toBe(['reason' => 'manual review']);
+test('the canonical writer records caller batches and rejects scalar attribution overrides', function (): void {
+    $batch = (string) Str::uuid();
+    $activity = app(ActivityRecorder::class)->record(['event' => 'reviewed', 'context' => ['reason' => 'manual review'], 'batch_uuid' => $batch], SystemActor::Background);
+    expect($activity->batch_uuid)->toBe($batch)->and($activity->properties->get('context'))->toBe(['reason' => 'manual review']);
+    expect(fn () => app(ActivityRecorder::class)->record(['event' => 'reviewed', 'actor_id' => 'forged'], SystemActor::Background))->toThrow(InvalidArgumentException::class);
 });
 
 test('the canonical writer records model-free subject references without reading a subject table', function (): void {
@@ -251,13 +233,7 @@ test('the canonical writer records model-free subject references without reading
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $activity = ActivityLogFacade::recordForSubjectReference(
-        subject: $subject,
-        event: 'consumer.reference_recorded',
-        context: ['reason' => 'external subject'],
-        actor: 'operator-1',
-        importance: 'important',
-    );
+    $activity = app(ActivityRecorder::class)->record(['subject' => $subject, 'event' => 'consumer.reference_recorded', 'context' => ['reason' => 'external subject'], 'importance' => 'important'], SystemActor::Background);
     $queries = DB::getQueryLog();
     DB::disableQueryLog();
 
@@ -265,17 +241,14 @@ test('the canonical writer records model-free subject references without reading
         ->and($activity?->subject_type)->toBe('domain.resource')
         ->and($activity?->subject_id)->toBe('resource-42')
         ->and($activity?->properties?->get('context'))->toBe(['reason' => 'external subject'])
-        ->and($activity?->properties?->get('actor_id'))->toBe('operator-1')
+        ->and($activity?->properties?->get('source'))->toBe('system')
         ->and($activity?->properties?->get('importance'))->toBe('important')
-        ->and($queries)->toHaveCount(1)
-        ->and(mb_strtolower($queries[0]['query']))->toStartWith('insert');
+        ->and(array_values(array_filter($queries, static fn (array $query): bool => str_starts_with(strtolower($query['query']), 'insert'))))->toHaveCount(1)
+        ->and(array_filter($queries, static fn (array $query): bool => str_contains($query['query'], 'domain.resource')))->toBe([]);
 });
 
 test('the canonical writer accepts package owned activity events', function (): void {
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: ActivityEvent::Triggered,
-    );
+    $activity = app(ActivityRecorder::class)->record(['subject' => null, 'event' => ActivityEvent::Triggered], SystemActor::Background);
 
     expect($activity?->event)->toBe(ActivityEvent::Triggered->value)
         ->and($activity?->description)->toBe(ActivityEvent::Triggered->value);
@@ -290,10 +263,7 @@ test('package owned update events infer saved model changes without a descriptio
     $subject->timestamps = false;
     $subject->forceFill(['description' => 'After'])->save();
 
-    $activity = app(ActivityRecorder::class)->record(
-        subject: $subject,
-        event: ActivityEvent::Updated,
-    );
+    $activity = app(ActivityRecorder::class)->record(['subject' => $subject, 'event' => ActivityEvent::Updated], SystemActor::Background);
 
     expect($activity?->event)->toBe(ActivityEvent::Updated->value)
         ->and($activity?->description)->toBe(ActivityEvent::Updated->value)
@@ -302,51 +272,29 @@ test('package owned update events infer saved model changes without a descriptio
 });
 
 test('the canonical writer normalizes caller supplied log names and descriptions', function (): void {
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'consumer.semantic_event',
-        description: '  Consumer semantic event  ',
-        logName: '  consumer  ',
-    );
+    $activity = app(ActivityRecorder::class)->record(['subject' => null, 'event' => 'consumer.semantic_event', 'description' => '  Consumer semantic event  ', 'log_name' => '  consumer  '], SystemActor::Background);
 
     expect($activity?->log_name)->toBe('consumer')
         ->and($activity?->description)->toBe('Consumer semantic event');
 });
 
 test('model actors use the native polymorphic causer relation', function (): void {
-    $ambientActor = new TestActivityUser;
-    $ambientActor->forceFill(['id' => 99]);
-    $this->actingAs($ambientActor);
-    $actor = new TestActivityCauser;
-    $actor->forceFill(['causer_key' => 42]);
-
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'reviewed',
-        description: 'Reviewed',
-        actor: $actor,
-    );
-
-    expect($activity?->causer_type)->toBe($actor->getMorphClass())
-        ->and($activity?->causer_id)->toEqual('42')
-        ->and($activity?->properties?->get('source'))->toBe(ActivitySource::User->value);
+    Schema::create('activity_test_causers', function (Blueprint $table): void {
+        $table->increments('causer_key');
+        $table->string('name');
+    });
+    $actor = TestActivityCauser::query()->create(['name' => 'Operator']);
+    $activity = app(ActivityRecorder::class)->record(['event' => 'reviewed'], $actor);
+    expect($activity->causer_type)->toBe($actor->getMorphClass())->and($activity->causer_id)->toBe((string) $actor->getKey())->and($activity->properties->get('source'))->toBe('user');
 });
 
-test('anonymous and blank scalar actors are system originated', function (?string $actor): void {
+test('anonymous and blank scalar actors cannot grant system authority', function (?string $actor): void {
     $ambientActor = new TestActivityUser;
     $ambientActor->forceFill(['id' => 99]);
     $this->actingAs($ambientActor);
 
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'synchronized',
-        description: 'Synchronized',
-        actor: $actor,
-    );
-
-    expect($activity?->causer_id)->toBeNull()
-        ->and($activity?->causer_type)->toBeNull()
-        ->and($activity?->properties?->get('source'))->toBe(ActivitySource::System->value);
+    expect(fn () => app(ActivityRecorder::class)->record(['event' => 'reviewed'], $actor))->toThrow(TypeError::class);
+    expect(ActivityLog::query()->count())->toBe(0);
 })->with([
     'null actor' => null,
     'blank actor' => '',
@@ -358,12 +306,7 @@ test('ambient authentication never changes system purge classification', functio
     $ambientActor->forceFill(['id' => 99]);
     $this->actingAs($ambientActor);
 
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'synchronized',
-        description: 'System synchronization',
-        actor: null,
-    );
+    $activity = app(ActivityRecorder::class)->record(['subject' => null, 'event' => 'synchronized', 'description' => 'System synchronization'], SystemActor::Background);
     $activity?->forceFill([
         'created_at' => now()->subDays(120),
         'updated_at' => now()->subDays(120),
@@ -374,28 +317,13 @@ test('ambient authentication never changes system purge classification', functio
         ->and($activity?->properties?->get('source'))->toBe(ActivitySource::System->value);
 });
 
-test('blank source and visibility overrides fall back to canonical defaults', function (): void {
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'synchronized',
-        description: 'Synchronized',
-        source: ' ',
-        visibility: ' ',
-        importance: ' ',
-    );
-
-    expect($activity?->properties?->get('source'))->toBe(ActivitySource::System->value)
-        ->and($activity?->properties?->get('visibility'))->toBe(ActivityVisibility::Timeline->value)
-        ->and($activity?->properties?->get('importance'))->toBe('normal');
+test('source attribution cannot be overridden and blank visibility is rejected', function (): void {
+    expect(fn () => app(ActivityRecorder::class)->record(['event' => 'reviewed', 'source' => 'system'], SystemActor::Background))->toThrow(InvalidArgumentException::class);
+    expect(fn () => app(ActivityRecorder::class)->record(['event' => 'reviewed', 'visibility' => ' '], SystemActor::Background))->toThrow(InvalidArgumentException::class);
 });
 
 test('caller owned activity batch identifiers must be valid uuids', function (): void {
-    app(ActivityRecorder::class)->record(
-        subject: null,
-        event: 'synchronized',
-        description: 'Synchronized',
-        batchUuid: 'not-a-uuid',
-    );
+    app(ActivityRecorder::class)->record(['subject' => null, 'event' => 'synchronized', 'description' => 'Synchronized', 'batch_uuid' => 'not-a-uuid'], SystemActor::Background);
 })->throws(ActivityRecordingException::class, 'Activity batch identifiers must be valid UUIDs.');
 
 test('unsupported metadata classifications are rejected instead of becoming visible by default', function (
@@ -408,28 +336,14 @@ test('unsupported metadata classifications are rejected instead of becoming visi
         $field => 'unsupported-value',
     ];
 
-    try {
-        app(ActivityRecorder::class)->record(...$arguments);
-    } catch (ActivityRecordingException $exception) {
-        expect($exception->responseCode())->toBe('invalid_activity_metadata')
-            ->and($exception->suggestedStatus())->toBe(422)
-            ->and($exception->publicContext())->toBe(['field' => $field]);
-
-        throw $exception;
-    }
+    expect(fn () => app(ActivityRecorder::class)->record($arguments, SystemActor::Background))->toThrow(InvalidArgumentException::class);
 })->with([
     'source' => ['source'],
     'visibility' => ['visibility'],
     'importance' => ['importance'],
-])->throws(ActivityRecordingException::class);
+]);
 
 test('blank event keys never create activity rows', function (): void {
-    $activity = app(ActivityRecorder::class)->record(
-        subject: null,
-        event: ' ',
-        description: 'Ignored',
-    );
-
-    expect($activity)->toBeNull()
-        ->and(ActivityLog::query()->count())->toBe(0);
+    expect(fn () => app(ActivityRecorder::class)->record(['event' => ' '], SystemActor::Background))->toThrow(InvalidArgumentException::class);
+    expect(ActivityLog::query()->count())->toBe(0);
 });

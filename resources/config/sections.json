@@ -4,21 +4,12 @@
         "nvl-activity": {
             "common": [
                 "adoption.spatie",
-                "authorization.abilities.purge",
-                "authorization.abilities.timeline",
-                "authorization.abilities.view",
                 "migrations.enabled",
                 "queue.connection",
                 "queue.name",
                 "retention.schedule.enabled",
-                "routes.enabled",
-                "routes.management_middleware",
-                "routes.middleware",
-                "routes.prefix",
-                "routes.timeline_subjects",
                 "storage.connection",
-                "storage.table",
-                "tenancy.active_tenant_worklist"
+                "storage.table"
             ],
             "advanced": [
                 "capture.ignored_attributes",

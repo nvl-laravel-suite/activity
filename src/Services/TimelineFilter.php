@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use Illuminate\Support\Collection;
-use Nvl\Activity\Data\Display\ActivityItem;
 use Nvl\Activity\Enums\ActivityVisibility;
+use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\TimelineActivityRules;
 
 /**
@@ -19,22 +19,23 @@ final class TimelineFilter
     /**
      * Determine if an activity entry should appear in signal timelines.
      *
-     * @param  ActivityItem  $activity  Normalized activity DTO
+     * @param  ActivityLog  $activity  Native activity model
      * @return bool Whether the entry should be included
      */
-    public function shouldIncludeInSignalTimeline(ActivityItem $activity): bool
+    public function shouldIncludeInSignalTimeline(ActivityLog $activity): bool
     {
         $props = $activity->properties;
 
-        $visibility = is_string($props->visibility) ? trim($props->visibility) : '';
+        $raw = $props?->get('visibility');
+        if ($raw !== null && ! is_string($raw)) {
+            return false;
+        }
+        $visibility = trim($raw ?? '');
         if ($visibility !== '' && $visibility !== ActivityVisibility::Timeline->value) {
             return false;
         }
 
-        $event = strtolower(trim($activity->event));
-        if ($event === '') {
-            return false;
-        }
+        $event = strtolower($activity->semanticEvent());
 
         if ($event === 'updated') {
             return $this->passesUpdateSignalCheck($event, $activity);
@@ -46,8 +47,8 @@ final class TimelineFilter
     /**
      * Preserve the historical public API without collapsing distinct events that share a timestamp.
      *
-     * @param  Collection<int, ActivityItem>  $activities
-     * @return Collection<int, ActivityItem>
+     * @param  Collection<int, ActivityLog>  $activities
+     * @return Collection<int, ActivityLog>
      */
     public function deduplicateByTimestamp(Collection $activities): Collection
     {
@@ -58,23 +59,23 @@ final class TimelineFilter
      * Suppress low-signal update logs that only touch noisy technical fields.
      *
      * @param  string  $event  Event name
-     * @param  ActivityItem  $activity  Normalized activity DTO
+     * @param  ActivityLog  $activity  Native activity model
      * @return bool Whether the update passes signal check
      */
-    private function passesUpdateSignalCheck(string $event, ActivityItem $activity): bool
+    private function passesUpdateSignalCheck(string $event, ActivityLog $activity): bool
     {
         if ($event !== 'updated') {
             return true;
         }
 
-        $changesRaw = $activity->changesDetailed;
-        if ($changesRaw === []) {
+        $payload = $activity->attribute_changes?->all() ?? [];
+        $changes = $payload['attributes'] ?? [];
+        $old = $payload['old'] ?? [];
+        if (! is_array($changes) || ! is_array($old)) {
             return false;
         }
-
-        foreach ($changesRaw as $change) {
-            $key = $change->key;
-            if ($key !== '' && ! TimelineActivityRules::isNoisyChangeKey($key)) {
+        foreach (array_unique([...array_keys($changes), ...array_keys($old)]) as $key) {
+            if (! TimelineActivityRules::isNoisyChangeKey((string) $key) && ($changes[$key] ?? null) !== ($old[$key] ?? null)) {
                 return true;
             }
         }

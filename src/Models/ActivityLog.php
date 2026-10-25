@@ -30,8 +30,8 @@ use Spatie\Activitylog\Models\Activity;
 /**
  * Custom activity log model using UUID primary keys.
  *
- * @property string|null $tenant_id Immutable tenant owner after adoption
- * @property string $ownership_key Canonical platform or tenant partition after adoption
+ * @property string|null $owner_reference Immutable serialized owner reference after adoption
+ * @property string $owner_scope_key Immutable native ownership partition after adoption
  * @property string $id UUID primary key
  * @property string|null $log_name Activity log namespace
  * @property string $description Human-readable activity description
@@ -104,7 +104,24 @@ final class ActivityLog extends Activity implements Ownable
 
             return $this->collectionValue($this->getAttribute('properties'))
                 ?->only(['attributes', 'old']);
-        });
+        })->withoutObjectCaching();
+    }
+
+    /** Resolve historical event semantics without changing the stored fact. */
+    public function semanticEvent(): string
+    {
+        $event = trim($this->event ?? '');
+        if ($event !== '') {
+            return $event;
+        }
+        $changes = $this->attribute_changes?->all() ?? [];
+        foreach ([$changes['attributes'] ?? [], $changes['old'] ?? [], $this->properties?->get('new', [])] as $values) {
+            if (is_array($values) && $values !== []) {
+                return 'updated';
+            }
+        }
+
+        return 'activity_logged';
     }
 
     /**
@@ -263,7 +280,7 @@ final class ActivityLog extends Activity implements Ownable
             ? ($guarded ? $ownership->relatedQuery($related->newQuery()) : $related->newQuery())
             : $this->newQuery()->setEagerLoads([]);
 
-        if ($guarded && $causer && $related instanceof Model) {
+        if ($causer && $related instanceof Model) {
             $query->select($ownership->causerColumns($related));
         }
 

@@ -56,39 +56,23 @@
       "kind": "value_object",
       "schema_version": 1,
       "trigger": "Purge job queued with criteria.",
-      "aliases": [
-        {
-          "legacy": "Nvl\\Activity\\Events\\ActivityLogPurgeQueuedEvent",
-          "canonical": "Nvl\\Activity\\Events\\ActivityLogPurgeQueued",
-          "path": "packages/nvl/activity/src/Events/ActivityLogPurgeQueuedEvent.php",
-          "deprecated_in_major": 5,
-          "removal_not_before_major": 6
-        }
-      ],
+      "aliases": [],
       "producers": [
         {
-          "path": "packages/nvl/activity/src/Actions/Activity/QueueActivityLogPurgeAction.php",
-          "trigger": "Purge job queued with criteria.",
-          "connection": "DB::connection(PackageStorage::connection('activity'))",
-          "construction_expression": "new ActivityLogPurgeQueued($days, $systemOnly, $includeImportant)"
+          "path": "packages/nvl/activity/src/Services/ActivityPurgeDispatcher.php",
+          "trigger": "Authorized retention request queued in the current admitted scope.",
+          "connection": "$connection",
+          "construction_expression": "new ActivityLogPurgeQueued($criteria->days ?? 0, $criteria->systemOnly, $criteria->includeImportant)"
         }
       ],
       "security_notes": [
-        "Purge criteria only; no deleted rows or actor model. The separately queued purge job captures its own tenant envelope; this event does not carry one."
+        "Criteria and captured native ownership only; no actor or subject model is serialized."
       ],
       "no_op_semantics": "A queued purge request is an observation, not a claim that purge completion occurred. Repeated requests can repeat the fact."
     }
   ],
   "value_types": [],
-  "aliases": [
-    {
-      "legacy": "Nvl\\Activity\\Events\\ActivityLogPurgeQueuedEvent",
-      "canonical": "Nvl\\Activity\\Events\\ActivityLogPurgeQueued",
-      "path": "packages/nvl/activity/src/Events/ActivityLogPurgeQueuedEvent.php",
-      "deprecated_in_major": 5,
-      "removal_not_before_major": 6
-    }
-  ],
+  "aliases": [],
   "publication": {
     "publication": "The native host dispatcher receives the captured event after the supplied source connection outer commit, or immediately when that connection has no active transaction.",
     "rollback": "Callbacks attach to the matching native connection and current nesting record; native outer/savepoint rollback discards the corresponding callbacks.",
@@ -99,16 +83,9 @@
     "manual_producers": "Use Nvl\\Support\\Events\\DomainEventDispatcher::dispatch($event, $writerConnection). Native Event::dispatch() is immediate and has no package interception."
   },
   "security_notes": [
-    "Purge criteria only; no deleted rows or actor model. The separately queued purge job captures its own tenant envelope; this event does not carry one."
+    "Criteria and captured native ownership only; no actor or subject model is serialized."
   ],
   "no_op_semantics": "A queued purge request is an observation, not a claim that purge completion occurred. Repeated requests can repeat the fact.",
   "notes": [],
-  "alias_policy": [
-    "Legacy names are deprecated for major 5 and removed no earlier than major 6. class_alias preserves imports, instanceof, listener type hints and the new versioned constructor, not the former model-bearing API.",
-    "The native Laravel exact-listener bridge reads getRawListeners at delivery time and prepares legacy listeners through makeListener; strict-identical canonical registrations are skipped. Late registration, subscribers, cached discovery and queued listener preparation use the native dispatcher seams; proof is pending.",
-    "One canonical object is emitted once. Native wildcard/interface listeners see the canonical event once; suffix-specific *Event wildcards must migrate. The bridge does not redispatch a legacy string.",
-    "Drain old queued model-bearing payloads and restart workers before upgrade. New serialized alias instances restore the canonical versioned class without model restoration.",
-    "Event fakes/filters and assertions use canonical class names. EventAliases::canonicalName() helps migrate old names; old fake filters are not automatically rewritten.",
-    "Host custom dispatchers are retained. Explicit EventAliases::listen($event, $listener) maps through the canonical adapter; absent native bridging/host adapter, Doctor reports the deprecated-name limitation."
-  ]
+  "alias_policy": []
 }

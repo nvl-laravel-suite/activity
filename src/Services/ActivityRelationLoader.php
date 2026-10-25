@@ -16,6 +16,8 @@ use ReflectionClass;
 
 /**
  * Safely hydrates polymorphic activity relations without breaking on stale model types.
+ *
+ * @api
  */
 final class ActivityRelationLoader
 {
@@ -76,7 +78,7 @@ final class ActivityRelationLoader
         }
 
         foreach ($groups as $storedType => $group) {
-            $relatedModel = $this->resolveLoadableModel($storedType, $relation === 'causer');
+            $relatedModel = $this->resolveLoadableModel((string) $storedType, $relation === 'causer');
 
             if (! $relatedModel instanceof Model) {
                 foreach ($group as $activity) {
@@ -163,9 +165,9 @@ final class ActivityRelationLoader
         if ($this->ownership->enabled()) {
             $query = $this->ownership->relatedQuery($query);
 
-            if ($causer) {
-                $query->select($this->ownership->causerColumns($relatedModel));
-            }
+        }
+        if ($causer) {
+            $query->select($this->ownership->causerColumns($relatedModel));
         }
 
         if ($includeSoftDeleted && in_array(SoftDeletes::class, class_uses_recursive($relatedModel), true)) {

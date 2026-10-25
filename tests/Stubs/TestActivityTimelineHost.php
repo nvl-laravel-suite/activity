@@ -4,63 +4,27 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Tests\Stubs;
 
-use Nvl\Activity\Data\Display\ActivityItem;
-use Nvl\Activity\Enums\EntrySource;
-use Nvl\Activity\Traits\MergesActivityTimeline;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Nvl\Activity\Contracts\ActivityTimelineSource;
+use Nvl\Activity\Support\ActivitySubjectReference;
 
 /**
- * In-memory host fixture for merged timeline ordering and limit tests.
+ * Consumer timeline source delegates row storage to its own native model.
+ *
+ * @implements ActivityTimelineSource<TestTimelineSourceRecord>
  */
-final class TestActivityTimelineHost
+final class TestActivityTimelineHost implements ActivityTimelineSource
 {
-    use MergesActivityTimeline;
-
-    /** @var list<int|null> */
-    public array $limits = [];
-
-    /**
-     * @return list<ActivityItem>
-     */
-    public function mergedActivities(?int $limit = null): array
+    /** @return Builder<TestTimelineSourceRecord> */
+    public function query(Model|ActivitySubjectReference $subject): Builder
     {
-        $this->limits[] = $limit;
-
-        return [
-            new ActivityItem(
-                id: 'activity-1',
-                log: 'default',
-                event: 'created',
-                source: EntrySource::ActivityLog,
-                createdAt: '2026-04-02T10:00:00+00:00',
-                headline: 'Base activity',
-            ),
-            new ActivityItem(
-                id: 'activity-2',
-                log: 'default',
-                event: 'updated',
-                source: EntrySource::ActivityLog,
-                createdAt: '2026-04-02T12:00:00+00:00',
-                headline: 'Base activity',
-            ),
-        ];
+        return TestTimelineSourceRecord::query()->where('subject_id', $subject instanceof Model ? $subject->getKey() : $subject->id);
     }
 
-    /**
-     * @return list<list<ActivityItem>>
-     */
-    protected function mergedActivitySources(?int $limit = null): array
+    /** @return list<string> */
+    public function supersedes(): array
     {
-        $this->limits[] = $limit;
-
-        return [[
-            new ActivityItem(
-                id: 'mail-1',
-                log: 'mail_notifications',
-                event: 'mail_sent',
-                source: EntrySource::Mail,
-                createdAt: '2026-04-02T11:00:00+00:00',
-                headline: 'Mail activity',
-            ),
-        ]];
+        return ['comment_recorded'];
     }
 }

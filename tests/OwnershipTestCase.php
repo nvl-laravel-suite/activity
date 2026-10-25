@@ -9,12 +9,13 @@ use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Providers\ActivityServiceProvider;
+use Nvl\Activity\Tests\Fixtures\AllowsActivity;
 use Nvl\Activity\Tests\Fixtures\OwnershipActor;
 use Nvl\Activity\Tests\Fixtures\OwnershipCompany;
 use Nvl\Activity\Tests\Fixtures\OwnershipSubject;
 use Nvl\Activity\Tests\Fixtures\OwnershipSubjectAdapter;
-use Nvl\Data\Providers\DataServiceProvider;
 use Nvl\Ownership\Contracts\CentralAccess;
 use Nvl\Ownership\Contracts\OwnerAccess;
 use Nvl\Ownership\Contracts\OwnershipAdoptionAccess;
@@ -36,7 +37,7 @@ abstract class OwnershipTestCase extends TestCase
     /** @return list<class-string> */
     protected function getPackageProviders($app): array
     {
-        return [LocaleServiceProvider::class, SupportServiceProvider::class, DataServiceProvider::class, OwnershipServiceProvider::class, ActivitylogServiceProvider::class, ActivityServiceProvider::class];
+        return [LocaleServiceProvider::class, SupportServiceProvider::class, OwnershipServiceProvider::class, ActivitylogServiceProvider::class, ActivityServiceProvider::class];
     }
 
     /** Configure owned package roots before immutable resource registration. */
@@ -64,6 +65,7 @@ abstract class OwnershipTestCase extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->app->bind(ActivityAuthorization::class, AllowsActivity::class);
         $schema = DB::getSchemaBuilder();
         if (getenv('NVL_OWNERSHIP_TEST_DRIVER') === 'pgsql') {
             if (DB::connection()->getDatabaseName() !== getenv('NVL_OWNERSHIP_TEST_DATABASE')) {

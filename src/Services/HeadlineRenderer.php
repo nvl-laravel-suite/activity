@@ -5,16 +5,14 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use Illuminate\Support\Collection;
-use Nvl\Activity\Data\Display\ActivityChangeDetail;
-use Nvl\Activity\Data\Display\HeadlineSegment;
-use Nvl\Activity\Enums\HeadlineSegmentType;
-use Nvl\Activity\Support\ResolvedHeadline;
 use Spatie\Activitylog\Models\Activity;
 
 /**
  * Builds natural-language headlines and summaries for activity entries.
  *
  * Actor-first patterns: "Nicolas changed the status to expired."
+ *
+ * @api
  */
 final class HeadlineRenderer
 {
@@ -34,8 +32,8 @@ final class HeadlineRenderer
      * @param  Activity  $activity  Activity instance
      * @param  string  $actorName  Actor display name
      * @param  string|int|null  $causerId  Actor identifier for semantic rendering
-     * @param  Collection<int, ActivityChangeDetail>  $changeDetails  Filtered change details
-     * @return ResolvedHeadline Canonical headline result
+     * @param  Collection<int, array{key:string,label:string,old:?string,new:?string,description:string}>  $changeDetails  Filtered change details
+     * @return string Flat semantic headline; consumers own visual segments.
      */
     public function resolveHeadline(
         string $event,
@@ -43,7 +41,7 @@ final class HeadlineRenderer
         string $actorName,
         string|int|null $causerId,
         Collection $changeDetails,
-    ): ResolvedHeadline {
+    ): string {
         $entityType = mb_strtolower($this->labelResolver->resolveEntityTypeLabel($activity));
         $basePlaceholders = $this->basePlaceholders(
             actorName: $actorName,
@@ -58,10 +56,7 @@ final class HeadlineRenderer
             basePlaceholders: $basePlaceholders,
         );
 
-        return new ResolvedHeadline(
-            headline: $this->renderTemplate($template, $placeholders),
-            segments: $this->buildSegmentsFromTemplate($template, $placeholders),
-        );
+        return $this->renderTemplate($template, $placeholders);
     }
 
     /**
@@ -156,7 +151,7 @@ final class HeadlineRenderer
     }
 
     /**
-     * @param  Collection<int, ActivityChangeDetail>  $changeDetails
+     * @param  Collection<int, array{key:string,label:string,old:?string,new:?string,description:string}>  $changeDetails
      * @param  array<string, array{type: string, text: string, causerId?: string|int|null}>  $basePlaceholders
      * @return array{0: string, 1: array<string, array{type: string, text: string, causerId?: string|int|null}>}
      */
@@ -189,7 +184,7 @@ final class HeadlineRenderer
     }
 
     /**
-     * @param  Collection<int, ActivityChangeDetail>  $changeDetails
+     * @param  Collection<int, array{key:string,label:string,old:?string,new:?string,description:string}>  $changeDetails
      * @param  array<string, array{type: string, text: string, causerId?: string|int|null}>  $basePlaceholders
      * @return array{0: string, 1: array<string, array{type: string, text: string, causerId?: string|int|null}>}
      */
@@ -200,15 +195,15 @@ final class HeadlineRenderer
         if ($changeCount === 1) {
             $first = $changeDetails->first();
 
-            if (! $first instanceof ActivityChangeDetail) {
+            if (! is_array($first)) {
                 return [
                     (string) trans(self::TRANS_PREFIX.'.templates.updated'),
                     $basePlaceholders,
                 ];
             }
 
-            $fieldLabel = $first->label;
-            $newValue = $first->new ?? '';
+            $fieldLabel = $first['label'];
+            $newValue = $first['new'] ?? '';
 
             if ($fieldLabel !== '' && $newValue !== '') {
                 return [
@@ -232,7 +227,7 @@ final class HeadlineRenderer
             }
         } elseif ($changeCount > 1) {
             $fieldList = $changeDetails
-                ->map(static fn (ActivityChangeDetail $detail): string => $detail->label)
+                ->map(static fn (array $detail): string => $detail['label'])
                 ->filter()
                 ->implode(', ');
             if ($fieldList !== '') {
@@ -400,77 +395,6 @@ final class HeadlineRenderer
 
     /**
      * @param  array<string, array{type: string, text: string, causerId?: string|int|null}>  $placeholders
-     * @return array<int, HeadlineSegment>
-     */
-    private function buildSegmentsFromTemplate(string $template, array $placeholders): array
-    {
-        $rawSegments = [];
-
-        foreach ($this->splitTemplateIntoParts($template) as $part) {
-            if (str_starts_with($part, ':')) {
-                $placeholderKey = mb_substr($part, 1);
-                $payload = $placeholders[$placeholderKey] ?? null;
-
-                if (! is_array($payload)) {
-                    $rawSegments[] = new HeadlineSegment(type: HeadlineSegmentType::Text, text: $part);
-
-                    continue;
-                }
-
-                $text = trim($payload['text']);
-                if ($text === '') {
-                    continue;
-                }
-
-                $rawSegments[] = new HeadlineSegment(
-                    type: HeadlineSegmentType::tryFrom((string) $payload['type'])
-                        ?? HeadlineSegmentType::Text,
-                    text: (string) $payload['text'],
-                    causerId: $payload['causerId'] ?? null,
-                );
-
-                continue;
-            }
-
-            if ($part !== '') {
-                $rawSegments[] = new HeadlineSegment(type: HeadlineSegmentType::Text, text: $part);
-            }
-        }
-
-        return $this->mergeAdjacentTextSegments($rawSegments);
-    }
-
-    /**
-     * @param  array<int, HeadlineSegment>  $segments
-     * @return array<int, HeadlineSegment>
-     */
-    private function mergeAdjacentTextSegments(array $segments): array
-    {
-        $merged = [];
-
-        foreach ($segments as $segment) {
-            $lastIndex = array_key_last($merged);
-            $last = $lastIndex !== null ? $merged[$lastIndex] : null;
-
-            if ($last instanceof HeadlineSegment
-                && $last->type === HeadlineSegmentType::Text
-                && $segment->type === HeadlineSegmentType::Text) {
-                $merged[$lastIndex] = new HeadlineSegment(
-                    type: HeadlineSegmentType::Text,
-                    text: $last->text.$segment->text,
-                );
-
-                continue;
-            }
-
-            $merged[] = $segment;
-        }
-
-        return $merged;
-    }
-
-    /**
-     * @param  array<string, array{type: string, text: string, causerId?: string|int|null}>  $placeholders
      */
     private function canRenderTemplate(string $template, array $placeholders): bool
     {
@@ -488,14 +412,6 @@ final class HeadlineRenderer
         }
 
         return true;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function splitTemplateIntoParts(string $template): array
-    {
-        return preg_split('/(:[a-zA-Z_]+)/', $template, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [$template];
     }
 
     /**

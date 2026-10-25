@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Tests\Stubs;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Model;
 
 /**
  * Configurable non-UUID causer fixture for standalone Activity tests.

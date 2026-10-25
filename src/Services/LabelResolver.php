@@ -18,6 +18,8 @@ use Stringable;
  *
  * When an ActivityMapping is registered for the model, delegates to its typed
  * methods. Otherwise it falls back to stable package translations and headlines.
+ *
+ * @api
  */
 final class LabelResolver
 {

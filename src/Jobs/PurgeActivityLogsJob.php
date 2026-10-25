@@ -19,17 +19,13 @@ use Nvl\Support\Facades\PackageLog;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
 use Nvl\Support\Ownership\Contracts\OwnershipQueuedJob;
 use Nvl\Support\Ownership\Traits\CapturesOwnership;
-use Nvl\Support\Tenancy\Contracts\TenantQueuedJob;
-use Nvl\Support\Tenancy\Enums\TenantContextMode;
-use Nvl\Support\Tenancy\ValueObjects\TenantContextSnapshot;
-use Nvl\Support\Tenancy\ValueObjects\TenantJobEnvelope;
 use Throwable;
 use UnexpectedValueException;
 
 /**
  * Queued job that deletes old activity log entries in chunks.
  */
-final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue, TenantQueuedJob
+final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
 {
     use CapturesOwnership;
     use Dispatchable;
@@ -74,21 +70,11 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue, Ten
         public readonly int $days,
         public readonly bool $systemOnly = false,
         public readonly ?ActivityPurgeCriteria $criteria = null,
-        ?TenantJobEnvelope $envelope = null,
     ) {
         $this->captureOwnership();
-        $this->envelope = $envelope ?? new TenantJobEnvelope(new TenantContextSnapshot(TenantContextMode::Disabled));
         $this->onConnection(PackageOptions::queueConnection('activity'));
         $this->onQueue(PackageOptions::queueName('activity'));
         $this->afterCommit();
-    }
-
-    private readonly TenantJobEnvelope $envelope;
-
-    /** Return the producer tenant captured before native queue dispatch. */
-    public function tenantJobEnvelope(): TenantJobEnvelope
-    {
-        return $this->envelope;
     }
 
     /**
@@ -235,10 +221,6 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue, Ten
      */
     public static function countPurgeableForCriteria(ActivityPurgeCriteria $criteria, ?OwnershipBoundary $boundary = null): int
     {
-        if ($boundary === null && config('nvl-tenancy.enabled') === true) {
-            throw new UnexpectedValueException('Tenant activity purge counts require an explicit tenant boundary.');
-        }
-
         return self::newPurgeableQuery($criteria, $boundary)->count();
     }
 

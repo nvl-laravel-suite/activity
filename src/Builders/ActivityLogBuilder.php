@@ -6,7 +6,6 @@ namespace Nvl\Activity\Builders;
 
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
-use Nvl\Activity\Data\ActivityIndexFilter;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Models\ActivityLog;
@@ -24,7 +23,7 @@ final class ActivityLogBuilder extends Builder
      */
     public function newestFirst(): static
     {
-        return $this->orderByDesc('created_at')
+        return $this->orderByRaw('CASE WHEN created_at IS NULL THEN 1 ELSE 0 END')->orderByDesc('created_at')
             ->orderByDesc('id');
     }
 
@@ -40,7 +39,8 @@ final class ActivityLogBuilder extends Builder
     /**
      * Apply the Activity index listing query profile.
      */
-    public function forIndex(ActivityIndexFilter $filters): static
+    /** @param array{search?:string|null,event?:string|null,events?:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,created_at_from?:\DateTimeInterface|string|null,created_at_to?:\DateTimeInterface|string|null} $filters */
+    public function forIndex(array $filters): static
     {
         return $this->applyIndexFilters($filters);
     }
@@ -244,10 +244,11 @@ final class ActivityLogBuilder extends Builder
     /**
      * Apply index filters without exposing HTTP concerns in callers.
      */
-    public function applyIndexFilters(ActivityIndexFilter $filters): static
+    /** @param array{search?:string|null,event?:string|null,events?:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,created_at_from?:\DateTimeInterface|string|null,created_at_to?:\DateTimeInterface|string|null} $filters */
+    public function applyIndexFilters(array $filters): static
     {
-        if ($filters->search !== null) {
-            $term = $filters->search;
+        if (($filters['search'] ?? null) !== null) {
+            $term = $filters['search'];
 
             $this->where(function (Builder $query) use ($term): void {
                 $query->whereLike('description', "%{$term}%")
@@ -257,30 +258,30 @@ final class ActivityLogBuilder extends Builder
             });
         }
 
-        if ($filters->events !== []) {
-            $this->whereEvents($filters->events);
-        } elseif ($filters->event !== null) {
-            $this->where('event', $filters->event);
+        if (($filters['events'] ?? []) !== []) {
+            $this->whereEvents($filters['events']);
+        } elseif (($filters['event'] ?? null) !== null) {
+            $this->where('event', $filters['event']);
         }
 
-        if ($filters->causerId !== null) {
-            $this->where('causer_id', $filters->causerId);
+        if (($filters['causer_id'] ?? null) !== null) {
+            $this->where('causer_id', $filters['causer_id']);
         }
 
-        if ($filters->subjectType !== null) {
-            $this->where('subject_type', $filters->subjectType);
+        if (($filters['subject_type'] ?? null) !== null) {
+            $this->where('subject_type', $filters['subject_type']);
         }
 
-        if ($filters->subjectId !== null) {
-            $this->where('subject_id', $filters->subjectId);
+        if (($filters['subject_id'] ?? null) !== null) {
+            $this->where('subject_id', $filters['subject_id']);
         }
 
-        if ($filters->createdAtFrom !== null) {
-            $this->where('created_at', '>=', $filters->createdAtFrom);
+        if (($filters['created_at_from'] ?? null) !== null) {
+            $this->where('created_at', '>=', $filters['created_at_from']);
         }
 
-        if ($filters->createdAtTo !== null) {
-            $this->where('created_at', '<=', $filters->createdAtTo);
+        if (($filters['created_at_to'] ?? null) !== null) {
+            $this->where('created_at', '<=', $filters['created_at_to']);
         }
 
         return $this;

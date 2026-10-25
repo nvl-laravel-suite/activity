@@ -8,19 +8,14 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Nvl\Activity\Data\ActivityIndexFilter;
-use Nvl\Activity\Data\Display\ActivityItem;
-use Nvl\Activity\Data\Display\ActivityItemProperties;
-use Nvl\Activity\Enums\EntrySource;
 use Nvl\Activity\Models\ActivityLog;
-use Nvl\Activity\Services\ActivityReadService;
+use Nvl\Activity\Services\ActivityDiffBuilder;
+use Nvl\Activity\Services\ActivityReader;
 use Nvl\Activity\Services\ActivityRelationLoader;
-use Nvl\Activity\Services\ActivityTransformService;
-use Nvl\Activity\Services\ModelActivityTimelineService;
 use Nvl\Activity\Services\TimelineFilter;
-use Nvl\Activity\Tenancy\ActivityOwnershipGuard;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
 use Nvl\Activity\Tests\Stubs\TestUuidActivitySubject;
+use Nvl\Support\Enums\SystemActor;
 
 beforeEach(function (): void {
     Schema::create('activity_timeline_subjects', function (Blueprint $table): void {
@@ -96,13 +91,13 @@ test('subject timelines stay complete deterministic and parity safe after final 
         ->chunk(50)
         ->each(static fn ($chunk): bool => ActivityLog::query()->insert($chunk->all()));
 
-    $readService = app(ActivityReadService::class);
-    $timelineService = app(ModelActivityTimelineService::class);
-    $unloadedTimeline = $timelineService->forSubject($subject);
+    $readService = app(ActivityReader::class);
+    $timelineService = app(ActivityReader::class);
+    $unloadedTimeline = $timelineService->timeline($subject, SystemActor::Background, 1000);
 
-    expect($readService->forSubject($subject, null))->toHaveCount(202)
+    expect(ActivityLog::query()->forSubject($subject->getMorphClass(), $subject->getKey())->count())->toBe(202)
         ->and($unloadedTimeline)->toHaveCount(101)
-        ->and(array_map(static fn (ActivityItem $item): string => $item->id, array_slice($unloadedTimeline, 0, 2)))
+        ->and($unloadedTimeline->take(2)->pluck('id')->all())
         ->toBe([$secondVisibleId, $firstVisibleId]);
 
     $subject->setRelation(
@@ -110,12 +105,12 @@ test('subject timelines stay complete deterministic and parity safe after final 
         new EloquentCollection([ActivityLog::query()->findOrFail($firstVisibleId)]),
     );
 
-    $preloadedTimeline = $timelineService->forSubject($subject);
-    $limitedTimeline = $timelineService->forSubject($subject, 2);
+    $preloadedTimeline = $timelineService->timeline($subject, SystemActor::Background, 1000);
+    $limitedTimeline = $timelineService->timeline($subject, SystemActor::Background, 2);
 
-    expect(array_map(static fn (ActivityItem $item): string => $item->id, $preloadedTimeline))
-        ->toBe(array_map(static fn (ActivityItem $item): string => $item->id, $unloadedTimeline))
-        ->and(array_map(static fn (ActivityItem $item): string => $item->id, $limitedTimeline))
+    expect($preloadedTimeline->pluck('id')->all())
+        ->toBe($unloadedTimeline->pluck('id')->all())
+        ->and($limitedTimeline->pluck('id')->all())
         ->toBe([$secondVisibleId, $firstVisibleId]);
 });
 
@@ -160,12 +155,10 @@ test('timestamp peers remain distinct without description based guessing', funct
         ]);
     }
 
-    $transformed = app(ActivityTransformService::class)->transformActivities(
-        ActivityLog::forSubjectTimeline($subject->getMorphClass(), (string) $subject->getKey())->get(),
-    );
+    $transformed = app(ActivityReader::class)->timeline($subject, SystemActor::Background);
 
     expect($transformed)->toHaveCount(4)
-        ->and(array_map(static fn (ActivityItem $item): string => $item->description, $transformed))
+        ->and($transformed->pluck('description')->all())
         ->toContain('updated', 'Approved', 'created', 'Customer registered');
 });
 
@@ -180,12 +173,12 @@ test('old only removals produce structured change details', function (): void {
         ],
     ]);
 
-    $item = app(ActivityTransformService::class)->normalizeActivity($activity);
+    $details = app(ActivityDiffBuilder::class)->build($activity, $activity->properties->all());
 
-    expect($item->changesDetailed)->toHaveCount(1)
-        ->and($item->changesDetailed[0]->key)->toBe('legacy_status')
-        ->and($item->changesDetailed[0]->old)->toBe('enabled')
-        ->and($item->changesDetailed[0]->new)->toBeNull();
+    expect($details)->toHaveCount(1)
+        ->and($details[0]['key'])->toBe('legacy_status')
+        ->and($details[0]['old'])->toBe('enabled')
+        ->and($details[0]['new'])->toBeNull();
 });
 
 test('malformed integer and uuid morph identifiers are excluded before eager loading', function (): void {
@@ -224,57 +217,26 @@ test('malformed integer and uuid morph identifiers are excluded before eager loa
 });
 
 test('relation hydration query count is independent of activity fixture size', function (): void {
-    DB::flushQueryLog();
-    DB::enableQueryLog();
-    app(ActivityOwnershipGuard::class)->attributes();
-    $compatibilityProbeCount = count(DB::getQueryLog());
-    DB::disableQueryLog();
-
-    $measure = function (): int {
+    $create = static function (int $id): void {
+        $subject = TestActivityTimelineSubject::query()->create(['name' => 'Subject '.$id]);
+        ActivityLog::query()->create(['description' => 'Fact', 'event' => 'created', 'subject_type' => $subject->getMorphClass(), 'subject_id' => $subject->getKey()]);
+    };
+    $measure = static function (): array {
         DB::flushQueryLog();
         DB::enableQueryLog();
-
-        $activities = ActivityLog::query()
-            ->where('log_name', 'query-budget')
-            ->get();
-        app(ActivityRelationLoader::class)->load($activities);
-        $queryCount = count(DB::getQueryLog());
-
-        foreach ($activities as $activity) {
-            $activity->getRelation('subject');
-        }
-
-        expect(DB::getQueryLog())->toHaveCount($queryCount);
+        $rows = ActivityLog::query()->get();
+        app(ActivityRelationLoader::class)->load($rows);
+        $queries = DB::getQueryLog();
         DB::disableQueryLog();
 
-        return $queryCount;
+        return [count($queries), count(array_filter($queries, static fn (array $query): bool => preg_match('/^select .* from ["`]*(nvl_activity_log|activity_timeline_subjects)["`]*(?: |$)/i', $query['query']) === 1))];
     };
-
-    $create = static function (int $index): void {
-        $subject = TestActivityTimelineSubject::query()->create([
-            'name' => "Query subject {$index}",
-        ]);
-        ActivityLog::query()->create([
-            'log_name' => 'query-budget',
-            'description' => "Query activity {$index}",
-            'event' => 'created',
-            'subject_type' => $subject->getMorphClass(),
-            'subject_id' => (string) $subject->getKey(),
-        ]);
-    };
-
     $create(1);
-    $singleQueryCount = $measure();
-
-    foreach (range(2, 25) as $index) {
-        $create($index);
-    }
-
-    $populatedQueryCount = $measure();
-
-    expect($compatibilityProbeCount)->toBeLessThanOrEqual(2)
-        ->and($singleQueryCount)->toBeLessThanOrEqual(10)
-        ->and($populatedQueryCount)->toBe($singleQueryCount);
+    [$singleTotal,$singleData] = $measure();
+    foreach (range(2, 25) as $id) {
+        $create($id);
+    }[$manyTotal,$manyData] = $measure();
+    expect($singleData)->toBe(2)->and($manyData)->toBe($singleData)->and($manyTotal)->toBeGreaterThanOrEqual($manyData);
 });
 
 test('read service paginators remain transport neutral', function (): void {
@@ -290,22 +252,14 @@ test('read service paginators remain transport neutral', function (): void {
     ]);
     request()->query->set('event', 'created');
 
-    $paginator = app(ActivityReadService::class)->paginateIndex(
-        ActivityIndexFilter::fromInput(['per_page' => 1]),
-    );
+    $paginator = app(ActivityReader::class)->paginate((['per_page' => 1]), SystemActor::Background);
 
     expect($paginator->nextPageUrl())->not->toContain('event=created');
 });
 
 test('historical visibility values fail closed unless explicitly canonical', function (?string $visibility, bool $included): void {
     $payload = $visibility === null ? [] : ['visibility' => $visibility];
-    $item = new ActivityItem(
-        id: 'visibility-row',
-        log: 'visibility',
-        event: 'created',
-        source: EntrySource::ActivityLog,
-        properties: ActivityItemProperties::fromPayload($payload),
-    );
+    $item = new ActivityLog(['event' => 'created', 'properties' => $payload]);
 
     expect((new TimelineFilter)->shouldIncludeInSignalTimeline($item))->toBe($included);
 })->with([

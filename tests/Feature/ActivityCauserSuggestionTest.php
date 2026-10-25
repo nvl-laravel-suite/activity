@@ -6,19 +6,19 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
-use Nvl\Activity\Data\Display\ActivityCauserSuggestion;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityReader;
 use Nvl\Activity\Tests\Stubs\AbstractTestActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestUuidActivitySubject;
+use Nvl\Support\Enums\SystemActor;
 
 test('causer suggestions do not assume a host user model', function (): void {
     config()->set('nvl-activity.causer_suggestions.model');
     config()->set('auth.providers.users.model');
 
-    $suggestions = (new ListActivityCauserSuggestionsAction)->execute();
+    $suggestions = app(ActivityReader::class)->causers(SystemActor::Background);
 
     expect($suggestions)->toHaveCount(0);
 });
@@ -26,52 +26,44 @@ test('causer suggestions do not assume a host user model', function (): void {
 test('causer suggestions safely reject unavailable configured models', function (): void {
     config()->set('nvl-activity.causer_suggestions.model', AbstractTestActivitySubject::class);
 
-    expect((new ListActivityCauserSuggestionsAction)->execute())->toHaveCount(0);
+    expect(app(ActivityReader::class)->causers(SystemActor::Background))->toHaveCount(0);
 
     config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
 
-    expect((new ListActivityCauserSuggestionsAction)->execute())->toHaveCount(0);
+    expect(app(ActivityReader::class)->causers(SystemActor::Background))->toHaveCount(0);
 });
 
-test('causer suggestion data supports configured attributes and non uuid keys', function (): void {
-    config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
-    config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
-    config()->set('nvl-activity.causer_suggestions.type_attribute', 'kind');
-
-    $causer = new TestActivityCauser;
-    $causer->forceFill([
-        'causer_key' => 42,
-        'display_name' => 'Ada Lovelace',
-        'contact' => 'ada@example.test',
-        'kind' => 'operator',
-    ]);
-
-    $suggestion = ActivityCauserSuggestion::fromModel($causer);
-
-    expect($suggestion->id)->toBe('42')
-        ->and($suggestion->label)->toBe('Ada Lovelace')
-        ->and($suggestion->sublabel)->toBe('ada@example.test')
-        ->and($suggestion->type)->toBe('operator');
+test('native causer suggestions expose fixed safe identity attributes and preserve non uuid keys', function (): void {
+    Schema::create('activity_test_causers', function (Blueprint $table): void {
+        $table->increments('causer_key');
+        $table->string('name');
+        $table->string('password');
+    });
+    config(['nvl-activity.causer_suggestions.model' => TestActivityCauser::class]);
+    $causer = TestActivityCauser::query()->create(['name' => 'Ada', 'password' => 'private']);
+    ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $causer->getMorphClass(), 'causer_id' => $causer->getKey()]);
+    $suggestion = app(ActivityReader::class)->causers(SystemActor::Background)->first();
+    expect($suggestion->getKey())->toBe($causer->getKey())->and($suggestion->getAttributes())->toBe(['causer_key' => $causer->getKey(), 'name' => 'Ada']);
 });
 
 test('causer suggestions query integer keyed models without cross type joins', function (): void {
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->smallIncrements('causer_key');
-        $table->string('display_name');
-        $table->string('contact')->nullable();
+        $table->string('name');
+        $table->string('email')->nullable();
         $table->string('kind')->nullable();
     });
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         config()->set('nvl-activity.causer_suggestions.type_attribute', 'kind');
-        config()->set('nvl-activity.causer_suggestions.search_attributes', ['display_name', 'contact']);
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['name', 'email']);
 
         $causer = TestActivityCauser::query()->create([
-            'display_name' => 'Grace Hopper',
-            'contact' => 'grace@example.test',
+            'name' => 'Grace Hopper',
+            'email' => 'grace@example.test',
             'kind' => 'operator',
         ]);
 
@@ -100,16 +92,16 @@ test('causer suggestions query integer keyed models without cross type joins', f
             'causer_id' => '+'.(string) $causer->getKey(),
         ]);
 
-        $suggestions = (new ListActivityCauserSuggestionsAction)->execute('Grace');
+        $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, 'Grace');
         $suggestion = $suggestions->first();
-        $suggestionsByKey = (new ListActivityCauserSuggestionsAction)->execute((string) $causer->getKey());
+        $suggestionsByKey = app(ActivityReader::class)->causers(SystemActor::Background, (string) $causer->getKey());
 
         expect($suggestions)->toHaveCount(1)
-            ->and($suggestion)->toBeInstanceOf(ActivityCauserSuggestion::class)
-            ->and($suggestion->id)->toBe((string) $causer->getKey())
-            ->and($suggestion->label)->toBe('Grace Hopper')
+            ->and($suggestion)->toBeInstanceOf(TestActivityCauser::class)
+            ->and($suggestion->getKey())->toBe($causer->getKey())
+            ->and($suggestion->name)->toBe('Grace Hopper')
             ->and($suggestionsByKey)->toHaveCount(1)
-            ->and($suggestionsByKey->first()->id)->toBe((string) $causer->getKey());
+            ->and($suggestionsByKey->first()->getKey())->toBe($causer->getKey());
     } finally {
         Schema::dropIfExists('activity_test_causers');
     }
@@ -143,11 +135,11 @@ test('causer suggestions isolate malformed historical uuid identifiers and norma
             'causer_id' => 'not-a-uuid',
         ]);
 
-        $suggestions = (new ListActivityCauserSuggestionsAction)->execute('Grace');
+        $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, 'Grace');
 
         expect($suggestions)->toHaveCount(1)
-            ->and($suggestions->first()->id)->toBe((string) $causer->getKey())
-            ->and($suggestions->first()->label)->toBe('Grace Hopper');
+            ->and($suggestions->first()->getKey())->toBe($causer->getKey())
+            ->and($suggestions->first()->name)->toBe('Grace Hopper');
     } finally {
         Schema::dropIfExists('activity_uuid_subjects');
     }
@@ -156,20 +148,20 @@ test('causer suggestions isolate malformed historical uuid identifiers and norma
 test('historical causer suggestions include soft deleted actors', function (): void {
     Schema::create('activity_soft_deleted_causers', function (Blueprint $table): void {
         $table->id();
-        $table->string('display_name');
-        $table->string('contact')->nullable();
+        $table->string('name');
+        $table->string('email')->nullable();
         $table->softDeletes();
     });
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestSoftDeletedActivityCauser::class);
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
-        config()->set('nvl-activity.causer_suggestions.search_attributes', ['display_name', 'contact']);
+        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
+        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
+        config()->set('nvl-activity.causer_suggestions.search_attributes', ['name', 'email']);
 
         $causer = TestSoftDeletedActivityCauser::query()->create([
-            'display_name' => 'Archived Operator',
-            'contact' => 'archived@example.test',
+            'name' => 'Archived Operator',
+            'email' => 'archived@example.test',
         ]);
 
         ActivityLog::query()->create([
@@ -181,11 +173,11 @@ test('historical causer suggestions include soft deleted actors', function (): v
 
         $causer->delete();
 
-        $suggestions = (new ListActivityCauserSuggestionsAction)->execute('Archived');
+        $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, 'Archived');
 
         expect($suggestions)->toHaveCount(1)
-            ->and($suggestions->first()->id)->toBe((string) $causer->getKey())
-            ->and($suggestions->first()->label)->toBe('Archived Operator');
+            ->and($suggestions->first()->getKey())->toBe($causer->getKey())
+            ->and($suggestions->first()->name)->toBe('Archived Operator');
     } finally {
         Schema::dropIfExists('activity_soft_deleted_causers');
     }
@@ -194,14 +186,14 @@ test('historical causer suggestions include soft deleted actors', function (): v
 test('unsearchable integer causer configuration returns no false positive suggestions', function (): void {
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
-        $table->string('display_name');
+        $table->string('name');
     });
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
         config()->set('nvl-activity.causer_suggestions.search_attributes', ['missing_attribute']);
 
-        $causer = TestActivityCauser::query()->create(['display_name' => 'Hidden']);
+        $causer = TestActivityCauser::query()->create(['name' => 'Hidden']);
         ActivityLog::query()->create([
             'log_name' => 'test',
             'description' => 'Unsearchable causer activity',
@@ -209,7 +201,7 @@ test('unsearchable integer causer configuration returns no false positive sugges
             'causer_id' => (string) $causer->getKey(),
         ]);
 
-        expect((new ListActivityCauserSuggestionsAction)->execute('not-a-key'))
+        expect(app(ActivityReader::class)->causers(SystemActor::Background, 'not-a-key'))
             ->toHaveCount(0);
     } finally {
         Schema::dropIfExists('activity_test_causers');
@@ -219,14 +211,14 @@ test('unsearchable integer causer configuration returns no false positive sugges
 test('causer suggestions never apply fuzzy matching to integer columns', function (): void {
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
-        $table->string('display_name');
+        $table->string('name');
     });
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
         config()->set('nvl-activity.causer_suggestions.search_attributes', ['causer_key']);
 
-        $causer = TestActivityCauser::query()->create(['display_name' => 'Integer key']);
+        $causer = TestActivityCauser::query()->create(['name' => 'Integer key']);
         ActivityLog::query()->create([
             'log_name' => 'test',
             'description' => 'Integer causer activity',
@@ -239,7 +231,7 @@ test('causer suggestions never apply fuzzy matching to integer columns', functio
             $queries[] = strtolower($query->sql);
         });
 
-        $suggestions = (new ListActivityCauserSuggestionsAction)->execute('not-a-key');
+        $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, 'not-a-key');
 
         expect($suggestions)->toHaveCount(0)
             ->and(collect($queries)->contains(

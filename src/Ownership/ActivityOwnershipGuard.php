@@ -11,9 +11,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Support\Exceptions\BusinessException;
-use Nvl\Support\Ownership\Compatibility\LegacyResourceDefinitions;
-use Nvl\Support\Ownership\Compatibility\OwnershipFailures;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
+use Nvl\Support\Ownership\Exceptions\OwnershipViolation;
 use Nvl\Support\Ownership\Services\OwnershipResourceRegistry;
 use Nvl\Support\Ownership\ValueObjects\OwnershipResourceDefinition;
 use WeakMap;
@@ -40,7 +39,7 @@ readonly class ActivityOwnershipGuard
     private WeakMap $trustedRelations;
 
     /** Share Foundation's current-scope boundary across every Activity entry point. */
-    public function __construct(private OwnershipBoundary $boundary, private OwnershipResourceRegistry $resources, private Repository $configuration, private LegacyResourceDefinitions $legacy, private OwnershipFailures $failures)
+    public function __construct(private OwnershipBoundary $boundary, private OwnershipResourceRegistry $resources, private Repository $configuration)
     {
         $this->deletingSubjects = new WeakMap;
         $this->trustedRelations = new WeakMap;
@@ -61,7 +60,7 @@ readonly class ActivityOwnershipGuard
     /** Preserve the single enforcing authority's exception presentation during the bridge release. */
     public function violation(string $message): BusinessException
     {
-        return $this->failures->violation($message);
+        return new OwnershipViolation($message);
     }
 
     /** Stamp every newly persisted Spatie activity, including automatic model logging. */
@@ -103,7 +102,7 @@ readonly class ActivityOwnershipGuard
     public function updating(ActivityLog $activity): void
     {
         $this->boundary->assertRecord($activity, 'activity.events');
-        if ($this->enabled() && $activity->isDirty(['tenant_id', 'ownership_key', 'owner_scope_key', 'owner_reference'])) {
+        if ($this->enabled() && $activity->isDirty(['owner_scope_key', 'owner_reference'])) {
             throw $this->violation('Activity ownership is immutable.');
         }
     }
@@ -449,7 +448,7 @@ readonly class ActivityOwnershipGuard
             }
         }
 
-        return $this->legacy->forModel($class);
+        return null;
     }
 
     /** Resolve the existing explicit causer display seam without loading Auth. */

@@ -6,12 +6,13 @@ namespace Nvl\Activity\Services;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
-use Nvl\Activity\Data\Display\ActivityChangeDetail;
 use Nvl\Activity\Support\TimelineActivityRules;
 use Spatie\Activitylog\Models\Activity;
 
 /**
  * Builds human-readable diff details for normalized activity entries.
+ *
+ * @api
  */
 final class ActivityDiffBuilder
 {
@@ -27,7 +28,7 @@ final class ActivityDiffBuilder
      * Build structured change details from a raw activity payload.
      *
      * @param  array<string, mixed>  $properties
-     * @return Collection<int, ActivityChangeDetail>
+     * @return Collection<int, array{key:string,label:string,old:?string,new:?string,description:string}>
      */
     public function build(Activity $activity, array $properties): Collection
     {
@@ -41,13 +42,13 @@ final class ActivityDiffBuilder
         ]));
 
         return collect($changedKeys)
-            ->map(fn (string|int $key): ?ActivityChangeDetail => $this->buildChangeDetail(
+            ->map(fn (string|int $key): ?array => $this->buildChangeDetail(
                 activity: $activity,
                 key: $key,
                 value: $changes[$key] ?? null,
                 oldValues: $oldValues,
             ))
-            ->filter(static fn (?ActivityChangeDetail $detail): bool => $detail !== null)
+            ->filter(static fn (?array $detail): bool => $detail !== null)
             ->values();
     }
 
@@ -55,13 +56,14 @@ final class ActivityDiffBuilder
      * Build one normalized change detail or omit an unchanged/noisy value.
      *
      * @param  array<string, mixed>  $oldValues
+     * @return array{key:string,label:string,old:?string,new:?string,description:string}|null
      */
     private function buildChangeDetail(
         Activity $activity,
         string|int $key,
         mixed $value,
         array $oldValues,
-    ): ?ActivityChangeDetail {
+    ): ?array {
         $oldValue = $oldValues[$key] ?? null;
 
         if ($oldValue === $value || TimelineActivityRules::isNoisyChangeKey((string) $key)) {
@@ -73,17 +75,11 @@ final class ActivityDiffBuilder
         $oldFormatted = $this->formatDiffValue($key, $oldValue, $activity);
         $newFormatted = $this->formatDiffValue($key, $value, $activity);
 
-        return new ActivityChangeDetail(
-            key: (string) $key,
-            label: $resolvedLabel,
-            old: $oldFormatted,
-            new: $newFormatted,
-            description: $this->headlineRenderer->buildChangedText(
-                $resolvedLabel,
-                $oldFormatted,
-                $newFormatted,
-            ),
-        );
+        return [
+            'key' => (string) $key, 'label' => $resolvedLabel,
+            'old' => $oldFormatted, 'new' => $newFormatted,
+            'description' => $this->headlineRenderer->buildChangedText($resolvedLabel, $oldFormatted, $newFormatted),
+        ];
     }
 
     /**

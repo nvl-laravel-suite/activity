@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use BackedEnum;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
-use Nvl\Activity\Contracts\ActivityRecorderContract;
+use InvalidArgumentException;
 use Nvl\Activity\Enums\ActivityEvent;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
@@ -16,29 +17,29 @@ use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
+use Nvl\Activity\Support\ActivityMetadata;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\TimelineActivityRules;
-use Spatie\Activitylog\Contracts\Activity as ActivityContract;
+use Nvl\Support\Enums\SystemActor;
 
 /**
  * Writes canonical activity records with consistent metadata, source, and diffs.
  *
- * This service is the only shared writer behind the `ActivityLog` facade.
- * Semantic event factories delegate actual persistence here.
+ * Direct calls authorize an explicit principal; immutable envelopes deliver already-authorized facts.
  *
  * @api
  */
-final class ActivityRecorder implements ActivityRecorderContract
+final class ActivityRecorder
 {
     /** Capture ownership through the same guard used by automatic model logging. */
     public function __construct(
         private readonly ActivityOwnershipGuard $ownership,
-        private readonly NvlActivityLogger $logger,
+        private readonly ActivityAccess $access,
     ) {}
 
     /** Deliver one immutable activity fact and return the same row on an identical retry. */
-    public function recordEnvelope(ActivityRecordEnvelope $envelope): ActivityContract
+    public function recordEnvelope(ActivityRecordEnvelope $envelope): ActivityLog
     {
         $this->ownership->attributes();
         $existing = ActivityLog::query()->find($envelope->id);
@@ -85,9 +86,9 @@ final class ActivityRecorder implements ActivityRecorderContract
                 ? ActivitySource::User->value : ActivitySource::System->value,
             'visibility' => ActivityVisibility::Timeline->value,
             'importance' => ActivityImportance::Normal->value,
-            'context' => $envelope->context,
-            'attributes' => $envelope->attributes,
-            'old' => $envelope->old,
+            'context' => ActivityMetadata::redact($envelope->context),
+            'attributes' => $envelope->attributes === null ? null : ActivityMetadata::redact($envelope->attributes),
+            'old' => $envelope->old === null ? null : ActivityMetadata::redact($envelope->old),
             'actor_id' => $envelope->scalarActorId,
             'occurred_at' => $envelope->occurredAt->format('Y-m-d\TH:i:s.uP'),
             '_envelope_hash' => hash('sha256', $serialized),
@@ -95,7 +96,7 @@ final class ActivityRecorder implements ActivityRecorderContract
     }
 
     /** Require an existing ID to represent the exact same immutable event. */
-    private function assertMatchingEnvelope(ActivityLog $existing, ActivityRecordEnvelope $envelope): ActivityContract
+    private function assertMatchingEnvelope(ActivityLog $existing, ActivityRecordEnvelope $envelope): ActivityLog
     {
         $properties = $existing->properties?->toArray() ?? [];
         $expected = $this->envelopeProperties($envelope);
@@ -137,283 +138,106 @@ final class ActivityRecorder implements ActivityRecorderContract
     }
 
     /**
-     * Record an activity with the canonical structured payload contract.
+     * Record an authorized fact on Activity's connection, participating in an outer transaction.
+     * Omitted diff arrays infer changes; explicit null suppresses that side of the diff.
      *
-     * @param  string|BackedEnum  $event  Canonical event key or backed enum
-     * @param  string  $description  Optional machine description; defaults to the event key
-     * @param  array<string, mixed>  $context  Event-specific business context
-     * @param  array<string, mixed>|null  $attributes  Explicit changed attribute values
-     * @param  array<string, mixed>|null  $old  Explicit previous attribute values
-     * @param  Model|string|int|null  $actor  Causing actor model, scalar ID, or null
-     * @param  string|BackedEnum|null  $source  Entry source classification; inferred when omitted
-     * @param  string|BackedEnum|null  $visibility  Timeline visibility classification; timeline by default
-     * @param  string|BackedEnum|null  $importance  Importance classification; normal by default
-     * @param  bool  $resolveChanges  Whether changed attributes may be inferred automatically
-     * @param  string|null  $batchUuid  Optional caller-owned batch identifier
-     * @return ActivityContract|null Persisted activity or null when the event key is blank
+     * @param  array<string, mixed>  $entry  Validated against the documented entry allowlist.
      */
-    public function record(
-        ?Model $subject,
-        string|BackedEnum $event,
-        string $description = '',
-        array $context = [],
-        ?array $attributes = null,
-        ?array $old = null,
-        Model|string|int|null $actor = null,
-        ?string $logName = null,
-        string|BackedEnum|null $source = null,
-        string|BackedEnum|null $visibility = null,
-        string|BackedEnum|null $importance = null,
-        bool $resolveChanges = true,
-        ?string $batchUuid = null,
-    ): ?ActivityContract {
-        return $this->persist(
-            subject: $subject,
-            subjectReference: null,
-            event: $event,
-            description: $description,
-            context: $context,
-            attributes: $attributes,
-            old: $old,
-            actor: $actor,
-            logName: $logName,
-            source: $source,
-            visibility: $visibility,
-            importance: $importance,
-            resolveChanges: $resolveChanges,
-            batchUuid: $batchUuid,
-        );
-    }
-
-    /**
-     * Record activity for a stable subject identity without loading its model.
-     *
-     * @param  string|BackedEnum  $event  Canonical event key or backed enum
-     * @param  array<string, mixed>  $context  Event-specific business context
-     * @param  Model|string|int|null  $actor  Causing actor model, scalar ID, or null
-     */
-    public function recordForSubjectReference(
-        ActivitySubjectReference $subject,
-        string|BackedEnum $event,
-        string $description = '',
-        array $context = [],
-        Model|string|int|null $actor = null,
-        string|BackedEnum|null $importance = null,
-    ): ?ActivityContract {
-        return $this->persist(
-            subject: null,
-            subjectReference: $subject,
-            event: $event,
-            description: $description,
-            context: $context,
-            actor: $actor,
-            importance: $importance,
-            resolveChanges: false,
-        );
-    }
-
-    /**
-     * Persist one canonical activity through the shared Spatie logger.
-     *
-     * @param  array<string, mixed>  $context
-     * @param  array<string, mixed>|null  $attributes
-     * @param  array<string, mixed>|null  $old
-     */
-    private function persist(
-        ?Model $subject,
-        ?ActivitySubjectReference $subjectReference,
-        string|BackedEnum $event,
-        string $description = '',
-        array $context = [],
-        ?array $attributes = null,
-        ?array $old = null,
-        Model|string|int|null $actor = null,
-        ?string $logName = null,
-        string|BackedEnum|null $source = null,
-        string|BackedEnum|null $visibility = null,
-        string|BackedEnum|null $importance = null,
-        bool $resolveChanges = true,
-        ?string $batchUuid = null,
-    ): ?ActivityContract {
-        $ownership = $this->ownership->attributes();
-        if ($subject !== null) {
+    public function record(array $entry, Authenticatable|SystemActor $actor): ActivityLog
+    {
+        $allowed = ['subject', 'event', 'description', 'context', 'attributes', 'old', 'log_name', 'visibility', 'importance', 'resolve_changes', 'batch_uuid'];
+        if (array_diff(array_keys($entry), $allowed) !== []) {
+            throw new InvalidArgumentException('Activity entries contain unknown or protected fields.');
+        }
+        $event = $entry['event'] ?? null;
+        if ($event instanceof BackedEnum) {
+            $event = $event->value;
+        }
+        if (! is_string($event) || trim($event) === '' || mb_strlen($event) > 255 || str_contains($event, "\0")) {
+            throw new InvalidArgumentException('Activity events require 1 to 255 non-blank characters.');
+        }
+        $event = trim($event);
+        $subject = $entry['subject'] ?? null;
+        if ($subject !== null && ! $subject instanceof Model && ! $subject instanceof ActivitySubjectReference) {
+            throw new InvalidArgumentException('Activity subjects must be persisted models or immutable references.');
+        }
+        if ($subject instanceof Model && (! $subject->exists || $subject->getKey() === null
+            || $subject->getRawOriginal($subject->getKeyName()) !== $subject->getKey())) {
+            throw new InvalidArgumentException('Activity model subjects must have persisted identities.');
+        }
+        $description = $this->text($entry['description'] ?? '', 65535);
+        $logName = $this->text($entry['log_name'] ?? '', 255);
+        foreach (['description', 'log_name'] as $key) {
+            if (array_key_exists($key, $entry) && (! is_string($entry[$key]) || str_contains($entry[$key], "\0") || mb_strlen($entry[$key]) > ($key === 'description' ? 65535 : 255))) {
+                throw new InvalidArgumentException('Invalid Activity '.$key.'.');
+            }
+        }
+        if (array_key_exists('resolve_changes', $entry) && ! is_bool($entry['resolve_changes'])) {
+            throw new InvalidArgumentException('Activity resolve_changes must be boolean.');
+        }
+        $context = ActivityMetadata::record($entry['context'] ?? [], 'context');
+        $attributes = array_key_exists('attributes', $entry) ? ActivityMetadata::nullableRecord($entry['attributes'], 'attributes') : null;
+        $old = array_key_exists('old', $entry) ? ActivityMetadata::nullableRecord($entry['old'], 'old') : null;
+        $visibility = $this->classification($entry['visibility'] ?? ActivityVisibility::Timeline, ActivityVisibility::class);
+        $importance = $this->classification($entry['importance'] ?? ActivityImportance::Normal, ActivityImportance::class);
+        $batch = $entry['batch_uuid'] ?? null;
+        if ($batch !== null && (! is_string($batch) || ! Str::isUuid($batch))) {
+            throw ActivityRecordingException::invalidBatchIdentifier();
+        }
+        $this->access->authorize($actor, 'record', $subject);
+        $this->ownership->attributes();
+        if ($subject instanceof Model) {
             $this->ownership->assertSubject($subject);
         }
-        $eventName = trim($this->normalizeValue($event));
-        if ($eventName === '') {
-            return null;
-        }
-
-        [$resolvedAttributes, $resolvedOld] = $this->resolveChangePayload(
-            subject: $subject,
-            event: $eventName,
-            attributes: $attributes,
-            old: $old,
-            resolveChanges: $resolveChanges,
+        [$attributes, $old] = $this->resolveChangePayload(
+            $subject instanceof Model ? $subject : null, $event, $attributes, $old,
+            ($entry['resolve_changes'] ?? true) && ! array_key_exists('attributes', $entry) && ! array_key_exists('old', $entry),
         );
-
-        $normalizedLogName = trim($logName ?? '');
-        $logger = clone $this->logger;
-        if ($normalizedLogName !== '') {
-            $logger->useLog($normalizedLogName);
-        }
-        $logger->causedByAnonymous();
-        $logger->tap(static function (ActivityContract $activity) use ($ownership): void {
-            if ($activity instanceof Model) {
-                $activity->forceFill($ownership);
-            }
-        });
-
-        $resolvedActor = is_string($actor) ? trim($actor) : $actor;
-        $resolvedSource = $this->resolveSource($resolvedActor, $source);
-        $resolvedVisibility = $this->resolveVisibility($visibility);
-        $resolvedImportance = $this->resolveImportance($importance);
-
-        $metadata = [
-            'source' => $resolvedSource,
-            'visibility' => $resolvedVisibility,
-            'importance' => $resolvedImportance,
+        $properties = [
+            'source' => $actor instanceof SystemActor ? ActivitySource::System->value : ActivitySource::User->value,
+            'visibility' => $visibility, 'importance' => $importance,
+            'context' => ActivityMetadata::redact($context),
+            'attributes' => ActivityMetadata::redact($attributes), 'old' => ActivityMetadata::redact($old),
         ];
-
-        if ($context !== []) {
-            $metadata['context'] = $context;
+        $reference = $subject instanceof ActivitySubjectReference ? $subject : null;
+        $causer = $actor instanceof Model ? $this->ownership->canonicalCauser($actor) : null;
+        $causerId = $causer?->getKey();
+        if ($causerId !== null && ! is_string($causerId) && ! is_int($causerId)) {
+            throw new InvalidArgumentException('Activity causers require scalar identities.');
         }
+        $model = new ActivityLog;
 
-        if ($resolvedAttributes !== []) {
-            $metadata['attributes'] = $resolvedAttributes;
-        }
-
-        if ($resolvedOld !== []) {
-            $metadata['old'] = $resolvedOld;
-        }
-
-        $logger = $logger
-            ->event($eventName)
-            ->withProperties($metadata);
-
-        $normalizedBatchUuid = trim($batchUuid ?? '');
-        if ($normalizedBatchUuid !== '') {
-            if (! Str::isUuid($normalizedBatchUuid)) {
-                throw ActivityRecordingException::invalidBatchIdentifier();
-            }
-
-            $logger->tap(static function (ActivityContract $activity) use ($normalizedBatchUuid): void {
-                if ($activity instanceof Model) {
-                    $activity->setAttribute('batch_uuid', $normalizedBatchUuid);
-                }
-            });
-        }
-
-        if ($subject !== null) {
-            $logger->performedOn($subject);
-        } elseif ($subjectReference instanceof ActivitySubjectReference) {
-            $logger->tap(static function (ActivityContract $activity) use ($subjectReference): void {
-                if ($activity instanceof Model) {
-                    $activity->setAttribute('subject_type', $subjectReference->type);
-                    $activity->setAttribute('subject_id', (string) $subjectReference->id);
-                    $activity->setRelation('subject', null);
-                }
-            });
-        }
-
-        if ($resolvedActor instanceof Model) {
-            $logger->causedBy($resolvedActor);
-        } elseif ($resolvedActor !== null && $resolvedActor !== '') {
-            $metadata['actor_id'] = (string) $resolvedActor;
-            $logger->withProperties($metadata);
-        }
-
-        $normalizedDescription = trim($description);
-        $message = $normalizedDescription !== '' ? $normalizedDescription : $eventName;
-
-        return $logger->log($message);
+        return $model->getConnection()->transaction(static function () use ($description, $logName, $subject, $reference, $event, $causer, $causerId, $properties, $batch): ActivityLog {
+            return ActivityLog::query()->create([
+                'subject_type' => $subject instanceof Model ? $subject->getMorphClass() : $reference?->type,
+                'subject_id' => $subject instanceof Model ? $subject->getKey() : $reference?->id,
+                'causer_type' => $causer?->getMorphClass(), 'causer_id' => $causerId === null ? null : (string) $causerId,
+                'event' => $event, 'description' => $description ?: $event,
+                'log_name' => $logName ?: 'default',
+                'properties' => $properties, 'batch_uuid' => $batch,
+            ]);
+        });
     }
 
-    /**
-     * Normalize a scalar or backed enum to its persisted string value.
-     *
-     * @param  string|BackedEnum  $value  Enum or scalar string value
-     * @return string Normalized persisted string value
-     */
-    private function normalizeValue(string|BackedEnum $value): string
+    /** Validate optional descriptive text without converting caller objects. */
+    private function text(mixed $value, int $limit): string
     {
-        if ($value instanceof BackedEnum) {
-            return (string) $value->value;
+        if (! is_string($value) || str_contains($value, "\0") || mb_strlen($value) > $limit) {
+            throw new InvalidArgumentException('Invalid Activity descriptive text.');
         }
 
         return trim($value);
     }
 
-    /**
-     * Resolve the persisted source classification for the activity record.
-     *
-     * @param  Model|string|int|null  $actor  Explicit causing actor
-     * @param  string|BackedEnum|null  $source  Explicit source override
-     * @return string Normalized source value
-     */
-    private function resolveSource(Model|string|int|null $actor, string|BackedEnum|null $source): string
+    /** @param class-string<BackedEnum> $enum */
+    private function classification(mixed $value, string $enum): string
     {
-        if ($source !== null) {
-            $normalizedSource = $this->normalizeValue($source);
-
-            if ($normalizedSource !== '') {
-                $resolvedSource = ActivitySource::tryFrom($normalizedSource);
-
-                if (! $resolvedSource instanceof ActivitySource) {
-                    throw ActivityRecordingException::invalidMetadata('source');
-                }
-
-                return $resolvedSource->value;
-            }
+        $value = $value instanceof BackedEnum ? $value->value : $value;
+        if (! is_string($value) || $enum::tryFrom($value) === null) {
+            throw new InvalidArgumentException('Invalid Activity classification.');
         }
 
-        return $actor === null || $actor === ''
-            ? ActivitySource::System->value
-            : ActivitySource::User->value;
-    }
-
-    /**
-     * Resolve and validate the timeline visibility classification.
-     */
-    private function resolveVisibility(string|BackedEnum|null $visibility): string
-    {
-        $normalizedVisibility = $visibility === null
-            ? ActivityVisibility::Timeline->value
-            : $this->normalizeValue($visibility);
-
-        if ($normalizedVisibility === '') {
-            return ActivityVisibility::Timeline->value;
-        }
-
-        $resolvedVisibility = ActivityVisibility::tryFrom($normalizedVisibility);
-
-        if (! $resolvedVisibility instanceof ActivityVisibility) {
-            throw ActivityRecordingException::invalidMetadata('visibility');
-        }
-
-        return $resolvedVisibility->value;
-    }
-
-    /**
-     * Resolve and validate the semantic importance classification.
-     */
-    private function resolveImportance(string|BackedEnum|null $importance): string
-    {
-        $normalizedImportance = $importance === null
-            ? ActivityImportance::Normal->value
-            : $this->normalizeValue($importance);
-
-        if ($normalizedImportance === '') {
-            return ActivityImportance::Normal->value;
-        }
-
-        $resolvedImportance = ActivityImportance::tryFrom($normalizedImportance);
-
-        if (! $resolvedImportance instanceof ActivityImportance) {
-            throw ActivityRecordingException::invalidMetadata('importance');
-        }
-
-        return $resolvedImportance->value;
+        return $value;
     }
 
     /**

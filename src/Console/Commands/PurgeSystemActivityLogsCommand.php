@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Nvl\Activity\Exceptions\ActivityException;
 use Nvl\Activity\Services\ActivityPurgeDispatcher;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Support\Enums\SystemActor;
 
 /**
  * Convenience command to purge only system-generated activity logs.
@@ -62,7 +63,7 @@ final class PurgeSystemActivityLogsCommand extends Command
         $this->writeCriteriaSummary($criteria);
 
         if ((bool) $this->option('dry-run')) {
-            $count = $this->purges->count($criteria);
+            $count = $this->purges->count($criteria, SystemActor::Background);
             $this->info((string) trans(
                 'nvl-activity::activity/general.console.purge.system_dry_run',
                 ['count' => $count],
@@ -71,7 +72,7 @@ final class PurgeSystemActivityLogsCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->purges->dispatch($criteria);
+        $this->purges->dispatch($criteria, SystemActor::Background);
 
         $this->info((string) trans('nvl-activity::activity/general.console.purge.system_dispatched'));
 

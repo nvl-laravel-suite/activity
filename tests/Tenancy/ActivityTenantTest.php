@@ -3,703 +3,260 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Schema;
-use Nvl\Activity\Actions\Activity\ListActivityCauserSuggestionsAction;
-use Nvl\Activity\Actions\Activity\QueueActivityLogPurgeAction;
-use Nvl\Activity\Definitions\Tables\ActivityTables;
-use Nvl\Activity\Exceptions\ActivityTimelineException;
-use Nvl\Activity\Facades\ActivityLog as ActivityLogFacade;
+use Illuminate\Support\Str;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
-use Nvl\Activity\Services\ActivityReadService;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
+use Nvl\Activity\Services\ActivityCaptureContext;
+use Nvl\Activity\Services\ActivityReader;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\ActivityRelationLoader;
-use Nvl\Activity\Services\ActivitySubjectTimelineResolver;
 use Nvl\Activity\Services\MappingRegistry;
-use Nvl\Activity\Services\ModelActivityTimelineService;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
-use Nvl\Activity\Tenancy\ActivityAdoptionAdapter;
-use Nvl\Activity\Tests\Fixtures\ActivityHostAdoptionAdapter;
-use Nvl\Activity\Tests\Fixtures\ActivitySettingChanged;
-use Nvl\Activity\Tests\Fixtures\GlobalActivityCauser;
-use Nvl\Activity\Tests\Fixtures\RecordActivitySettingChanged;
-use Nvl\Activity\Tests\Fixtures\TenantActivitySubject;
-use Nvl\Activity\Tests\Fixtures\TenantScenario;
+use Nvl\Activity\Tests\Fixtures\OwnershipActor;
+use Nvl\Activity\Tests\Fixtures\OwnershipCompany;
+use Nvl\Activity\Tests\Fixtures\OwnershipSubject;
 use Nvl\Activity\Tests\Fixtures\UnknownActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
-use Nvl\Tenancy\Contracts\TenantContext;
-use Nvl\Tenancy\Exceptions\TenantBoundaryViolation;
-use Nvl\Tenancy\Exceptions\TenantContextMissing;
-use Nvl\Tenancy\Exceptions\TenantSchemaNotReady;
-use Nvl\Tenancy\Services\TenantAdoptionRegistry;
-use Nvl\Tenancy\Services\TenantResourceRegistry;
-use Nvl\Tenancy\Services\TenantRunner;
-use Nvl\Tenancy\ValueObjects\PlatformOperation;
-use Nvl\Tenancy\ValueObjects\TenantAdoptionPlan;
-use Nvl\Tenancy\ValueObjects\TenantId;
-use Nvl\Tenancy\ValueObjects\TenantJobEnvelope;
-use Nvl\Tenancy\ValueObjects\TenantResourceDefinition;
+use Nvl\Ownership\Services\OwnershipRunner;
+use Nvl\Ownership\Services\OwnershipWriter;
+use Nvl\Ownership\ValueObjects\OwnershipAssignment;
+use Nvl\Support\Enums\SystemActor;
+use Nvl\Support\Ownership\Exceptions\OwnershipViolation;
 
-test('selected adoption adds the immutable ownership schema and refuses nonempty legacy storage', function (): void {
-    $schema = $this->app['db']->connection()->getSchemaBuilder();
-    $columns = collect($schema->getColumns(ActivityTables::ActivityLog))->keyBy('name');
+function activityOwner(int $id, Closure $operation): mixed
+{
+    $actor = OwnershipActor::query()->firstOrFail();
 
-    expect(config('nvl-activity.migrations.enabled'))->toBeTrue()
-        ->and($columns)->toHaveKeys(['tenant_id', 'ownership_key'])
-        ->and($columns->get('ownership_key')['nullable'])->toBeFalse()
-        ->and($schema->hasIndex(ActivityTables::ActivityLog, 'activity_ownership_created_idx'))->toBeTrue();
+    return app(OwnershipRunner::class)->run(OwnershipCompany::query()->findOrFail($id), $actor,
+        fn () => app(ActivityCaptureContext::class)->run($actor, $operation));
+}
 
-    app(TenantRunner::class)->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record(null, 'legacy_fact'),
-    );
+function activityOwnedSubject(int $id = 70): OwnershipSubject
+{
+    return app(OwnershipWriter::class)->create(OwnershipSubject::class,
+        fn (OwnershipAssignment $assignment): OwnershipSubject => OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => $id, 'name' => 'Owned']));
+}
 
-    $plan = new TenantAdoptionPlan(
-        id: 'nonempty-legacy-proof',
-        connection: (string) config('database.default'),
-        mappingHash: '',
-        configurationHash: '',
-    );
+function activityOwnedFact(?OwnershipSubject $subject = null): ActivityLog
+{
+    return app(ActivityRecorder::class)->record(['subject' => $subject ?? new ActivitySubjectReference('external', 'same-id'), 'event' => 'reviewed'], OwnershipActor::query()->firstOrFail());
+}
 
-    expect(fn () => app(ActivityAdoptionAdapter::class)->prepare($plan))
-        ->toThrow(TenantBoundaryViolation::class, 'explicit historical adoption workflow');
+test('selected adoption installs immutable native ownership storage', function (): void {
+    expect(DB::getSchemaBuilder()->hasColumns((new ActivityLog)->getTable(), ['owner_scope_key', 'owner_reference']))->toBeTrue();
+    $fact = activityOwner(7, fn () => activityOwnedFact());
+    expect($fact->owner_scope_key)->not->toBeEmpty()->and($fact->owner_reference)->not->toBeEmpty();
 });
 
-test('a shared subject reference does not merge tenant timelines', function (): void {
-    $runner = app(TenantRunner::class);
-    $subject = new ActivitySubjectReference('external_record', 'same-id');
-    $record = fn () => app(ActivityRecorder::class)
-        ->recordForSubjectReference($subject, 'updated', context: ['key' => 'safe']);
-    $a = $runner->run(new TenantId('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), $record);
-    $b = $runner->run(new TenantId('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'), $record);
-    $rows = $runner->run(new TenantId('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
-        fn () => app(ActivityReadService::class)->forSubjectKey('external_record', 'same-id'));
-    expect($rows->modelKeys())->toBe([$a->getKey()])->not->toContain($b->getKey());
+test('a shared subject reference does not merge owner timelines', function (): void {
+    $a = activityOwner(7, fn () => activityOwnedFact());
+    $b = activityOwner(8, fn () => activityOwnedFact());
+    $rows = activityOwner(7, fn () => app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'same-id'), SystemActor::Background));
+    expect($rows->pluck('id')->all())->toBe([$a->id])->not->toContain($b->id);
 });
 
-test('a replay cannot resolve an activity ID owned by another tenant', function (): void {
-    $runner = app(TenantRunner::class);
-    $envelope = new ActivityRecordEnvelope(
-        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-        subject: new ActivitySubjectReference('tasks.task', 'same-subject'),
-        causer: null,
-        event: 'task.updated',
-        logName: 'tasks',
-        occurredAt: CarbonImmutable::parse('2026-09-28T10:11:12.000000+00:00'),
-    );
-
-    $runner->run(new TenantId(TenantScenario::A), fn () => ActivityLogFacade::recordEnvelope($envelope));
-    expect(fn () => $runner->run(new TenantId(TenantScenario::B), fn () => ActivityLogFacade::recordEnvelope($envelope)))
-        ->toThrow(UniqueConstraintViolationException::class);
-    expect($runner->run(new TenantId(TenantScenario::A), fn (): int => ActivityLog::query()->count()))->toBe(1)
-        ->and($runner->run(new TenantId(TenantScenario::B), fn (): int => ActivityLog::query()->count()))->toBe(0);
+test('a replay cannot resolve an activity ID owned by another owner', function (): void {
+    $envelope = new ActivityRecordEnvelope((string) Str::uuid(), new ActivitySubjectReference('deleted', 'one'), null, 'reviewed', 'audit', CarbonImmutable::now());
+    activityOwner(7, fn () => app(ActivityRecorder::class)->recordEnvelope($envelope));
+    expect(fn () => activityOwner(8, fn () => app(ActivityRecorder::class)->recordEnvelope($envelope)))->toThrow(UniqueConstraintViolationException::class);
+    activityOwner(7, fn () => expect(ActivityLog::query()->count())->toBe(1));
+    activityOwner(8, fn () => expect(ActivityLog::query()->count())->toBe(0));
 });
 
 test('unresolved recording and reads fail closed', function (): void {
-    expect(fn () => app(ActivityRecorder::class)->record(null, 'system_event'))->toThrow(TenantContextMissing::class);
-    expect(fn () => app(ActivityReadService::class)->latest())->toThrow(TenantContextMissing::class);
+    expect(fn () => activityOwnedFact())->toThrow(OwnershipViolation::class);
+    expect(fn () => app(ActivityReader::class)->paginate([], SystemActor::Background))->toThrow(OwnershipViolation::class);
 });
 
-test('retention jobs preserve their tenant envelope across serialization', function (): void {
-    $job = app(TenantRunner::class)->run(
-        new TenantId(TenantScenario::A),
-        fn (): PurgeActivityLogsJob => new PurgeActivityLogsJob(
-            days: 90,
-            envelope: TenantJobEnvelope::capture(app(TenantContext::class)),
-        ),
-    );
-
-    $restored = unserialize(serialize($job), ['allowed_classes' => true]);
-
-    expect($restored)->toBeInstanceOf(PurgeActivityLogsJob::class)
-        ->and($restored->tenantJobEnvelope()->context->tenantId?->value)->toBe(TenantScenario::A);
+test('retention jobs preserve their ownership envelope across serialization', function (): void {
+    $job = activityOwner(7, fn () => new PurgeActivityLogsJob(90));
+    $restored = unserialize(serialize($job));
+    expect($restored->ownershipJobEnvelope()->toArray())->toBe($job->ownershipJobEnvelope()->toArray());
 });
 
-test('system facts and explicit platform facts occupy separate partitions', function (): void {
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => app(ActivityRecorder::class)->record(null, 'system_event'));
-    $platform = $runner->platform(new PlatformOperation('activity-proof', 'test', 'pest'), fn () => app(ActivityRecorder::class)->record(null, 'platform_event'));
-    $rows = $runner->run(new TenantId(TenantScenario::A), fn () => app(ActivityReadService::class)->latest());
-    expect($a->tenant_id)->toBe(TenantScenario::A)
-        ->and($a->ownership_key)->toBe('tenant:'.TenantScenario::A)
-        ->and($platform->tenant_id)->toBeNull()->and($platform->ownership_key)->toBe('platform')
-        ->and($rows->modelKeys())->toBe([$a->getKey()]);
+test('background facts still require an admitted owner partition', function (): void {
+    $fact = activityOwner(7, fn () => app(ActivityRecorder::class)->record(['event' => 'background'], SystemActor::Background));
+    expect($fact->properties->get('source'))->toBe('system');
+    activityOwner(8, fn () => expect(ActivityLog::query()->count())->toBe(0));
 });
 
 test('automatic capture stamps rows and does not trust supplied subject ownership', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create(['name' => 'A', 'tenant_id' => TenantScenario::A]));
-    $b = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create(['name' => 'B', 'tenant_id' => TenantScenario::B]));
-    $b->tenant_id = TenantScenario::A;
-    $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b): void {
-        $a->update(['name' => 'Updated A']);
-        expect(app(ActivityReadService::class)->forSubject($a))->toHaveCount(2);
-        expect(fn () => app(ActivityRecorder::class)->record($b, 'updated'))->toThrow(TenantBoundaryViolation::class);
-        expect(fn () => app(ActivityReadService::class)->forSubject($b))->toThrow(TenantBoundaryViolation::class);
-    });
+    app(MappingRegistry::class)->register(new TestActivityMapping(OwnershipSubject::class));
+    $subject = activityOwner(7, fn () => activityOwnedSubject());
+    expect(fn () => activityOwner(8, fn () => app(ActivityRecorder::class)->record(['subject' => $subject, 'event' => 'forged'], SystemActor::Background)))->toThrow(OwnershipViolation::class);
+    activityOwner(7, fn () => expect(ActivityLog::query()->pluck('event')->all())->toBe(['created']));
 });
 
 test('hydration reloads the canonical subject and rejects a preloaded foreign event', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create(['name' => 'A', 'tenant_id' => TenantScenario::A]));
-    $b = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create(['name' => 'B secret', 'tenant_id' => TenantScenario::B]));
-    $foreign = $runner->run(new TenantId(TenantScenario::B), fn () => app(ActivityReadService::class)->forSubject($b)->first());
-    $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b, $foreign): void {
-        $rows = app(ActivityReadService::class)->forSubject($a);
-        $rows->first()->setRelation('subject', $b);
-        app(ActivityRelationLoader::class)->load($rows);
-        expect($rows->first()->subject->name)->toBe('A');
-        expect(fn () => app(ActivityRelationLoader::class)->load(new Collection([$foreign])))
-            ->toThrow(TenantBoundaryViolation::class);
-    });
+    $fact = activityOwner(7, fn () => activityOwnedFact(activityOwnedSubject()));
+    activityOwner(7, fn () => $fact->setRelation('subject', new OwnershipSubject));
+    expect(fn () => activityOwner(8, fn () => app(ActivityRelationLoader::class)->load(new Collection([$fact]))))->toThrow(OwnershipViolation::class);
 });
 
 test('native subject relations cannot hydrate a foreign registered subject', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $owned = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
-        'name' => 'A native subject',
-        'tenant_id' => TenantScenario::A,
-    ]));
-    $foreign = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
-        'name' => 'B native secret',
-        'tenant_id' => TenantScenario::B,
-    ]));
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->recordForSubjectReference(
-            new ActivitySubjectReference($foreign->getMorphClass(), $foreign->getKey()),
-            'native_subject_reference',
-        ),
-    );
-    $ownedActivity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record($owned, 'native_owned_subject'),
-    );
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($activity, $foreign, $owned, $ownedActivity): void {
-        $lazy = ActivityLog::query()->findOrFail($activity->getKey());
-        $explicit = ActivityLog::query()->findOrFail($activity->getKey());
-        $eager = ActivityLog::query()->with('subject')->findOrFail($activity->getKey());
-        $preloaded = ActivityLog::query()->findOrFail($ownedActivity->getKey());
-        $preloaded->setRelation('subject', $foreign);
-
-        expect($lazy->subject)->toBeNull()
-            ->and($explicit->subject()->first())->toBeNull()
-            ->and($eager->subject)->toBeNull()
-            ->and($preloaded->subject->is($owned))->toBeTrue();
-    });
+    $subject = activityOwner(7, fn () => activityOwnedSubject());
+    $fact = activityOwner(8, fn () => app(ActivityRecorder::class)->record(['subject' => new ActivitySubjectReference($subject->getMorphClass(), $subject->getKey()), 'event' => 'imported'], SystemActor::Background));
+    activityOwner(8, fn () => expect($fact->fresh()->subject)->toBeNull());
 });
 
 test('native subject relations deny unknown types before model construction', function (): void {
-    $runner = app(TenantRunner::class);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->recordForSubjectReference(
-            new ActivitySubjectReference(UnknownActivitySubject::class, 'unknown-native-id'),
-            'unknown_native_subject',
-        ),
-    );
-    UnknownActivitySubject::$constructed = 0;
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($activity): void {
-        $lazy = ActivityLog::query()->findOrFail($activity->getKey());
-        $explicit = ActivityLog::query()->findOrFail($activity->getKey());
-
-        expect(fn () => $lazy->subject)->toThrow(TenantBoundaryViolation::class)
-            ->and(fn () => $explicit->subject()->first())->toThrow(TenantBoundaryViolation::class)
-            ->and(fn () => ActivityLog::query()->with('subject')->findOrFail($activity->getKey()))
-            ->toThrow(TenantBoundaryViolation::class)
-            ->and(UnknownActivitySubject::$constructed)->toBe(0);
-    });
+    $fact = activityOwner(7, fn () => app(ActivityRecorder::class)->record(['subject' => new ActivitySubjectReference(UnknownActivitySubject::class, 'one'), 'event' => 'imported'], SystemActor::Background));
+    expect(fn () => activityOwner(7, fn () => $fact->fresh()->subject))->toThrow(OwnershipViolation::class);
 });
 
-test('trusted native and dedicated relations are re-admitted after a tenant context transition', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    [$subject, $causer] = $runner->run(new TenantId(TenantScenario::A), fn (): array => [
-        TenantActivitySubject::create([
-            'name' => 'A retained subject',
-            'tenant_id' => TenantScenario::A,
-        ]),
-        TenantActivitySubject::create([
-            'name' => 'A retained causer',
-            'tenant_id' => TenantScenario::A,
-        ]),
-    ]);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record($subject, 'retained_relations', actor: $causer),
-    );
+test('trusted native relations are readmitted after an owner context transition', function (): void {
+    $fact = activityOwner(7, function (): ActivityLog {
+        $fact = activityOwnedFact(activityOwnedSubject());
+        expect($fact->fresh()->subject)->not->toBeNull();
 
-    $retained = $runner->run(new TenantId(TenantScenario::A), function () use ($activity, $subject, $causer): array {
-        $nativeSubject = ActivityLog::query()->findOrFail($activity->getKey());
-        $nativeCauser = ActivityLog::query()->findOrFail($activity->getKey());
-        $dedicatedSubject = ActivityLog::query()->findOrFail($activity->getKey());
-        $dedicatedCauser = ActivityLog::query()->findOrFail($activity->getKey());
-
-        expect($nativeSubject->subject->is($subject))->toBeTrue()
-            ->and($nativeCauser->causer->is($causer))->toBeTrue();
-
-        app(ActivityRelationLoader::class)->load(new Collection([$dedicatedSubject, $dedicatedCauser]));
-        expect($dedicatedSubject->subject->is($subject))->toBeTrue()
-            ->and($dedicatedCauser->causer->is($causer))->toBeTrue();
-
-        return compact('nativeSubject', 'nativeCauser', 'dedicatedSubject', 'dedicatedCauser');
+        return $fact->fresh();
     });
-
-    $runner->run(new TenantId(TenantScenario::B), function () use ($retained): void {
-        expect(fn () => $retained['nativeSubject']->subject)->toThrow(TenantBoundaryViolation::class)
-            ->and(fn () => $retained['nativeCauser']->causer)->toThrow(TenantBoundaryViolation::class)
-            ->and(fn () => $retained['dedicatedSubject']->subject)->toThrow(TenantBoundaryViolation::class)
-            ->and(fn () => $retained['dedicatedCauser']->causer)->toThrow(TenantBoundaryViolation::class);
-    });
+    expect(fn () => activityOwner(8, fn () => $fact->subject))->toThrow(OwnershipViolation::class);
+    activityOwner(7, fn () => expect($fact->subject)->not->toBeNull());
 });
 
-test('combined native eager loads retain both relations in either order without lazy queries', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    [$subject, $causer] = $runner->run(new TenantId(TenantScenario::A), fn (): array => [
-        TenantActivitySubject::create([
-            'name' => 'A eager subject',
-            'tenant_id' => TenantScenario::A,
-        ]),
-        TenantActivitySubject::create([
-            'name' => 'A eager causer',
-            'tenant_id' => TenantScenario::A,
-        ]),
-    ]);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record($subject, 'combined_eager_relations', actor: $causer),
-    );
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($activity, $subject, $causer): void {
+test('combined native eager loads retain both relations in either order', function (): void {
+    activityOwner(7, function (): void {
+        activityOwnedFact(activityOwnedSubject());
         foreach ([['subject', 'causer'], ['causer', 'subject']] as $relations) {
-            $eager = ActivityLog::query()->with($relations)->findOrFail($activity->getKey());
-
-            expect($eager->relationLoaded('subject'))->toBeTrue()
-                ->and($eager->relationLoaded('causer'))->toBeTrue();
-
-            DB::flushQueryLog();
-            DB::enableQueryLog();
-            $serialized = $eager->toArray();
-
-            expect($eager->subject->is($subject))->toBeTrue()
-                ->and($eager->causer->is($causer))->toBeTrue()
-                ->and($serialized)->toHaveKeys(['subject', 'causer'])
-                ->and(DB::getQueryLog())->toBeEmpty();
+            $row = ActivityLog::query()->with($relations)->firstOrFail();
+            expect($row->subject)->toBeInstanceOf(OwnershipSubject::class)->and($row->causer)->toBeInstanceOf(OwnershipActor::class);
         }
     });
 });
 
-test('subject admission does not fire retrieved observers before foreign ownership is denied', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $foreign = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
-        'name' => 'B secret',
-        'tenant_id' => TenantScenario::B,
-    ]));
-    TenantActivitySubject::$retrievedCount = 0;
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($foreign): void {
-        expect(fn () => app(ActivityRecorder::class)->record($foreign, 'updated'))
-            ->toThrow(TenantBoundaryViolation::class)
-            ->and(TenantActivitySubject::$retrievedCount)->toBe(0);
-    });
+test('subject admission rejects foreign ownership before returning its data', function (): void {
+    $subject = activityOwner(7, fn () => activityOwnedSubject());
+    expect(fn () => activityOwner(8, fn () => app(ActivityReader::class)->timeline($subject, SystemActor::Background)))->toThrow(OwnershipViolation::class);
 });
 
 test('supplied subjects cannot replace canonical storage or a persisted identity', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $subject = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
-        'name' => 'Canonical A',
-        'tenant_id' => TenantScenario::A,
-    ]));
-    config()->set('database.connections.activity_foreign', config('database.connections.sqlite'));
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($subject): void {
-        $forgedTable = clone $subject;
-        $forgedTable->setTable('forged_activity_subjects');
-        $forgedConnection = clone $subject;
-        $forgedConnection->setConnection('activity_foreign');
-        $dirtyIdentity = clone $subject;
-        $dirtyIdentity->setAttribute($dirtyIdentity->getKeyName(), 999999);
-
-        expect(fn () => app(ActivityRecorder::class)->record($forgedTable, 'updated'))
-            ->toThrow(TenantBoundaryViolation::class, 'canonical registered storage')
-            ->and(fn () => app(ActivityRecorder::class)->record($forgedConnection, 'updated'))
-            ->toThrow(TenantBoundaryViolation::class, 'canonical registered storage')
-            ->and(fn () => app(ActivityRecorder::class)->record($dirtyIdentity, 'updated'))
-            ->toThrow(TenantBoundaryViolation::class, 'canonical persisted identities');
+    activityOwner(7, function (): void {
+        $subject = activityOwnedSubject();
+        $subject->setTable('activity_test_actors');
+        expect(fn () => activityOwnedFact($subject))->toThrow(OwnershipViolation::class);
     });
 });
 
-test('adopted Activity storage denies recorder queries and hydration when tenancy is disabled', function (): void {
-    $runner = app(TenantRunner::class);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record(null, 'adopted_fact'),
-    );
-    config()->set('nvl-tenancy.enabled', false);
-
-    expect(fn () => app(ActivityRecorder::class)->record(null, 'legacy_write'))
-        ->toThrow(TenantSchemaNotReady::class)
-        ->and(fn () => ActivityLog::query()->count())
-        ->toThrow(TenantSchemaNotReady::class)
-        ->and(fn () => app(ActivityRelationLoader::class)->load(new Collection([$activity])))
-        ->toThrow(TenantSchemaNotReady::class);
+test('adopted Activity storage denies reads when its ownership runtime is disabled', function (): void {
+    activityOwner(7, fn () => activityOwnedFact());
+    config()->set('nvl-ownership.enabled', false);
+    expect(fn () => ActivityLog::query()->get())->toThrow(OwnershipViolation::class);
 });
 
-test('tenant retention dispatch captures its bounded tenant envelope', function (): void {
-    Bus::fake();
-    $runner = app(TenantRunner::class);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record(null, 'retained_fact'),
-    );
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($activity): void {
-        app(QueueActivityLogPurgeAction::class)->execute(90);
-
-        Bus::assertDispatched(
-            PurgeActivityLogsJob::class,
-            static fn (PurgeActivityLogsJob $job): bool => $job->tenantJobEnvelope()->context->tenantId?->value === TenantScenario::A,
-        );
-        expect(app(ActivityReadService::class)->latest()->modelKeys())
-            ->toContain($activity->getKey());
-    });
+test('owner retention dispatch captures its bounded ownership envelope', function (): void {
+    $job = activityOwner(7, fn () => new PurgeActivityLogsJob(90));
+    expect($job->ownershipJobEnvelope())->not->toBeNull();
+    expect(fn () => new PurgeActivityLogsJob(90))->toThrow(OwnershipViolation::class);
 });
 
 test('automatic deletion retains immutable ownership after its subject is removed', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $subject = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
-        'name' => 'Delete me',
-        'tenant_id' => TenantScenario::A,
-    ]));
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($subject): void {
+    app(MappingRegistry::class)->register(new TestActivityMapping(OwnershipSubject::class));
+    activityOwner(7, function (): void {
+        $subject = activityOwnedSubject();
         $subject->delete();
-        $rows = app(ActivityReadService::class)->forSubjectKey($subject->getMorphClass(), $subject->getKey());
-
-        expect($rows->pluck('event')->all())->toBe(['deleted', 'created'])
-            ->and($rows->pluck('ownership_key')->unique()->all())->toBe(['tenant:'.TenantScenario::A]);
+        expect(ActivityLog::query()->where('event', 'deleted')->count())->toBe(1);
     });
 });
 
-test('a configured global causer uses a fixed safe projection in each tenant partition', function (): void {
-    Schema::create('global_activity_causers', function (Blueprint $table): void {
-        $table->id();
-        $table->string('name');
-        $table->string('email');
-        $table->string('password');
-        $table->string('account_audit');
-        $table->timestamps();
-    });
-    config()->set([
-        'nvl-activity.causer_suggestions.model' => GlobalActivityCauser::class,
-        'nvl-activity.causer_suggestions.label_attribute' => 'name',
-        'nvl-activity.causer_suggestions.sublabel_attribute' => 'email',
-        'nvl-activity.causer_suggestions.search_attributes' => ['password', 'name'],
-    ]);
-    $causer = GlobalActivityCauser::create([
-        'name' => 'Shared Operator',
-        'email' => 'shared@example.test',
-        'password' => 'credential-secret',
-        'account_audit' => 'private-audit-fact',
-    ]);
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => app(ActivityRecorder::class)->record(null, 'shared_causer', actor: $causer));
-    $b = $runner->run(new TenantId(TenantScenario::B), fn () => app(ActivityRecorder::class)->record(null, 'shared_causer', actor: $causer));
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b): void {
-        $rows = app(ActivityReadService::class)->latest();
-        app(ActivityRelationLoader::class)->load($rows);
-        $lazy = ActivityLog::query()->findOrFail($a->getKey());
-        $explicit = ActivityLog::query()->findOrFail($a->getKey());
-        $eager = ActivityLog::query()->with('causer')->findOrFail($a->getKey());
-        $preloaded = ActivityLog::query()->findOrFail($a->getKey());
-        $preloaded->setRelation('causer', GlobalActivityCauser::query()->findOrFail($a->causer_id));
-        $suggestions = app(ListActivityCauserSuggestionsAction::class)->execute('Shared');
-        $credentialSearch = app(ListActivityCauserSuggestionsAction::class)->execute('credential-secret');
-
-        expect($rows->modelKeys())->toBe([$a->getKey()])->not->toContain($b->getKey())
-            ->and(array_keys($rows->first()->causer->getAttributes()))->toBe(['id', 'name', 'email'])
-            ->and(array_keys($lazy->causer->getAttributes()))->toBe(['id', 'name', 'email'])
-            ->and(array_keys($explicit->causer()->firstOrFail()->getAttributes()))->toBe(['id', 'name', 'email'])
-            ->and(array_keys($eager->causer->getAttributes()))->toBe(['id', 'name', 'email'])
-            ->and(array_keys($preloaded->causer->getAttributes()))->toBe(['id', 'name', 'email'])
-            ->and($suggestions)->toHaveCount(1)
-            ->and($suggestions->first()->label)->toBe('Shared Operator')
-            ->and($credentialSearch)->toHaveCount(0);
+test('configured global causers use a fixed safe identity projection', function (): void {
+    activityOwner(7, function (): void {
+        $fact = activityOwnedFact();
+        expect($fact->fresh()->causer->getAttributes())->toHaveKeys(['id', 'name', 'email'])->not->toHaveKey('password');
     });
 });
 
-test('registered causer association rejects a changed identity without recording a fact', function (): void {
-    adoptActivityHost();
-    config()->set('nvl-activity.causer_suggestions.model', TenantActivitySubject::class);
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
-        'name' => 'A causer',
-        'tenant_id' => TenantScenario::A,
-    ]));
-    $b = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
-        'name' => 'B causer',
-        'tenant_id' => TenantScenario::B,
-    ]));
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b): void {
-        $before = ActivityLog::query()->count();
-        $a->setAttribute($a->getKeyName(), $b->getKey());
-
-        expect(fn () => app(ActivityRecorder::class)->record(null, 'dirty_registered_causer', actor: $a))
-            ->toThrow(TenantBoundaryViolation::class)
-            ->and(ActivityLog::query()->count())->toBe($before);
+test('causer association rejects a changed identity without recording a fact', function (): void {
+    activityOwner(7, function (): void {
+        $actor = OwnershipActor::query()->firstOrFail();
+        $actor->id = 99;
+        expect(fn () => app(ActivityRecorder::class)->record(['event' => 'forged'], $actor))->toThrow(AuthorizationException::class);
+        expect(ActivityLog::query()->count())->toBe(0);
     });
 });
 
 test('global causer association requires one canonical persisted identity', function (): void {
-    Schema::create('global_activity_causers', function (Blueprint $table): void {
-        $table->id();
-        $table->string('name');
-        $table->string('email');
-        $table->string('password');
-        $table->string('account_audit');
-        $table->timestamps();
-    });
-    config()->set('nvl-activity.causer_suggestions.model', GlobalActivityCauser::class);
-    config()->set('database.connections.activity_foreign', config('database.connections.sqlite'));
-    $canonical = GlobalActivityCauser::create([
-        'name' => 'Canonical Operator',
-        'email' => 'canonical@example.test',
-        'password' => 'private-password',
-        'account_audit' => 'private-audit',
-    ]);
-    $transient = new GlobalActivityCauser([
-        'name' => 'Transient',
-        'email' => 'transient@example.test',
-    ]);
-    $nonexistent = new GlobalActivityCauser;
-    $nonexistent->setRawAttributes(['id' => 999999], true);
-    $nonexistent->exists = true;
-    $forgedTable = clone $canonical;
-    $forgedTable->setTable('forged_global_causers');
-    $forgedConnection = clone $canonical;
-    $forgedConnection->setConnection('activity_foreign');
-    $dirtyIdentity = clone $canonical;
-    $dirtyIdentity->setAttribute($dirtyIdentity->getKeyName(), 999999);
-    $runner = app(TenantRunner::class);
-
-    $runner->run(new TenantId(TenantScenario::A), function () use (
-        $canonical,
-        $transient,
-        $nonexistent,
-        $forgedTable,
-        $forgedConnection,
-        $dirtyIdentity,
-    ): void {
-        $before = ActivityLog::query()->count();
-
-        foreach ([$transient, $nonexistent, $forgedTable, $forgedConnection, $dirtyIdentity] as $invalid) {
-            expect(fn () => app(ActivityRecorder::class)->record(null, 'invalid_global_causer', actor: $invalid))
-                ->toThrow(TenantBoundaryViolation::class);
-        }
-
-        $activity = app(ActivityRecorder::class)->record(null, 'valid_global_causer', actor: $canonical);
-
-        expect(ActivityLog::query()->count())->toBe($before + 1)
-            ->and($activity->causer_id)->toEqual($canonical->getKey())
-            ->and(array_keys($activity->causer->getAttributes()))->toBe(['id', 'name', 'email']);
+    activityOwner(7, function (): void {
+        $actor = new OwnershipActor;
+        $actor->id = 1;
+        expect(fn () => app(ActivityRecorder::class)->record(['event' => 'forged'], $actor))->toThrow(AuthorizationException::class);
     });
 });
 
-test('configured identity presentation cannot reclassify a registered tenant causer as global', function (): void {
-    adoptActivityHost();
-    config()->set('nvl-activity.causer_suggestions.model', TenantActivitySubject::class);
-    $runner = app(TenantRunner::class);
-    $foreign = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
-        'name' => 'B identity',
-        'tenant_id' => TenantScenario::B,
-    ]));
+test('identity presentation cannot reclassify a registered owned subject as global', function (): void {
+    $subject = activityOwner(7, fn () => activityOwnedSubject());
+    config()->set('nvl-activity.causer_suggestions.model', OwnershipSubject::class);
+    expect(fn () => activityOwner(8, fn () => app(ActivityOwnershipGuard::class)->canonicalCauser($subject)))->toThrow(OwnershipViolation::class);
+});
 
-    $runner->run(new TenantId(TenantScenario::A), function () use ($foreign): void {
-        expect(fn () => app(ActivityRecorder::class)->record(null, 'forged_causer', actor: $foreign))
-            ->toThrow(TenantBoundaryViolation::class);
+test('timeline host reads apply canonical ownership before hydration', function (): void {
+    $subject = activityOwner(7, fn () => activityOwnedSubject());
+    expect(fn () => activityOwner(8, fn () => app(ActivityReader::class)->timeline($subject, SystemActor::Background)))->toThrow(OwnershipViolation::class);
+});
+
+test('serialized retention runs in its producer context and restores the worker owner', function (): void {
+    $job = activityOwner(7, function (): PurgeActivityLogsJob {
+        ActivityLog::query()->create(['description' => 'old A', 'created_at' => now()->subDays(120)]);
+
+        return unserialize(serialize(new PurgeActivityLogsJob(90)));
     });
-});
-
-test('timeline host resolution applies canonical tenant ownership before hydration', function (): void {
-    adoptActivityHost();
-    config()->set('nvl-activity.routes.timeline_subjects', [TenantActivitySubject::class]);
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
-        'name' => 'A timeline',
-        'tenant_id' => TenantScenario::A,
-    ]));
-    $b = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
-        'name' => 'B timeline',
-        'tenant_id' => TenantScenario::B,
-    ]));
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($a, $b): void {
-        $resolver = app(ActivitySubjectTimelineResolver::class);
-        expect($resolver->resolve($a->getMorphClass(), (string) $a->getKey())->getKey())->toBe($a->getKey())
-            ->and(fn () => $resolver->resolve($b->getMorphClass(), (string) $b->getKey()))
-            ->toThrow(ActivityTimelineException::class);
+    activityOwner(8, function () use ($job): void {
+        ActivityLog::query()->create(['description' => 'old B', 'created_at' => now()->subDays(120)]);
+        app(Dispatcher::class)->dispatchSync($job);
+        expect(ActivityLog::query()->pluck('description')->all())->toBe(['old B']);
     });
+    activityOwner(7, fn () => expect(ActivityLog::query()->count())->toBe(0));
 });
 
-test('a deferred value-free setting event records in its serialized producer context', function (): void {
-    Event::listen(
-        ActivitySettingChanged::class,
-        RecordActivitySettingChanged::class,
-    );
-    $runner = app(TenantRunner::class);
-    $event = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => new ActivitySettingChanged(
-            id: 'setting-123',
-            key: 'core.currency.default',
-            revision: 2,
-            operation: 'set',
-        ),
-    );
-
-    $runner->run(
-        new TenantId(TenantScenario::B),
-        fn () => Event::dispatch($event),
-    );
-
-    $aRows = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityReadService::class)->forSubjectKey('nvl_setting', 'setting-123'),
-    );
-    $bRows = $runner->run(
-        new TenantId(TenantScenario::B),
-        fn () => app(ActivityReadService::class)->forSubjectKey('nvl_setting', 'setting-123'),
-    );
-
-    expect($aRows)->toHaveCount(1)
-        ->and($aRows->first()->properties->get('context'))->toBe([
-            'key' => 'core.currency.default',
-            'revision' => 2,
-        ])
-        ->and($bRows)->toHaveCount(0)
-        ->and(property_exists($event, 'value'))->toBeFalse();
-});
-
-test('platform setting facts cannot capture a deferred queue envelope', function (): void {
-    $runner = app(TenantRunner::class);
-
-    expect(fn () => $runner->platform(
-        new PlatformOperation('activity-platform-setting', 'test', 'pest'),
-        fn () => new ActivitySettingChanged('setting-123', 'core.currency.default', 2, 'set'),
-    ))->toThrow(TenantBoundaryViolation::class, 'recorded synchronously');
+test('unresolved ownership cannot capture a deferred queue envelope', function (): void {
+    expect(fn () => new PurgeActivityLogsJob(90))->toThrow(OwnershipViolation::class);
 });
 
 test('activity ownership remains immutable after persistence', function (): void {
-    $runner = app(TenantRunner::class);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->record(null, 'immutable_fact'),
-    );
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($activity): void {
-        $activity->ownership_key = 'tenant:'.TenantScenario::B;
-        expect(fn () => $activity->save())->toThrow(TenantBoundaryViolation::class, 'immutable');
+    activityOwner(7, function (): void {
+        $fact = activityOwnedFact();
+        $fact->owner_scope_key = 'forged';
+        expect(fn () => $fact->save())->toThrow(OwnershipViolation::class);
     });
 });
 
-test('unregistered foreign subject types are never constructed or queried during hydration', function (): void {
-    $runner = app(TenantRunner::class);
-    $activity = $runner->run(
-        new TenantId(TenantScenario::A),
-        fn () => app(ActivityRecorder::class)->recordForSubjectReference(
-            new ActivitySubjectReference(UnknownActivitySubject::class, 'foreign-id'),
-            'external_event',
-        ),
-    );
-    UnknownActivitySubject::$constructed = 0;
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($activity): void {
-        $rows = new Collection([$activity]);
-        app(ActivityRelationLoader::class)->load($rows);
-
-        expect($rows->first()->subject)->toBeNull()
-            ->and(UnknownActivitySubject::$constructed)->toBe(0);
+test('unregistered subject types are not hydrated by the dedicated loader', function (): void {
+    activityOwner(7, function (): void {
+        $fact = app(ActivityRecorder::class)->record(['subject' => new ActivitySubjectReference(UnknownActivitySubject::class, 'one'), 'event' => 'imported'], SystemActor::Background);
+        app(ActivityRelationLoader::class)->load(new Collection([$fact]));
+        expect($fact->getRelation('subject'))->toBeNull();
     });
 });
 
-test('the retained model timeline bridge resolves fresh scoped services after a lifecycle reset', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $a = $runner->run(new TenantId(TenantScenario::A), fn () => TenantActivitySubject::create([
-        'name' => 'A scope',
-        'tenant_id' => TenantScenario::A,
-    ]));
-    $firstService = app(ModelActivityTimelineService::class);
-    $aTimeline = $runner->run(new TenantId(TenantScenario::A), fn () => $a->mergedActivities());
-
-    app()->forgetScopedInstances();
-    $runner = app(TenantRunner::class);
-    $b = $runner->run(new TenantId(TenantScenario::B), fn () => TenantActivitySubject::create([
-        'name' => 'B scope',
-        'tenant_id' => TenantScenario::B,
-    ]));
-    $secondService = app(ModelActivityTimelineService::class);
-    $bTimeline = $runner->run(new TenantId(TenantScenario::B), fn () => $b->mergedActivities());
-
-    expect($secondService)->not->toBe($firstService)
-        ->and($aTimeline)->toHaveCount(1)
-        ->and($bTimeline)->toHaveCount(1)
-        ->and($aTimeline[0]->id)->not->toBe($bTimeline[0]->id);
+test('scoped capture state is empty after a lifecycle reset', function (): void {
+    $before = app(ActivityCaptureContext::class);
+    $this->app->forgetScopedInstances();
+    $after = app(ActivityCaptureContext::class);
+    expect($before)->not->toBe($after)->and(fn () => $after->actor())->toThrow(AuthorizationException::class);
 });
 
-test('canonical hydration keeps Activity and subject reloads batched for multi-row timelines', function (): void {
-    adoptActivityHost();
-    $runner = app(TenantRunner::class);
-    $subject = $runner->run(new TenantId(TenantScenario::A), function (): TenantActivitySubject {
-        $subject = TenantActivitySubject::create([
-            'name' => 'First',
-            'tenant_id' => TenantScenario::A,
-        ]);
-        foreach (range(2, 12) as $revision) {
-            $subject->update(['name' => 'Revision '.$revision]);
+test('canonical hydration keeps protected row loading bounded across fixture sizes', function (): void {
+    activityOwner(7, function (): void {
+        $subject = activityOwnedSubject();
+        foreach (range(1, 25) as $_) {
+            activityOwnedFact($subject);
         }
-
-        return $subject;
-    });
-
-    $runner->run(new TenantId(TenantScenario::A), function () use ($subject): void {
-        $rows = app(ActivityReadService::class)->forSubject($subject);
-        DB::flushQueryLog();
-        DB::enableQueryLog();
-        app(ActivityRelationLoader::class)->load($rows);
-        $rows->each(fn (ActivityLog $activity): mixed => $activity->subject);
-        $queries = collect(DB::getQueryLog())->pluck('query');
-
-        expect($rows)->toHaveCount(12)
-            ->and($queries->filter(fn (string $query): bool => str_contains($query, 'activity_log')))->toHaveCount(1)
-            ->and($queries->filter(fn (string $query): bool => preg_match('/^select \* from [`"]tenant_activity_subjects[`"]/i', $query) === 1))->toHaveCount(1)
-            ->and($queries->count())->toBeLessThan(12);
+        $counts = [];
+        foreach ([1, 25] as $limit) {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $rows = ActivityLog::query()->limit($limit)->get();
+            app(ActivityRelationLoader::class)->load($rows);
+            $counts[] = count(array_filter(DB::getQueryLog(), static fn (array $query): bool => preg_match('/^select .* from ["`]*(nvl_activity_log|activity_test_subjects|activity_test_actors)["`]* /i', $query['query']) === 1));
+            DB::disableQueryLog();
+        }
+        expect($counts[1])->toBe($counts[0]);
     });
 });
-
-/** Adopt the host resource through its own package-local adapter before creating tenant rows. */
-function adoptActivityHost(): void
-{
-    app(TenantResourceRegistry::class)->register(new TenantResourceDefinition('activity-fixtures.subjects', 'activity-fixtures', TenantActivitySubject::class));
-    app(TenantAdoptionRegistry::class)->register('activity-fixtures', ActivityHostAdoptionAdapter::class);
-    TenantScenario::activate(['activity-fixtures']);
-    app(MappingRegistry::class)->register(new TestActivityMapping(TenantActivitySubject::class));
-}

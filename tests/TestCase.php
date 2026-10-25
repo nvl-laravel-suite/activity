@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Nvl\Activity\Tests;
 
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Providers\ActivityServiceProvider;
-use Nvl\Data\Providers\DataServiceProvider;
+use Nvl\Activity\Tests\Fixtures\AllowsActivity;
 use Nvl\Support\Providers\LocaleServiceProvider;
 use Nvl\Support\Providers\SupportServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -19,6 +20,12 @@ abstract class TestCase extends Orchestra
 {
     use DatabaseMigrations;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->app->bind(ActivityAuthorization::class, AllowsActivity::class);
+    }
+
     /**
      * @return list<class-string>
      */
@@ -26,7 +33,6 @@ abstract class TestCase extends Orchestra
     {
         return [
             LocaleServiceProvider::class,
-            DataServiceProvider::class,
             SupportServiceProvider::class,
             ActivitylogServiceProvider::class,
             ActivityServiceProvider::class,
