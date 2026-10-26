@@ -11,7 +11,11 @@ use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Support\Enums\SystemActor;
 
-/** Validates an explicit principal before consulting the host policy. @internal */
+/**
+ * Validates an explicit principal before consulting the host policy.
+ *
+ * @internal
+ */
 final readonly class ActivityAccess
 {
     public function __construct(private ?ActivityAuthorization $authorization = null) {}

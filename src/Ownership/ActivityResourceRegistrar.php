@@ -9,7 +9,11 @@ use Nvl\Support\Ownership\Services\OwnershipResourceRegistry;
 use Nvl\Support\Ownership\ValueObjects\OwnershipDefinition;
 use Nvl\Support\Ownership\ValueObjects\OwnershipResourceDefinition;
 
-/** Declares independent audit facts without deriving ownership from an optional subject. @internal */
+/**
+ * Declares independent audit facts without deriving ownership from an optional subject.
+ *
+ * @internal
+ */
 final readonly class ActivityResourceRegistrar
 {
     /** Compile the explicit deployment classification before the graph freezes. */

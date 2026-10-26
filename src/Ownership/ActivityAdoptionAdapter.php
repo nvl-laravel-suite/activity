@@ -13,7 +13,11 @@ use Nvl\Ownership\ValueObjects\OwnershipBackfillResult;
 use Nvl\Ownership\ValueObjects\OwnershipVerification;
 use Nvl\Support\Ownership\Exceptions\OwnershipConfigurationInvalid;
 
-/** Adopts exact reviewed Activity facts independently from their optional subjects. @internal */
+/**
+ * Adopts exact reviewed Activity facts independently from their optional subjects.
+ *
+ * @internal
+ */
 final readonly class ActivityAdoptionAdapter implements OwnershipAdoptionAdapter
 {
     /** Resolve maintenance-only mapping and schema capabilities. */

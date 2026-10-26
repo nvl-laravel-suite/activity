@@ -13,6 +13,8 @@ use Nvl\Activity\Support\TimelineActivityRules;
  * Controls what appears in user-facing timelines.
  *
  * Multi-layer filter: visibility -> event -> signal check.
+ *
+ * @internal
  */
 final class TimelineFilter
 {

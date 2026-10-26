@@ -6,7 +6,11 @@ namespace Nvl\Activity\Support;
 
 use InvalidArgumentException;
 
-/** Bounded immutable JSON facts with recursive credential redaction. @internal */
+/**
+ * Bounded immutable JSON facts with recursive credential redaction.
+ *
+ * @internal
+ */
 final class ActivityMetadata
 {
     /** @return array<string, mixed>|null */

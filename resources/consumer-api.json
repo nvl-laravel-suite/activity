@@ -303,7 +303,6 @@
             "kind": "class",
             "file": "src/Models/ActivityLog.php",
             "methods": [
-                "bootHasOwnership",
                 "causer",
                 "delete",
                 "forDisplay",

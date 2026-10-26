@@ -11,7 +11,7 @@ use Throwable;
 
 /**
  * @api
-
+ *
  * Reports invalid activity purge criteria without treating user input as an application fault.
  */
 final class ActivityPurgeCriteriaException extends ActivityException implements ShouldntReport

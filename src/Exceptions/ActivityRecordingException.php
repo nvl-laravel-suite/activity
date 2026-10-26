@@ -9,7 +9,7 @@ use Nvl\Activity\Enums\ActivityResponseCode;
 
 /**
  * @api
-
+ *
  * Reports invalid input supplied to the canonical activity recorder.
  */
 final class ActivityRecordingException extends ActivityException
