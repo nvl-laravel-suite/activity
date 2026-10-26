@@ -303,17 +303,47 @@
             "kind": "class",
             "file": "src/Models/ActivityLog.php",
             "methods": [
-                "getKey",
-                "getKeyName",
-                "getMorphClass",
-                "getRouteKey",
-                "getRouteKeyName",
-                "is",
-                "isNot",
-                "relationLoaded"
+                "bootHasOwnership",
+                "causer",
+                "delete",
+                "forDisplay",
+                "forSubjectTimeline",
+                "fresh",
+                "getConnectionName",
+                "getRelationValue",
+                "getTable",
+                "newEloquentBuilder",
+                "newQueryForRestoration",
+                "ownershipDefinition",
+                "query",
+                "refresh",
+                "refreshForUpdate",
+                "save",
+                "semanticEvent",
+                "setRelation",
+                "subject"
             ],
-            "properties": [],
-            "constants": []
+            "properties": [
+                "attribute_changes",
+                "batch_uuid",
+                "causer_id",
+                "causer_type",
+                "created_at",
+                "description",
+                "event",
+                "id",
+                "incrementing",
+                "log_name",
+                "owner_reference",
+                "owner_scope_key",
+                "properties",
+                "subject_id",
+                "subject_type",
+                "updated_at"
+            ],
+            "constants": [
+                "DEFAULT_TABLE"
+            ]
         },
         "Nvl\\Activity\\Services\\ActivityCaptureContext": {
             "kind": "class",
@@ -511,29 +541,5 @@
             "properties": [],
             "constants": []
         }
-    },
-    "models": {
-        "Nvl\\Activity\\Models\\ActivityLog": {
-            "read": [],
-            "identity_methods": [
-                "getKey",
-                "getKeyName",
-                "getMorphClass",
-                "getRouteKey",
-                "getRouteKeyName",
-                "is",
-                "isNot",
-                "relationLoaded"
-            ],
-            "capability_relations": []
-        }
-    },
-    "capability_relations": {
-        "Nvl\\Activity\\Traits\\HasModelActivity": [
-            "activitiesAsSubject"
-        ]
-    },
-    "tables": {
-        "log": "nvl_activity_log"
     }
 }

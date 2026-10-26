@@ -11,7 +11,7 @@ use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
-use Nvl\Support\Http\PackageExceptionRenderer;
+use Nvl\Activity\Tests\Fixtures\ConsumerSupport\PackageExceptionRenderer;
 
 test('purge criteria normalize console values and summarize every active filter', function (): void {
     $criteria = ActivityPurgeCriteria::fromConsoleOptions([

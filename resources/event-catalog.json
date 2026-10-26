@@ -1,91 +1,89 @@
 {
-  "schema_version": 1,
-  "package": "nvl/activity",
-  "documentation": "docs/events.md",
-  "implementation_status": "implemented; executable acceptance proof pending",
-  "events": [
-    {
-      "class": "Nvl\\Activity\\Events\\ActivityLogPurgeQueued",
-      "source": "packages/nvl/activity/src/Events/ActivityLogPurgeQueued.php",
-      "constructor_fields": [
+    "schema_version": 1,
+    "package": "nvl/activity",
+    "documentation": "docs/events.md",
+    "implementation_status": "implemented; executable acceptance proof pending",
+    "events": [
         {
-          "name": "days",
-          "type": "int",
-          "visibility": "public",
-          "required": true
-        },
-        {
-          "name": "systemOnly",
-          "type": "bool",
-          "visibility": "public",
-          "required": true
-        },
-        {
-          "name": "includeImportant",
-          "type": "bool",
-          "visibility": "public",
-          "required": false,
-          "default_expression": "false"
-        },
-        {
-          "name": "schemaVersion",
-          "type": "int",
-          "visibility": "public",
-          "required": false,
-          "default_expression": "1"
+            "class": "Nvl\\Activity\\Events\\ActivityLogPurgeQueued",
+            "source": "packages/nvl/activity/src/Events/ActivityLogPurgeQueued.php",
+            "constructor_fields": [
+                {
+                    "name": "days",
+                    "type": "int",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "systemOnly",
+                    "type": "bool",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "includeImportant",
+                    "type": "bool",
+                    "visibility": "public",
+                    "required": false,
+                    "default_expression": "false"
+                },
+                {
+                    "name": "schemaVersion",
+                    "type": "int",
+                    "visibility": "public",
+                    "required": false,
+                    "default_expression": "1"
+                }
+            ],
+            "public_fields": [
+                {
+                    "name": "days",
+                    "type": "int"
+                },
+                {
+                    "name": "systemOnly",
+                    "type": "bool"
+                },
+                {
+                    "name": "includeImportant",
+                    "type": "bool"
+                },
+                {
+                    "name": "schemaVersion",
+                    "type": "int"
+                }
+            ],
+            "kind": "value_object",
+            "schema_version": 1,
+            "trigger": "Purge job queued with criteria.",
+            "aliases": [],
+            "producers": [
+                {
+                    "path": "packages/nvl/activity/src/Services/ActivityPurgeDispatcher.php",
+                    "trigger": "Purge job queued with criteria."
+                }
+            ],
+            "security_notes": [
+                "Criteria and captured native ownership only; no actor or subject model is serialized."
+            ],
+            "no_op_semantics": "A queued purge request is an observation, not a claim that purge completion occurred. Repeated requests can repeat the fact."
         }
-      ],
-      "public_fields": [
-        {
-          "name": "days",
-          "type": "int"
-        },
-        {
-          "name": "systemOnly",
-          "type": "bool"
-        },
-        {
-          "name": "includeImportant",
-          "type": "bool"
-        },
-        {
-          "name": "schemaVersion",
-          "type": "int"
-        }
-      ],
-      "kind": "value_object",
-      "schema_version": 1,
-      "trigger": "Purge job queued with criteria.",
-      "aliases": [],
-      "producers": [
-        {
-          "path": "packages/nvl/activity/src/Services/ActivityPurgeDispatcher.php",
-          "trigger": "Authorized retention request queued in the current admitted scope.",
-          "connection": "$connection",
-          "construction_expression": "new ActivityLogPurgeQueued($criteria->days ?? 0, $criteria->systemOnly, $criteria->includeImportant)"
-        }
-      ],
-      "security_notes": [
+    ],
+    "value_types": [],
+    "aliases": [],
+    "publication": {
+        "publication": "The native host dispatcher receives the captured event after the supplied source connection outer commit, or immediately when that connection has no active transaction.",
+        "rollback": "Callbacks attach to the matching native connection and current nesting record; native outer/savepoint rollback discards the corresponding callbacks.",
+        "registration_failure": "Missing source transaction records fail before commit; Mail Notifications reports and drops unusable observations.",
+        "host_policy": "Host after-commit listeners and queue after_commit policies can add their own deferral after publication. Host transaction infrastructure and dispatcher bindings are preserved.",
+        "delivery_limit": "Local callbacks are not an outbox. Process exit between commit and callback can lose delivery; no crash durability or exactly-once delivery is promised.",
+        "cardinality": "One canonical object is dispatched per qualifying producer call. This is local publication, not cross-process deduplication or a guarantee that repeated observations are unique.",
+        "manual_producers": "Use Nvl\\Support\\Events\\DomainEventDispatcher::dispatch($event, $writerConnection). Native Event::dispatch() is immediate and has no package interception."
+    },
+    "security_notes": [
         "Criteria and captured native ownership only; no actor or subject model is serialized."
-      ],
-      "no_op_semantics": "A queued purge request is an observation, not a claim that purge completion occurred. Repeated requests can repeat the fact."
-    }
-  ],
-  "value_types": [],
-  "aliases": [],
-  "publication": {
-    "publication": "The native host dispatcher receives the captured event after the supplied source connection outer commit, or immediately when that connection has no active transaction.",
-    "rollback": "Callbacks attach to the matching native connection and current nesting record; native outer/savepoint rollback discards the corresponding callbacks.",
-    "registration_failure": "Missing source transaction records fail before commit; Mail Notifications reports and drops unusable observations.",
-    "host_policy": "Host after-commit listeners and queue after_commit policies can add their own deferral after publication. Host transaction infrastructure and dispatcher bindings are preserved.",
-    "delivery_limit": "Local callbacks are not an outbox. Process exit between commit and callback can lose delivery; no crash durability or exactly-once delivery is promised.",
-    "cardinality": "One canonical object is dispatched per qualifying producer call. This is local publication, not cross-process deduplication or a guarantee that repeated observations are unique.",
-    "manual_producers": "Use Nvl\\Support\\Events\\DomainEventDispatcher::dispatch($event, $writerConnection). Native Event::dispatch() is immediate and has no package interception."
-  },
-  "security_notes": [
-    "Criteria and captured native ownership only; no actor or subject model is serialized."
-  ],
-  "no_op_semantics": "A queued purge request is an observation, not a claim that purge completion occurred. Repeated requests can repeat the fact.",
-  "notes": [],
-  "alias_policy": []
+    ],
+    "no_op_semantics": "A queued purge request is an observation, not a claim that purge completion occurred. Repeated requests can repeat the fact.",
+    "notes": [],
+    "alias_policy": []
 }
