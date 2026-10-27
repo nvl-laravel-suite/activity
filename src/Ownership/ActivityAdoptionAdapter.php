@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Ownership;
 
-use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Ownership\Contracts\OwnershipAdoptionAdapter;
 use Nvl\Ownership\Services\OwnershipAdoptionStore;
 use Nvl\Ownership\Services\OwnershipSchema;
@@ -39,7 +39,7 @@ final readonly class ActivityAdoptionAdapter implements OwnershipAdoptionAdapter
     /** Assign every actual row from an immutable reviewed mapping, never a default. */
     public function backfill(OwnershipAdoptionPlan $plan, ?string $cursor, int $limit): OwnershipBackfillResult
     {
-        $model = new ActivityLog;
+        $model = ActivityModelRegistry::newInstance();
         $connection = $model->getConnection();
         $rows = $connection->table($model->getTable())->when($cursor !== null, static fn ($query) => $query->where('id', '>', $cursor))->orderBy('id')->limit($limit)->get();
         $last = null;

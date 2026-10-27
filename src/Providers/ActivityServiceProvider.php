@@ -10,13 +10,13 @@ use Illuminate\Support\ServiceProvider;
 use Nvl\Activity\Console\Commands\ActivityDoctorCommand;
 use Nvl\Activity\Console\Commands\PurgeActivityLogsCommand;
 use Nvl\Activity\Console\Commands\PurgeSystemActivityLogsCommand;
-use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityAdoptionAdapter;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Ownership\ActivityResourceRegistrar;
 use Nvl\Activity\Services\ActivityCaptureContext;
 use Nvl\Activity\Services\ActivityDiffBuilder;
 use Nvl\Activity\Services\ActivityDoctor;
+use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Activity\Services\ActivityReader;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\ActivityRelationLoader;
@@ -54,9 +54,13 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
         PackageDoctorContributor::register($this->app, 'nvl/activity', fn (): array => $this->app->make(ActivityDoctor::class)->inspect());
 
         $this->mergePackageConfiguration(__DIR__.'/../../config/nvl-activity.php', 'activity');
-        if (config('nvl-activity.adoption.spatie') === true) {
-            config(['activitylog.activity_model' => ActivityLog::class]);
-        }
+        $this->app->singleton(ActivityModelRegistry::class);
+        $this->app->booting(function (): void {
+            $class = $this->app->make(ActivityModelRegistry::class)->prepare();
+            if (config('nvl-activity.adoption.spatie') === true) {
+                config(['activitylog.activity_model' => $class]);
+            }
+        });
 
         $this->app->booted(function (): void {
             if ($this->app->bound(OwnershipAdoptionRegistry::class)) {
@@ -72,6 +76,7 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
      */
     public function boot(): void
     {
+        $this->app->make(ActivityModelRegistry::class)->activityLogClass();
         (new ActivityResourceRegistrar)->register($this->app->make(OwnershipResourceRegistry::class), $this->app->make('config')->get('nvl-ownership.enabled') === true);
 
         $this->publishes([

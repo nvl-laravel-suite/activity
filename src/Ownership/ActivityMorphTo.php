@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityModelRegistry;
 
 /**
  * Activity-owned MorphTo relation that admits stored types and ownership before hydration.
@@ -49,7 +50,7 @@ final class ActivityMorphTo extends MorphTo
             return;
         }
 
-        $activities = (new ActivityLog)->newCollection();
+        $activities = (ActivityModelRegistry::newInstance())->newCollection();
         foreach ($models as $activity) {
             $activities->push($activity);
         }

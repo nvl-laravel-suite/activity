@@ -7,6 +7,7 @@ namespace Nvl\Activity\Database\Factories;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityModelRegistry;
 
 /**
  * Builds ActivityLog fixture rows and their declared package parents.
@@ -18,6 +19,12 @@ use Nvl\Activity\Models\ActivityLog;
 final class ActivityLogFactory extends Factory
 {
     protected $model = ActivityLog::class;
+
+    /** Resolve the configured native fixture model. */
+    public function modelName(): string
+    {
+        return ActivityModelRegistry::modelClass();
+    }
 
     /**
      * Prepare native parent and owner facts after Laravel expands relationships.
@@ -62,7 +69,7 @@ final class ActivityLogFactory extends Factory
      */
     public function forOwner(Model $owner): static
     {
-        FactoryGuard::parent($owner, new ActivityLog);
+        FactoryGuard::parent($owner, ActivityModelRegistry::newInstance());
 
         return $this->state([
             'subject_type' => $owner->getMorphClass(),

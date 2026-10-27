@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Support\Exceptions\BusinessException;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
 use Nvl\Support\Ownership\Exceptions\OwnershipViolation;
@@ -121,7 +122,7 @@ readonly class ActivityOwnershipGuard
             return $activities;
         }
 
-        $canonicalModel = new ActivityLog;
+        $canonicalModel = ActivityModelRegistry::newInstance();
         $identifiers = [];
 
         foreach ($activities as $activity) {
@@ -142,7 +143,7 @@ readonly class ActivityOwnershipGuard
         }
 
         /** @var EloquentCollection<int, ActivityLog> $canonical */
-        $canonical = ActivityLog::query()->whereKey(array_values($identifiers))->get();
+        $canonical = ActivityModelRegistry::query()->whereKey(array_values($identifiers))->get();
         if ($canonical->keyBy(fn (ActivityLog $activity): string => $this->identifier($activity->getKey()))->count() !== count($identifiers)) {
             throw $this->violation('Activity rows require canonical ownership in the current scope.');
         }
@@ -294,7 +295,7 @@ readonly class ActivityOwnershipGuard
     /** Preserve the runtime exact-class check hidden by the generic collection contract. */
     private function isCanonicalActivityModel(Model $activity): bool
     {
-        return $activity::class === ActivityLog::class;
+        return $activity::class === ActivityModelRegistry::modelClass();
     }
 
     /** Normalize a validated model key without accepting unsupported identifier types. */

@@ -5,6 +5,7 @@
             "common": [
                 "adoption.spatie",
                 "migrations.enabled",
+                "models.activity_log",
                 "queue.connection",
                 "queue.name",
                 "retention.schedule.enabled",

@@ -11,6 +11,7 @@ use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Services\ActivityAccess;
 use Nvl\Activity\Services\ActivityCaptureContext;
+use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Activity\Services\NvlActivityLogger;
 use Nvl\Activity\Support\ActivityMetadata;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
@@ -150,7 +151,7 @@ trait HasModelActivity
      */
     public function activitiesAsSubject(): MorphMany
     {
-        return $this->morphMany(ActivityLog::class, 'subject');
+        return $this->morphMany(ActivityModelRegistry::modelClass(), 'subject');
     }
 
     /** Capture canonical ownership while deleted subjects still exist in storage. */

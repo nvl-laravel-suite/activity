@@ -12,7 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Nvl\Activity\Builders\ActivityLogBuilder;
-use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Support\Config\PackageOptions;
 use Nvl\Support\Facades\PackageLog;
@@ -164,7 +164,7 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
                 break;
             }
 
-            $query = $boundary->query(ActivityLog::query(), 'activity.events')->whereKey($ids);
+            $query = $boundary->query(ActivityModelRegistry::query(), 'activity.events')->whereKey($ids);
             if (isset($boundary->attributes('activity.events')['owner_scope_key'])) {
                 $deleted = 0;
                 foreach ($query->get() as $activity) {
@@ -237,7 +237,7 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
      */
     private static function newPurgeableQuery(ActivityPurgeCriteria $criteria, ?OwnershipBoundary $boundary): ActivityLogBuilder
     {
-        $query = ActivityLog::query();
+        $query = ActivityModelRegistry::query();
         if ($boundary !== null) {
             $query = $boundary->query($query, 'activity.events');
         }

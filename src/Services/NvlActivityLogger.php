@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Services;
 
-use Nvl\Activity\Models\ActivityLog;
 use Spatie\Activitylog\Contracts\Activity as ActivityContract;
 use Spatie\Activitylog\Support\ActivityLogger;
 
@@ -19,7 +18,7 @@ final class NvlActivityLogger extends ActivityLogger
     protected function getActivity(): ActivityContract
     {
         if (! $this->activity instanceof ActivityContract) {
-            $this->activity = new ActivityLog;
+            $this->activity = ActivityModelRegistry::newInstance();
             $this->useLog($this->defaultLogName)
                 ->withChanges([])
                 ->withProperties([])

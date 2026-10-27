@@ -53,7 +53,7 @@ final readonly class ActivityReader
     {
         $filters = $this->filters($filters);
         $this->access->authorize($actor, 'read');
-        $query = ActivityLog::query()->newestFirst()->applyIndexFilters($filters);
+        $query = ActivityModelRegistry::query()->newestFirst()->applyIndexFilters($filters);
         if (isset($filters['subjects'])) {
             $references = $filters['subjects'];
             if ($references === []) {
@@ -116,7 +116,7 @@ final readonly class ActivityReader
         $cursor = null;
         $base = new EloquentCollection;
         for ($scanned = 0; $scanned < 5000 && $base->count() < $limit; $scanned += 100) {
-            $query = ActivityLog::query()->forSubject($reference->type, $reference->id)->newestFirst();
+            $query = ActivityModelRegistry::query()->forSubject($reference->type, $reference->id)->newestFirst();
             if ($cursor instanceof ActivityLog) {
                 $this->afterCursor($query, $cursor);
             }
@@ -351,7 +351,7 @@ final readonly class ActivityReader
             is_int($configuredScanLimit) ? $configuredScanLimit : 5000,
         ));
 
-        $latestCausers = ActivityLog::query()
+        $latestCausers = ActivityModelRegistry::query()
             ->select('causer_id')
             ->selectRaw('MAX(created_at) as latest_activity_at')
             ->where('causer_type', $user->getMorphClass())

@@ -42,17 +42,17 @@ final class ActivityRecorder
     public function recordEnvelope(ActivityRecordEnvelope $envelope): ActivityLog
     {
         $this->ownership->attributes();
-        $existing = ActivityLog::query()->find($envelope->id);
+        $existing = ActivityModelRegistry::query()->find($envelope->id);
         if ($existing instanceof ActivityLog) {
             return $this->assertMatchingEnvelope($existing, $envelope);
         }
 
         $properties = $this->envelopeProperties($envelope);
-        $model = new ActivityLog;
+        $model = ActivityModelRegistry::newInstance();
 
         try {
             return $model->getConnection()->transaction(static function () use ($envelope, $properties): ActivityLog {
-                return ActivityLog::query()->create([
+                return ActivityModelRegistry::query()->create([
                     'id' => $envelope->id,
                     'subject_type' => $envelope->subject->type,
                     'subject_id' => (string) $envelope->subject->id,
@@ -67,7 +67,7 @@ final class ActivityRecorder
                 ]);
             });
         } catch (UniqueConstraintViolationException $exception) {
-            $existing = ActivityLog::query()->find($envelope->id);
+            $existing = ActivityModelRegistry::query()->find($envelope->id);
             if (! $existing instanceof ActivityLog) {
                 throw $exception;
             }
@@ -205,10 +205,10 @@ final class ActivityRecorder
         if ($causerId !== null && ! is_string($causerId) && ! is_int($causerId)) {
             throw new InvalidArgumentException('Activity causers require scalar identities.');
         }
-        $model = new ActivityLog;
+        $model = ActivityModelRegistry::newInstance();
 
         return $model->getConnection()->transaction(static function () use ($description, $logName, $subject, $reference, $event, $causer, $causerId, $properties, $batch): ActivityLog {
-            return ActivityLog::query()->create([
+            return ActivityModelRegistry::query()->create([
                 'subject_type' => $subject instanceof Model ? $subject->getMorphClass() : $reference?->type,
                 'subject_id' => $subject instanceof Model ? $subject->getKey() : $reference?->id,
                 'causer_type' => $causer?->getMorphClass(), 'causer_id' => $causerId === null ? null : (string) $causerId,

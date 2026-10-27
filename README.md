@@ -4,6 +4,10 @@ Native audit recording, model capture, historical reads, semantic mappings and b
 
 Consumers own Actions, controllers, routes, request validation, resources, DTOs, frontend types and headline segments. Activity registers no HTTP routes. Its useful models and services are the application API.
 
+## Model replacement
+
+Configure `nvl-activity.models.activity_log` before provider boot to select a concrete subclass of `Nvl\Activity\Models\ActivityLog`. Native recording, reads, capture, retention jobs, factories and Ownership adoption use that class; opt-in global Spatie adoption selects it too. Existing morph aliases remain readable. The selection is immutable for the application lifetime. Subclasses may add attributes, casts, accessors and relations while retaining native UUID identity, required casts, query/persistence hooks and the package ownership declaration. Native invariant listeners are final; add listeners through an observer or a bootable trait. Storage remains package-configured: the selected model must use the native effective table and connection. Added columns require host migrations. This does not replace timeline source models or historical subject/causer classes.
+
 ## Authorize direct operations
 
 Bind `Nvl\Activity\Contracts\ActivityAuthorization` in the host container. Its `authorize(Authenticatable|SystemActor $actor, string $ability, Model|ActivitySubjectReference|null $subject = null): void` method must deny unauthorized `record`, `read`, `timeline`, `causers` and `purge` operations by throwing. Missing bindings deny access, including background calls. Pass a persisted authenticatable explicitly or `Nvl\Support\Enums\SystemActor::Background`; null, scalar actor IDs and ambient HTTP authentication never grant authority.

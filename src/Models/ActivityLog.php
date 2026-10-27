@@ -22,6 +22,7 @@ use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Ownership\ActivityMorphTo;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
+use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Support\Config\PackageStorage;
 use Nvl\Support\Ownership\Contracts\Ownable;
 use Nvl\Support\Ownership\Traits\HasOwnership;
@@ -50,7 +51,7 @@ use Spatie\Activitylog\Models\Activity;
  *
  * @api
  */
-final class ActivityLog extends Activity implements Ownable
+class ActivityLog extends Activity implements Ownable
 {
     /** @use HasFactory<ActivityLogFactory> */
     use HasFactory;
@@ -75,7 +76,7 @@ final class ActivityLog extends Activity implements Ownable
     public $incrementing = false;
 
     /** Attach the package boundary to every query and Spatie persistence entry. */
-    protected static function booted(): void
+    final protected static function booted(): void
     {
         self::creating(static function (ActivityLog $activity): void {
             Container::getInstance()->make(ActivityOwnershipGuard::class)->stamp($activity);
@@ -163,7 +164,7 @@ final class ActivityLog extends Activity implements Ownable
      */
     public static function forDisplay(): ActivityLogBuilder
     {
-        return self::query()->newestFirst();
+        return ActivityModelRegistry::query()->newestFirst();
     }
 
     /**
@@ -176,7 +177,7 @@ final class ActivityLog extends Activity implements Ownable
         return self::forDisplay()->forSubject($subjectType, $subjectId);
     }
 
-    /** @return ActivityMorphTo<static> */
+    /** @return ActivityMorphTo<$this> */
     #[\Override]
     public function subject(): MorphTo
     {
@@ -190,7 +191,7 @@ final class ActivityLog extends Activity implements Ownable
         return $relation;
     }
 
-    /** @return ActivityMorphTo<static> */
+    /** @return ActivityMorphTo<$this> */
     #[\Override]
     public function causer(): MorphTo
     {
@@ -245,7 +246,7 @@ final class ActivityLog extends Activity implements Ownable
     /**
      * Build the package-owned native relation without constructing an untrusted stored type.
      *
-     * @return ActivityMorphTo<static>
+     * @return ActivityMorphTo<$this>
      */
     private function activityMorphTo(
         string $relation,
@@ -297,7 +298,9 @@ final class ActivityLog extends Activity implements Ownable
         );
     }
 
-    /** Return the exact declaring type expected by the invariant MorphTo template. */
+    /** Return the exact declaring instance expected by the invariant MorphTo template.
+     * @return $this
+     */
     private function relationParent(): ActivityLog
     {
         return $this;

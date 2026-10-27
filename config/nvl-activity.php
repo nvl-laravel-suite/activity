@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Nvl\Activity\Definitions\Tables\ActivityTables;
+use Nvl\Activity\Models\ActivityLog;
 
 /** Complete runtime defaults; publication sections are declared in ../resources/config/sections.json. */
 return [
+    'models' => ['activity_log' => ActivityLog::class],
     'queue' => ['connection' => null, 'name' => null],
     'adoption' => ['spatie' => false],
     'name' => 'Activity',

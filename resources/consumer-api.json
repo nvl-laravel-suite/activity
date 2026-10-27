@@ -57,7 +57,8 @@
             "file": "database/factories/ActivityLogFactory.php",
             "methods": [
                 "definition",
-                "forOwner"
+                "forOwner",
+                "modelName"
             ],
             "properties": [],
             "constants": []
@@ -369,6 +370,16 @@
             "file": "src/Services/ActivityDoctor.php",
             "methods": [
                 "inspect"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Services\\ActivityModelRegistry": {
+            "kind": "class",
+            "file": "src/Services/ActivityModelRegistry.php",
+            "methods": [
+                "__construct",
+                "activityLogClass"
             ],
             "properties": [],
             "constants": []

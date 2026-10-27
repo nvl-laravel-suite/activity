@@ -41,7 +41,7 @@ final class ActivityDoctor
     public function inspect(): array
     {
         try {
-            $model = new ActivityLog;
+            $model = ActivityModelRegistry::newInstance();
             $schema = Schema::connection($model->getConnectionName());
             $driver = $model->getConnection()->getDriverName();
             $table = $model->getTable();
@@ -393,15 +393,15 @@ final class ActivityDoctor
         $activityModel = config('activitylog.activity_model');
         $legacyActivityModel = config('nvl-activity.model');
         $adopted = config('nvl-activity.adoption.spatie') === true;
-        $passed = (! $adopted || $activityModel === ActivityLog::class)
-            && ($legacyActivityModel === null || $legacyActivityModel === ActivityLog::class);
+        $passed = (! $adopted || $activityModel === ActivityModelRegistry::modelClass())
+            && ($legacyActivityModel === null || $legacyActivityModel === ActivityModelRegistry::modelClass());
 
         return $this->check(
             key: 'binding.activity_model',
             severity: ActivityDoctorSeverity::Error,
             passed: $passed,
             message: $passed
-                ? ($adopted ? 'Explicit global activity model adoption: '.ActivityLog::class : 'NVL writes use package storage; the host global activity model is preserved.')
+                ? ($adopted ? 'Explicit global activity model adoption: '.ActivityModelRegistry::modelClass() : 'NVL writes use package storage; the host global activity model is preserved.')
                 : $this->translated('activity_model_incompatible'),
         );
     }

@@ -7,7 +7,6 @@ namespace Nvl\Activity\Services;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
-use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Support\Enums\SystemActor;
 use Nvl\Support\Events\DomainEventDispatcher;
@@ -36,7 +35,7 @@ final readonly class ActivityPurgeDispatcher
         $this->boundary->attributes('activity.events');
         OwnershipJobEnvelope::capture($this->ownership);
         $job = new PurgeActivityLogsJob($criteria->days ?? 0, $criteria->systemOnly, $criteria);
-        $connection = (new ActivityLog)->getConnection();
+        $connection = (ActivityModelRegistry::newInstance())->getConnection();
         $dispatch = static fn () => dispatch($job);
         if ($connection->transactionLevel() > 0) {
             $connection->afterCommit($dispatch);
