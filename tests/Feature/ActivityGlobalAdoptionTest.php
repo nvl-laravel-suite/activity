@@ -14,6 +14,19 @@ use Nvl\Activity\Tests\Stubs\TestActivityMapping;
 use Nvl\Activity\Tests\Stubs\TestActivitySubjectWithHasModelActivity;
 use Nvl\Support\Enums\SystemActor;
 
+trait ConfiguresGlobalActivityAdoptionEnvironment
+{
+    protected bool $adoptGlobalActivityStorage = false;
+
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('nvl-activity.adoption.spatie', $this->adoptGlobalActivityStorage);
+        $app['config']->set('activitylog.activity_model', HostActivity::class);
+    }
+}
+
+uses(ConfiguresGlobalActivityAdoptionEnvironment::class);
+
 it('keeps host global activity storage while recording and capturing into NVL storage', function (): void {
     app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
         config(['activitylog.activity_model' => HostActivity::class, 'activitylog.table_name' => 'host_activity']);
@@ -53,10 +66,8 @@ it('keeps host global activity storage while recording and capturing into NVL st
 });
 
 it('adopts global Spatie activity storage only when explicitly requested', function (): void {
-    app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
-        config(['nvl-activity.adoption.spatie' => true, 'activitylog.activity_model' => HostActivity::class]);
-        (new ActivityServiceProvider(app()))->register();
-        expect(config('activitylog.activity_model'))->toBe(ActivityLog::class);
-
-    });
+    $this->adoptGlobalActivityStorage = true;
+    $this->refreshApplication();
+    $this->runDatabaseMigrations();
+    expect(config('activitylog.activity_model'))->toBe(ActivityLog::class);
 });
