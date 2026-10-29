@@ -26,7 +26,7 @@ test('Activitylog v5 namespaces are the only supported source contract', functio
 });
 
 test('the canonical activity model rejects an empty configured table', function (): void {
-    config()->set('nvl-activity.storage.table', ' ');
+    config()->set('nvl-activity.tables.log', ' ');
 
     (new ActivityLog)->getTable();
 })->throws(ActivityConfigurationException::class, 'Activity table name cannot be empty.');

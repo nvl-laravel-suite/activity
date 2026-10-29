@@ -122,8 +122,8 @@ test('display reads preserve soft deleted historical causers', function (): void
 test('display relations use each related model connection when activity storage is separate', function (): void {
     $storageConnection = 'activity_relation_storage';
     $storageTable = 'activity_relation_log';
-    $originalConnection = config('nvl-activity.storage.connection');
-    $originalTable = config('nvl-activity.storage.table');
+    $originalConnection = config('nvl-activity.connection');
+    $originalTable = config('nvl-activity.tables.log');
 
     config()->set("database.connections.{$storageConnection}", [
         'driver' => 'sqlite',
@@ -131,8 +131,8 @@ test('display relations use each related model connection when activity storage 
         'prefix' => '',
         'foreign_key_constraints' => true,
     ]);
-    config()->set('nvl-activity.storage.connection', $storageConnection);
-    config()->set('nvl-activity.storage.table', $storageTable);
+    config()->set('nvl-activity.connection', $storageConnection);
+    config()->set('nvl-activity.tables.log', $storageTable);
 
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
@@ -185,8 +185,8 @@ test('display relations use each related model connection when activity storage 
             ->and($loadedSubject)->toBeInstanceOf(TestActivityTimelineSubject::class)
             ->and($loadedSubject->is($subject))->toBeTrue();
     } finally {
-        config()->set('nvl-activity.storage.connection', $originalConnection);
-        config()->set('nvl-activity.storage.table', $originalTable);
+        config()->set('nvl-activity.connection', $originalConnection);
+        config()->set('nvl-activity.tables.log', $originalTable);
         Schema::dropIfExists('activity_timeline_subjects');
         Schema::dropIfExists('activity_test_causers');
         DB::purge($storageConnection);

@@ -391,10 +391,8 @@ final class ActivityDoctor
     private function activityModelCheck(): array
     {
         $activityModel = config('activitylog.activity_model');
-        $legacyActivityModel = config('nvl-activity.model');
         $adopted = config('nvl-activity.adoption.spatie') === true;
-        $passed = (! $adopted || $activityModel === ActivityModelRegistry::modelClass())
-            && ($legacyActivityModel === null || $legacyActivityModel === ActivityModelRegistry::modelClass());
+        $passed = ! $adopted || $activityModel === ActivityModelRegistry::modelClass();
 
         return $this->check(
             key: 'binding.activity_model',

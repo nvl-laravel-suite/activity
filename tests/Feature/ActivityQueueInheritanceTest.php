@@ -7,7 +7,6 @@ use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 it('selects the purge queue from package Core or effective Laravel defaults', function (array $overrides, string $connection, string $queue): void {
     config([
         'nvl-activity.queue' => ['connection' => null, 'name' => null],
-        'nvl-activity.retention.queue' => null,
         'nvl-core.queue' => ['connection' => null, 'name' => null],
         'queue.default' => 'host', 'queue.connections.host.queue' => 'host-work',
         ...$overrides,
@@ -19,5 +18,5 @@ it('selects the purge queue from package Core or effective Laravel defaults', fu
     'Core' => [['nvl-core.queue' => ['connection' => 'suite', 'name' => 'suite-work']], 'suite', 'suite-work'],
     'package' => [['nvl-activity.queue' => ['connection' => 'activity', 'name' => 'activity-work'], 'nvl-core.queue.connection' => 'suite'], 'activity', 'activity-work'],
     'explicit sync' => [['nvl-activity.queue' => ['connection' => 'sync', 'name' => 'inline']], 'sync', 'inline'],
-    'legacy explicit override' => [['nvl-activity.retention.queue' => 'old-work'], 'host', 'old-work'],
+    'explicit package override' => [['nvl-activity.queue.name' => 'old-work'], 'host', 'old-work'],
 ]);

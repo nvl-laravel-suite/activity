@@ -52,7 +52,7 @@ test('partial consumer config preserves nested activity defaults', function (): 
         ->and(config('nvl-activity.capture.ignored_attributes'))->toBe(['revision']);
 });
 
-test('the provider preserves host activity ownership and rejects deprecated package model overrides', function (): void {
+test('the provider preserves host activity ownership and ignores retired package model keys', function (): void {
     config()->set('nvl-activity.model', SpatieActivity::class);
     config()->set('activitylog.activity_model', SpatieActivity::class);
 
@@ -63,7 +63,7 @@ test('the provider preserves host activity ownership and rejects deprecated pack
     $legacyOverrideCheck = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'binding.activity_model');
 
-    expect(($legacyOverrideCheck['passed'] ?? null))->toBeFalse();
+    expect(($legacyOverrideCheck['passed'] ?? null))->toBeTrue();
 
     config()->set('nvl-activity.model');
     config()->set('activitylog.activity_model', SpatieActivity::class);

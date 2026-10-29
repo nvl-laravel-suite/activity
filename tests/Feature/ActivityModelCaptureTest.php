@@ -123,8 +123,8 @@ test('separate activity storage cannot share a business connection rollback', fu
     app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
         $storageConnection = 'activity_capture_storage';
         $storageTable = 'activity_capture_log';
-        $originalConnection = config('nvl-activity.storage.connection');
-        $originalTable = config('nvl-activity.storage.table');
+        $originalConnection = config('nvl-activity.connection');
+        $originalTable = config('nvl-activity.tables.log');
 
         config()->set("database.connections.{$storageConnection}", [
             'driver' => 'sqlite',
@@ -132,8 +132,8 @@ test('separate activity storage cannot share a business connection rollback', fu
             'prefix' => '',
             'foreign_key_constraints' => true,
         ]);
-        config()->set('nvl-activity.storage.connection', $storageConnection);
-        config()->set('nvl-activity.storage.table', $storageTable);
+        config()->set('nvl-activity.connection', $storageConnection);
+        config()->set('nvl-activity.tables.log', $storageTable);
         Schema::connection($storageConnection)->create($storageTable, function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('log_name')->nullable();
@@ -165,8 +165,8 @@ test('separate activity storage cannot share a business connection rollback', fu
             expect(TestActivitySubjectWithHasModelActivity::query()->count())->toBe(0)
                 ->and(ActivityLog::query()->count())->toBe(1);
         } finally {
-            config()->set('nvl-activity.storage.connection', $originalConnection);
-            config()->set('nvl-activity.storage.table', $originalTable);
+            config()->set('nvl-activity.connection', $originalConnection);
+            config()->set('nvl-activity.tables.log', $originalTable);
             DB::purge($storageConnection);
             config()->set("database.connections.{$storageConnection}", null);
         }

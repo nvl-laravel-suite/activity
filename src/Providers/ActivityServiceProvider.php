@@ -81,10 +81,10 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
 
         $this->publishes([
             __DIR__.'/../../resources/boost/skills' => base_path('.agents/skills'),
-        ], 'activity-skills');
+        ], 'nvl-activity-skills');
         $this->publishesMigrations([
             __DIR__.'/../../database/migrations' => database_path('migrations'),
-        ], 'activity-migrations');
+        ], 'nvl-activity-migrations');
 
         if ($this->app->runningInConsole()) {
             $this->registerCommands();
@@ -191,7 +191,7 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
 
         $this->publishes([
             $langPath => lang_path('vendor/nvl-'.$this->nameLower),
-        ], 'activity-translations');
+        ], 'nvl-activity-translations');
     }
 
     /**
@@ -201,7 +201,7 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
     {
         $this->publishes([
             __DIR__.'/../../config/nvl-activity.php' => config_path('nvl-activity.php'),
-        ], 'activity-config');
+        ], 'nvl-activity-config');
     }
 
     /**

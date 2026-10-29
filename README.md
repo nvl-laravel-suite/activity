@@ -89,3 +89,5 @@ Operational commands: `nvl:activity:purge`, `nvl:activity:purge-system`, and `nv
 `ActivityLog` is an immutable-owner captured fact. Optional Ownership supplies admission, quarantine/adoption, safe queries and worker restoration. Removing/disabling the valid runtime cannot expose previously adopted storage. Subject/causer relations use canonical declared storage and fixed causer projections. Caller-supplied relations and changed identities are re-admitted. Useful direct model queries retain ownership safeguards but do not substitute for a host operation policy.
 
 See [upgrade notes](UPGRADING.md) and [events](docs/events.md). The supported consumer catalog is `resources/consumer-api.json`.
+
+Shared [service contracts, model extensions and composition](https://github.com/nvl-laravel-suite/laravel-suite/blob/main/docs/consumer-api.md) apply alongside the package-specific rules above.

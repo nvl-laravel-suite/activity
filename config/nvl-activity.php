@@ -16,11 +16,6 @@ return [
         'enabled' => true,
     ],
 
-    'storage' => [
-        'connection' => null,
-        'table' => ActivityTables::ActivityLog,
-    ],
-
     'causer_suggestions' => [
         /*
          * Leave the model null to use the Eloquent model configured for the
@@ -39,7 +34,6 @@ return [
         'default_days' => 365,
         'system_logs_days' => 90,
         'allowed_purge_options' => [90, 365, 730],
-        'queue' => null,
         'external_visibility_timeout_seconds' => null,
         'lock_seconds' => 3600,
         'schedule' => [
@@ -56,4 +50,6 @@ return [
             'remember_token',
         ],
     ],
+    'connection' => null,
+    'tables' => ['log' => ActivityTables::ActivityLog],
 ];

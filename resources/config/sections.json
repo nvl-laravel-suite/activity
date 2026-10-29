@@ -4,13 +4,13 @@
         "nvl-activity": {
             "common": [
                 "adoption.spatie",
+                "connection",
                 "migrations.enabled",
                 "models.activity_log",
                 "queue.connection",
                 "queue.name",
                 "retention.schedule.enabled",
-                "storage.connection",
-                "storage.table"
+                "tables.log"
             ],
             "advanced": [
                 "capture.ignored_attributes",
@@ -25,7 +25,6 @@
                 "retention.default_days",
                 "retention.external_visibility_timeout_seconds",
                 "retention.lock_seconds",
-                "retention.queue",
                 "retention.schedule.time",
                 "retention.system_logs_days"
             ]
