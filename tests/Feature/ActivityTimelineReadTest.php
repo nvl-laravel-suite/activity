@@ -123,6 +123,8 @@ test('timestamp peers remain distinct without description based guessing', funct
             'event' => 'updated',
             'properties' => [
                 'visibility' => 'timeline',
+            ],
+            'attribute_changes' => [
                 'attributes' => ['name' => 'After'],
                 'old' => ['name' => 'Before'],
             ],
@@ -152,6 +154,7 @@ test('timestamp peers remain distinct without description based guessing', funct
             'subject_id' => (string) $subject->getKey(),
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
+            'event' => 'created',
         ]);
     }
 

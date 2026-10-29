@@ -16,6 +16,6 @@ use Nvl\Support\Enums\SystemActor;
  */
 interface ActivityAuthorization
 {
-    /** Authorize record, read, timeline, causers or purge; throw on denial. */
+    /** Authorize record, read, timeline, causers or purge; read_all explicitly overrides restrictive event audiences; throw on denial. */
     public function authorize(Authenticatable|SystemActor $actor, string $ability, Model|ActivitySubjectReference|null $subject = null): void;
 }

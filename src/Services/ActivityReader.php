@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Contracts\ActivityTimelineSource;
@@ -38,6 +39,7 @@ final readonly class ActivityReader
         private ActivityRelationLoader $relations,
         private TimelineFilter $timelineFilter,
         private ModelKeyIdentifierValidator $modelKeyIdentifierValidator,
+        private ActivityPolicyRegistry $policies,
     ) {}
 
     /**
@@ -53,7 +55,19 @@ final readonly class ActivityReader
     {
         $filters = $this->filters($filters);
         $this->access->authorize($actor, 'read');
+        $query = $this->indexQuery($filters, $actor);
+        $page = $query->paginate($filters['per_page'], ['*'], 'page', $filters['page']);
+        $this->relations->load(new EloquentCollection($page->items()));
+
+        return $page;
+    }
+
+    /** @param array{search?:string|null,event?:string|null,events:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,subjects?:list<ActivitySubjectReference>,subject_or_causer?:ActivitySubjectReference,created_at_from?:CarbonImmutable|null,created_at_to?:CarbonImmutable|null,per_page:int,page:int} $filters
+     */
+    private function indexQuery(array $filters, Authenticatable|SystemActor $actor): ActivityLogBuilder
+    {
         $query = ActivityModelRegistry::query()->newestFirst()->applyIndexFilters($filters);
+        $this->policies->visible($query, $actor, $this->access);
         if (isset($filters['subjects'])) {
             $references = $filters['subjects'];
             if ($references === []) {
@@ -72,10 +86,73 @@ final readonly class ActivityReader
                 ->where(fn (Builder $subject) => $subject->where('subject_type', $reference->type)->where('subject_id', $reference->id))
                 ->orWhere(fn (Builder $causer) => $causer->where('causer_type', $reference->type)->where('causer_id', $reference->id)));
         }
-        $page = $query->paginate($filters['per_page'], ['*'], 'page', $filters['page']);
-        $this->relations->load(new EloquentCollection($page->items()));
 
-        return $page;
+        return $query;
+    }
+
+    /** Return an authorized fact or null without disclosing whether a hidden identity exists. */
+    public function find(string $id, Authenticatable|SystemActor $actor): ?ActivityLog
+    {
+        $this->access->authorize($actor, 'read');
+        $query = ActivityModelRegistry::query()->whereKey($id);
+        $this->policies->visible($query, $actor, $this->access);
+        $fact = $query->first();
+        if ($fact !== null) {
+            $this->relations->load(new EloquentCollection([$fact]));
+        }
+
+        return $fact;
+    }
+
+    /** Opaque keyset pagination preserving the stored timestamp precision and owner/visibility predicates.
+     * @param  array<string,mixed>  $filters
+     * @return array{items:EloquentCollection<int,ActivityLog>,next_cursor:?string}
+     */
+    public function cursor(array $filters, Authenticatable|SystemActor $actor, ?string $cursor = null): array
+    {
+        if (array_key_exists('page', $filters)) {
+            throw new InvalidArgumentException('Cursor reads do not accept page offsets.');
+        }
+        $filters = $this->filters($filters);
+        $this->access->authorize($actor, 'read');
+        $query = $this->indexQuery($filters, $actor);
+        if ($cursor !== null) {
+            if (strlen($cursor) > 2048) {
+                throw new InvalidArgumentException('Invalid Activity cursor.');
+            }
+            $decoded = base64_decode(strtr($cursor, '-_', '+/'), true);
+            try {
+                $position = $decoded === false ? null : json_decode($decoded, true, flags: JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                throw new InvalidArgumentException('Invalid Activity cursor.');
+            }
+            if (! is_array($position) || array_keys($position) !== ['created_at', 'id'] || ! is_string($position['id'])
+                || ! Str::isUuid($position['id'])
+                || ($position['created_at'] !== null && (! is_string($position['created_at']) || preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$/D', $position['created_at']) !== 1))) {
+                throw new InvalidArgumentException('Invalid Activity cursor.');
+            }
+            $query->where(function (Builder $query) use ($position): void {
+                if ($position['created_at'] === null) {
+                    $query->whereNull('created_at')->where('id', '<', $position['id']);
+                } else {
+                    $query->where('created_at', '<', $position['created_at'])
+                        ->orWhere(fn (Builder $equal) => $equal->where('created_at', $position['created_at'])->where('id', '<', $position['id']))
+                        ->orWhereNull('created_at');
+                }
+            });
+        }
+        $items = $query->limit($filters['per_page'] + 1)->get();
+        $hasMore = $items->count() > $filters['per_page'];
+        if ($hasMore) {
+            $items->pop();
+        }
+        $last = $items->last();
+        $next = $hasMore && $last !== null ? rtrim(strtr(base64_encode(json_encode([
+            'created_at' => $last->getRawOriginal('created_at'), 'id' => $last->id,
+        ], JSON_THROW_ON_ERROR)), '+/', '-_'), '=') : null;
+        $this->relations->load($items);
+
+        return ['items' => $items, 'next_cursor' => $next];
     }
 
     /**
@@ -117,6 +194,7 @@ final readonly class ActivityReader
         $base = new EloquentCollection;
         for ($scanned = 0; $scanned < 5000 && $base->count() < $limit; $scanned += 100) {
             $query = ActivityModelRegistry::query()->forSubject($reference->type, $reference->id)->newestFirst();
+            $this->policies->visible($query, $actor, $this->access);
             if ($cursor instanceof ActivityLog) {
                 $this->afterCursor($query, $cursor);
             }

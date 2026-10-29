@@ -57,6 +57,7 @@ final class ActivityLogFactory extends Factory
     {
         return [
             'log_name' => 'factory',
+            'event' => 'created',
             'description' => $this->faker->sentence(),
             'properties' => [],
         ];

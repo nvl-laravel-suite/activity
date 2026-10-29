@@ -5,6 +5,11 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+- Replace Spatie Activitylog with native Eloquent storage, recording, explicit-field CRUD capture and canonical diffs.
+- Add closed event policies for admitted fields, attribution, redaction, SQL audience filtering and minimum retention.
+- Enforce append-only Eloquent mutation boundaries and retain immutable envelope replay checks and optional Ownership.
+- Add precise keyset pagination and authorized individual reads; remove the v4/v5 migration bridge and global adoption switch.
+
 ## [6.0.0] - 2026-10-20
 
 ### Release fixes

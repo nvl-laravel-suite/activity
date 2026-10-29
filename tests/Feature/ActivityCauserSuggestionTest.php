@@ -41,7 +41,7 @@ test('native causer suggestions expose fixed safe identity attributes and preser
     });
     config(['nvl-activity.causer_suggestions.model' => TestActivityCauser::class]);
     $causer = TestActivityCauser::query()->create(['name' => 'Ada', 'password' => 'private']);
-    ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $causer->getMorphClass(), 'causer_id' => $causer->getKey()]);
+    ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $causer->getMorphClass(), 'causer_id' => $causer->getKey(), 'event' => 'created']);
     $suggestion = app(ActivityReader::class)->causers(SystemActor::Background)->first();
     expect($suggestion->getKey())->toBe($causer->getKey())->and($suggestion->getAttributes())->toBe(['causer_key' => $causer->getKey(), 'name' => 'Ada']);
 });
@@ -72,24 +72,28 @@ test('causer suggestions query integer keyed models without cross type joins', f
             'description' => 'Integer causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => (string) $causer->getKey(),
+            'event' => 'created',
         ]);
         ActivityLog::query()->create([
             'log_name' => 'test',
             'description' => 'Malformed historical integer causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => 'not-an-integer',
+            'event' => 'created',
         ]);
         ActivityLog::query()->create([
             'log_name' => 'test',
             'description' => 'Out-of-range historical integer causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => '-32769',
+            'event' => 'created',
         ]);
         ActivityLog::query()->create([
             'log_name' => 'test',
             'description' => 'Noncanonical historical integer causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => '+'.(string) $causer->getKey(),
+            'event' => 'created',
         ]);
 
         $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, 'Grace');
@@ -127,12 +131,14 @@ test('causer suggestions isolate malformed historical uuid identifiers and norma
             'description' => 'UUID causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => strtoupper((string) $causer->getKey()),
+            'event' => 'created',
         ]);
         ActivityLog::query()->create([
             'log_name' => 'test',
             'description' => 'Malformed historical UUID causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => 'not-a-uuid',
+            'event' => 'created',
         ]);
 
         $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, 'Grace');
@@ -169,6 +175,7 @@ test('historical causer suggestions include soft deleted actors', function (): v
             'description' => 'Historical causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => (string) $causer->getKey(),
+            'event' => 'created',
         ]);
 
         $causer->delete();
@@ -199,6 +206,7 @@ test('unsearchable integer causer configuration returns no false positive sugges
             'description' => 'Unsearchable causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => (string) $causer->getKey(),
+            'event' => 'created',
         ]);
 
         expect(app(ActivityReader::class)->causers(SystemActor::Background, 'not-a-key'))
@@ -224,6 +232,7 @@ test('causer suggestions never apply fuzzy matching to integer columns', functio
             'description' => 'Integer causer activity',
             'causer_type' => $causer->getMorphClass(),
             'causer_id' => (string) $causer->getKey(),
+            'event' => 'created',
         ]);
 
         $queries = [];

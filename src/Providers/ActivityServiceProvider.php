@@ -17,13 +17,16 @@ use Nvl\Activity\Services\ActivityCaptureContext;
 use Nvl\Activity\Services\ActivityDiffBuilder;
 use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Services\ActivityModelRegistry;
+use Nvl\Activity\Services\ActivityPolicyRegistry;
 use Nvl\Activity\Services\ActivityReader;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\ActivityRelationLoader;
+use Nvl\Activity\Services\ActivityRetentionContext;
 use Nvl\Activity\Services\HeadlineRenderer;
 use Nvl\Activity\Services\LabelResolver;
 use Nvl\Activity\Services\MappingRegistry;
 use Nvl\Activity\Services\TimelineFilter;
+use Nvl\Activity\Support\ActivityEventPolicy;
 use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Ownership\Services\OwnershipAdoptionRegistry;
@@ -55,12 +58,7 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
 
         $this->mergePackageConfiguration(__DIR__.'/../../config/nvl-activity.php', 'activity');
         $this->app->singleton(ActivityModelRegistry::class);
-        $this->app->booting(function (): void {
-            $class = $this->app->make(ActivityModelRegistry::class)->prepare();
-            if (config('nvl-activity.adoption.spatie') === true) {
-                config(['activitylog.activity_model' => $class]);
-            }
-        });
+        $this->app->booting(fn () => $this->app->make(ActivityModelRegistry::class)->prepare());
 
         $this->app->booted(function (): void {
             if ($this->app->bound(OwnershipAdoptionRegistry::class)) {
@@ -68,6 +66,28 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
             }
         });
 
+        $this->app->singleton(ActivityPolicyRegistry::class, function (): ActivityPolicyRegistry {
+            $registry = new ActivityPolicyRegistry;
+            $definitions = config('nvl-activity.events', []);
+            if (! is_array($definitions)) {
+                throw new \InvalidArgumentException('Activity event policies must be an event-keyed map.');
+            }
+            foreach ($definitions as $event => $options) {
+                if (! is_string($event) || ! is_array($options) || array_diff(array_keys($options), ['subject_types', 'actor', 'actor_types', 'change_fields', 'metadata_fields', 'redacted_fields', 'retention_days', 'audience']) !== []) {
+                    throw new \InvalidArgumentException('Invalid Activity event configuration.');
+                }
+                $arguments = [];
+                foreach (['subject_types' => 'subjectTypes', 'actor' => 'actor', 'actor_types' => 'actorTypes', 'change_fields' => 'changeFields', 'metadata_fields' => 'metadataFields', 'redacted_fields' => 'redactedFields', 'retention_days' => 'retentionDays', 'audience' => 'audience'] as $key => $parameter) {
+                    if (array_key_exists($key, $options)) {
+                        $arguments[$parameter] = $options[$key];
+                    }
+                }
+                $registry->register(new ActivityEventPolicy($event, ...$arguments));
+            }
+
+            return $registry;
+        });
+        $this->app->scoped(ActivityRetentionContext::class);
         $this->registerSingletons();
     }
 

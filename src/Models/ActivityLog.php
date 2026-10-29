@@ -6,7 +6,6 @@ namespace Nvl\Activity\Models;
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +16,7 @@ use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use LogicException;
 use Nvl\Activity\Builders\ActivityLogBuilder;
+use Nvl\Activity\Builders\ActivityQuery;
 use Nvl\Activity\Database\Factories\ActivityLogFactory;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
@@ -26,7 +26,6 @@ use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Support\Config\PackageStorage;
 use Nvl\Support\Ownership\Contracts\Ownable;
 use Nvl\Support\Ownership\Traits\HasOwnership;
-use Spatie\Activitylog\Models\Activity;
 
 /**
  * Custom activity log model using UUID primary keys.
@@ -51,7 +50,7 @@ use Spatie\Activitylog\Models\Activity;
  *
  * @api
  */
-class ActivityLog extends Activity implements Ownable
+class ActivityLog extends Model implements Ownable
 {
     /** @use HasFactory<ActivityLogFactory> */
     use HasFactory;
@@ -68,6 +67,8 @@ class ActivityLog extends Activity implements Ownable
      */
     protected $keyType = 'string';
 
+    protected $dateFormat = 'Y-m-d H:i:s.u';
+
     /**
      * Indicates if the IDs are auto-incrementing.
      *
@@ -75,7 +76,7 @@ class ActivityLog extends Activity implements Ownable
      */
     public $incrementing = false;
 
-    /** Attach the package boundary to every query and Spatie persistence entry. */
+    /** Attach native ownership to every inserted fact. */
     final protected static function booted(): void
     {
         self::creating(static function (ActivityLog $activity): void {
@@ -86,26 +87,22 @@ class ActivityLog extends Activity implements Ownable
         });
     }
 
-    /**
-     * Read tracked changes from the version-specific Spatie storage column.
-     *
-     * Spatie v5 stores changes in `attribute_changes`; historical v4 rows may
-     * still carry them inside `properties`, so reads preserve that legacy data.
-     *
-     * @return Attribute<Collection<int|string, mixed>|null, never>
+    /** @var list<string> */
+    protected $guarded = [];
+
+    /** Native JSON casts belong to the package model, independently of logging adapters.
+     * @return array<string,string>
      */
-    protected function attributeChanges(): Attribute
+    protected function casts(): array
     {
-        return Attribute::get(function (mixed $value): ?Collection {
-            $changes = $this->collectionValue($value);
+        return ['properties' => 'collection', 'attribute_changes' => 'collection'];
+    }
 
-            if ($changes !== null) {
-                return $changes;
-            }
+    protected function newBaseQueryBuilder(): QueryBuilder
+    {
+        $connection = $this->getConnection();
 
-            return $this->collectionValue($this->getAttribute('properties'))
-                ?->only(['attributes', 'old']);
-        })->withoutObjectCaching();
+        return new ActivityQuery($connection, $connection->getQueryGrammar(), $connection->getPostProcessor());
     }
 
     /** Resolve historical event semantics without changing the stored fact. */
@@ -178,13 +175,12 @@ class ActivityLog extends Activity implements Ownable
     }
 
     /** @return ActivityMorphTo<$this> */
-    #[\Override]
     public function subject(): MorphTo
     {
         $ownership = Container::getInstance()->make(ActivityOwnershipGuard::class);
         $ownership->attributes();
         $relation = $this->activityMorphTo('subject', $ownership, false, $ownership->enabled());
-        if (config('activitylog.include_soft_deleted_subjects')) {
+        if (config('nvl-activity.reads.include_soft_deleted_subjects', false)) {
             $relation->withTrashed();
         }
 
@@ -192,7 +188,6 @@ class ActivityLog extends Activity implements Ownable
     }
 
     /** @return ActivityMorphTo<$this> */
-    #[\Override]
     public function causer(): MorphTo
     {
         $ownership = Container::getInstance()->make(ActivityOwnershipGuard::class);
@@ -304,28 +299,6 @@ class ActivityLog extends Activity implements Ownable
     private function relationParent(): ActivityLog
     {
         return $this;
-    }
-
-    /**
-     * @return Collection<int|string, mixed>|null
-     */
-    private function collectionValue(mixed $value): ?Collection
-    {
-        if ($value instanceof Collection) {
-            return $value;
-        }
-
-        if (is_array($value)) {
-            return collect($value);
-        }
-
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        $decoded = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
-
-        return is_array($decoded) ? collect($decoded) : null;
     }
 
     /**

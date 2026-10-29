@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nvl\Activity\Contracts;
 
 use Illuminate\Database\Eloquent\Model;
-use Spatie\Activitylog\Support\LogOptions;
+use Nvl\Activity\Support\ActivityCaptureOptions;
 
 /**
  * Per-resource interface for activity field/value mapping and display.
@@ -35,14 +35,14 @@ interface ActivityMapping
     public function subjectLabel(Model $subject): string;
 
     /**
-     * Resolve the stable Spatie log channel name.
+     * Resolve the stable native log channel name.
      */
     public function logName(): string;
 
     /**
-     * Build the Spatie automatic-capture options for the mapped model.
+     * Declare native automatic-capture options for the mapped model.
      */
-    public function logOptions(): LogOptions;
+    public function captureOptions(): ActivityCaptureOptions;
 
     /**
      * Resolve a persisted field key to its display label.

@@ -42,7 +42,6 @@ trait ConfiguresActivityModelEnvironment
         $this->previousMorphMap ??= Relation::morphMap();
         Relation::morphMap([], false);
         $app['config']->set('nvl-activity.models.activity_log', $this->activityModel);
-        $app['config']->set('nvl-activity.adoption.spatie', true);
     }
 }
 
@@ -58,7 +57,7 @@ it('native recording reading factory and morph identity use the selected model',
     $this->assertSame(CustomActivityLog::class, app(ActivityReader::class)->paginate([], SystemActor::Background)->first()::class);
     $this->assertSame(CustomActivityLog::class, ActivityLog::factory()->create()::class);
     $this->assertSame(CustomActivityLog::class, Relation::getMorphedModel($log->getMorphClass()));
-    $this->assertSame(CustomActivityLog::class, config('activitylog.activity_model'));
+    $this->assertSame(Model::class, get_parent_class(ActivityLog::class));
 });
 
 it('native recording uses the selected models outer transaction', function (): void {

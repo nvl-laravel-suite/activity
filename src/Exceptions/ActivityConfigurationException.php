@@ -23,7 +23,7 @@ final class ActivityConfigurationException extends ActivityException
             message: (string) trans('nvl-activity::activity/general.errors.configuration.empty_table'),
             responseCode: ActivityResponseCode::InvalidConfiguration,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
-            diagnosticContext: ['configuration' => 'activity.storage.table'],
+            diagnosticContext: ['configuration' => 'nvl-activity.tables.log'],
         );
     }
 
@@ -36,7 +36,7 @@ final class ActivityConfigurationException extends ActivityException
             message: (string) trans('nvl-activity::activity/general.errors.configuration.invalid_connection'),
             responseCode: ActivityResponseCode::InvalidConfiguration,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
-            diagnosticContext: ['configuration' => 'activity.storage.connection'],
+            diagnosticContext: ['configuration' => 'nvl-activity.connection'],
         );
     }
 
@@ -49,7 +49,7 @@ final class ActivityConfigurationException extends ActivityException
             message: (string) trans('nvl-activity::activity/general.errors.configuration.non_eloquent_activity_model'),
             responseCode: ActivityResponseCode::InvalidConfiguration,
             suggestedStatus: Response::HTTP_INTERNAL_SERVER_ERROR,
-            diagnosticContext: ['configuration' => 'activitylog.activity_model'],
+            diagnosticContext: ['configuration' => 'nvl-activity.models.activity_log'],
         );
     }
 

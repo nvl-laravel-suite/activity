@@ -6,7 +6,7 @@ namespace Nvl\Activity\Tests\Stubs;
 
 use Illuminate\Database\Eloquent\Model;
 use Nvl\Activity\Contracts\ActivityMapping;
-use Spatie\Activitylog\Support\LogOptions;
+use Nvl\Activity\Support\ActivityCaptureOptions;
 
 /**
  * Configurable activity mapping fixture.
@@ -46,11 +46,9 @@ final class TestActivityMapping implements ActivityMapping
         return 'mapped';
     }
 
-    public function logOptions(): LogOptions
+    public function captureOptions(): ActivityCaptureOptions
     {
-        return LogOptions::defaults()
-            ->logOnly(['name'])
-            ->logOnlyDirty();
+        return new ActivityCaptureOptions(['name']);
     }
 
     public function fieldLabel(string $key): string

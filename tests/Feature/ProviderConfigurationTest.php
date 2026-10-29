@@ -3,11 +3,12 @@
 declare(strict_types=1);
 
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
+use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
+use Nvl\Activity\Services\ActivityPolicyRegistry;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
-use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 it('resolves legacy and neutral guard names to one scoped state holder', function (): void {
     expect(app(ActivityOwnershipGuard::class))
@@ -53,12 +54,12 @@ test('partial consumer config preserves nested activity defaults', function (): 
 });
 
 test('the provider preserves host activity ownership and ignores retired package model keys', function (): void {
-    config()->set('nvl-activity.model', SpatieActivity::class);
-    config()->set('activitylog.activity_model', SpatieActivity::class);
+    config()->set('nvl-activity.model', ActivityLog::class);
+    config()->set('activitylog.activity_model', ActivityLog::class);
 
     (new ActivityServiceProvider(app()))->register();
 
-    expect(config('activitylog.activity_model'))->toBe(SpatieActivity::class);
+    expect(config('activitylog.activity_model'))->toBe(ActivityLog::class);
 
     $legacyOverrideCheck = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'binding.activity_model');
@@ -66,7 +67,7 @@ test('the provider preserves host activity ownership and ignores retired package
     expect(($legacyOverrideCheck['passed'] ?? null))->toBeTrue();
 
     config()->set('nvl-activity.model');
-    config()->set('activitylog.activity_model', SpatieActivity::class);
+    config()->set('activitylog.activity_model', ActivityLog::class);
 
     $check = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'binding.activity_model');
 
@@ -107,3 +108,10 @@ test('doctor readiness describes native storage without owning consumer routes',
     expect($checks)->not->toContain('routes.management');
     $this->getJson('/nvl/api/v1/activity')->assertNotFound();
 });
+
+test('production consumer fixtures declare valid native event policies', function (string $consumer): void {
+    $configuration = require dirname(__DIR__, 5).'/tools/fixtures/'.$consumer.'-production-consumer/config/nvl-activity.php';
+    config()->set('nvl-activity.events', $configuration['events']);
+    (new ActivityServiceProvider(app()))->register();
+    expect(app(ActivityPolicyRegistry::class)->all())->not->toBeEmpty();
+})->with(['activity', 'auth']);

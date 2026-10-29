@@ -51,7 +51,7 @@ it('selected root survives adoption canonical hydration and captured retention',
     app(OwnershipRunner::class)->run(OwnershipCompany::findOrFail(7), OwnershipActor::firstOrFail(), function (): void {
         $log = app(ActivityRecorder::class)->record(['event' => 'old'], SystemActor::Background);
         $log->created_at = now()->subDays(120);
-        $log->save();
+        $log->getConnection()->table($log->getTable())->where('id', $log->id)->update($log->getDirty());
         $this->assertSame(CustomActivityLog::class, app(ActivityReader::class)->paginate([], SystemActor::Background)->first()::class);
         $this->assertSame(app(OwnershipBoundary::class)->attributes('activity.events')['owner_scope_key'], $log->owner_scope_key);
         (new PurgeActivityLogsJob(90))->handle(app(OwnershipBoundary::class));

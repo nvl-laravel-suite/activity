@@ -1,7 +1,9 @@
 # Upgrade to NVL Light
 
-Target PHP 8.4, Laravel 13, Testbench 11 for development, and mandatory Spatie Activitylog v5 storage. The family remains version 6 during the coordinated suite conversion.
+Target PHP 8.4, Laravel 13, Testbench 11 for development, and native NVL Activity storage. NVL Light uses major 7; Spatie Activitylog is removed.
 
+- Remove Spatie logger calls/traits and `adoption.spatie` configuration. Replace `logOptions()` with `captureOptions(): ActivityCaptureOptions`; declare explicit capture fields and lifecycle events. Register every event policy under `nvl-activity.events` before first use. Unknown events fail; minimum retention and audience policies now apply in native services.
+- Store diffs only in `attribute_changes`; remove readers of legacy `properties.attributes`/`properties.old`. Fresh native migrations include both JSON columns and microsecond timestamps; no v4/v5 migration bridge remains. Existing installations need a reviewed host migration and data mapping if preserving old facts. Never rewrite the application database automatically.
 - Replace positional/facade recording with `ActivityRecorder::record($entry, $actor)`. Keys use snake_case. Actors are required persisted authenticatables or explicitly authorized `SystemActor::Background`. Scalar historical attribution belongs only in immutable envelopes. Blank events and unknown/protected fields now fail.
 - Bind `ActivityAuthorization`. Replace HTTP gates with this native host policy plus consumer-owned transport authorization.
 - Wrap mapped model mutations in `ActivityCaptureContext::run($actor, $operation)`. Preserve a host transaction when model/audit writes must roll back together. Unmapped models remain silent.

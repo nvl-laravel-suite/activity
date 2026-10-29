@@ -7,7 +7,7 @@ namespace Nvl\Activity\Support;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Extracts actor display data from Spatie's causer relation.
+ * Extracts actor display data from the native causer relation.
  */
 final class CauserNormalizer
 {

@@ -48,9 +48,8 @@ test('the package migration rejects an incompatible existing activity table', fu
     }
 });
 
-test('the package baselines compatible canonical storage and bridges v5 changes non destructively', function (): void {
+test('the package baselines native canonical storage without rewriting facts', function (): void {
     $baseline = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
-    $versionFiveBridge = require dirname(__DIR__, 2).'/database/migrations/2026_08_10_123558_nvl_activity_add_activitylog_v5_attribute_changes.php';
 
     Schema::drop(ActivityTables::ActivityLog);
     Schema::create(ActivityTables::ActivityLog, function (Blueprint $table): void {
@@ -63,6 +62,7 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
         $table->string('causer_type')->nullable();
         $table->string('causer_id')->nullable();
         $table->json('properties')->nullable();
+        $table->json('attribute_changes')->nullable();
         $table->uuid('batch_uuid')->nullable();
         $table->timestamps();
 
@@ -80,12 +80,10 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
 
     try {
         $baseline->up();
-        $versionFiveBridge->up();
 
         expect(Schema::hasColumn(ActivityTables::ActivityLog, 'attribute_changes'))->toBeTrue()
             ->and(DB::table(ActivityTables::ActivityLog)->count())->toBe(1);
 
-        $versionFiveBridge->down();
         $baseline->down();
 
         expect(Schema::hasTable(ActivityTables::ActivityLog))->toBeTrue()
@@ -94,7 +92,6 @@ test('the package baselines compatible canonical storage and bridges v5 changes 
     } finally {
         Schema::drop(ActivityTables::ActivityLog);
         $baseline->up();
-        $versionFiveBridge->up();
     }
 });
 
@@ -411,8 +408,7 @@ test('doctor reports an unavailable configured connection without crashing', fun
     try {
         $checks = collect(app(ActivityDoctor::class)->inspect())->keyBy('key');
 
-        expect(($checks->get('schema.connection')['passed'] ?? null))->toBeFalse()
-            ->and(($checks->get('dependency.spatie_activitylog')['passed'] ?? null))->toBeTrue();
+        expect(($checks->get('schema.connection')['passed'] ?? null))->toBeFalse();
     } finally {
         config()->set('nvl-activity.connection');
     }

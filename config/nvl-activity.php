@@ -9,7 +9,8 @@ use Nvl\Activity\Models\ActivityLog;
 return [
     'models' => ['activity_log' => ActivityLog::class],
     'queue' => ['connection' => null, 'name' => null],
-    'adoption' => ['spatie' => false],
+    'events' => [],
+    'reads' => ['include_soft_deleted_subjects' => false],
     'name' => 'Activity',
 
     'migrations' => [

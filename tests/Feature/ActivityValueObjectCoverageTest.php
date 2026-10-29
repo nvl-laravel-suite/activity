@@ -121,7 +121,7 @@ test('configuration exception factories expose stable diagnostics and safe opt-i
             ActivityResponseCode::InvalidMapping->value,
             ActivityResponseCode::InvalidMapping->value,
         ])
-        ->and($exceptions[1]->context())->toBe(['configuration' => 'activity.storage.connection'])
+        ->and($exceptions[1]->context())->toBe(['configuration' => 'nvl-activity.connection'])
         ->and($exceptions[3]->context())->toBe([
             'mapping_class' => 'Mapping',
             'model_class' => 'NotAModel',

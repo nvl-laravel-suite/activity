@@ -6,8 +6,8 @@ namespace Nvl\Activity\Services;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Nvl\Activity\Models\ActivityLog as Activity;
 use Nvl\Activity\Support\TimelineActivityRules;
-use Spatie\Activitylog\Models\Activity;
 
 /**
  * Builds human-readable diff details for normalized activity entries.
@@ -32,6 +32,7 @@ final class ActivityDiffBuilder
      */
     public function build(Activity $activity, array $properties): Collection
     {
+        $properties = [...$properties, ...($activity->attribute_changes?->all() ?? [])];
         /** @var array<string, mixed> $changes */
         $changes = (array) Arr::get($properties, 'attributes', Arr::get($properties, 'new', []));
         /** @var array<string, mixed> $oldValues */

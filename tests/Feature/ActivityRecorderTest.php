@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -50,8 +51,8 @@ test('record envelopes retain their exact replay payload and native morph identi
         ->and($activity->event)->toBe('task.updated')
         ->and($activity->log_name)->toBe('tasks')
         ->and($activity->properties->get('context'))->toBe(['state' => 'active'])
-        ->and($activity->properties->get('attributes'))->toBe(['title' => 'After'])
-        ->and($activity->properties->get('old'))->toBe(['title' => 'Before'])
+        ->and($activity->attribute_changes->get('attributes'))->toBe(['title' => 'After'])
+        ->and($activity->attribute_changes->get('old'))->toBe(['title' => 'Before'])
         ->and($activity->properties->get('occurred_at'))->toBe('2026-09-28T10:11:12.123456+03:00');
 });
 
@@ -90,7 +91,7 @@ test('record envelopes reject an existing row whose stored business payload chan
     );
     $activity = app(ActivityRecorder::class)->recordEnvelope($envelope);
     $activity->properties = $activity->properties->put('context', ['state' => 'closed']);
-    $activity->save();
+    DB::connection($activity->getConnectionName())->table($activity->getTable())->where('id', $activity->id)->update($activity->getDirty());
 
     expect(fn () => app(ActivityRecorder::class)->recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
 });
@@ -106,7 +107,7 @@ test('record envelopes reject an existing row with a different timeline timestam
     );
     $activity = app(ActivityRecorder::class)->recordEnvelope($envelope);
     $activity->created_at = CarbonImmutable::parse('2026-09-29T10:11:12.000000+00:00');
-    $activity->save();
+    DB::connection($activity->getConnectionName())->table($activity->getTable())->where('id', $activity->id)->update($activity->getDirty());
 
     expect(fn () => app(ActivityRecorder::class)->recordEnvelope($envelope))->toThrow(ActivityRecordingException::class);
 });
@@ -255,11 +256,16 @@ test('the canonical writer accepts package owned activity events', function (): 
 });
 
 test('package owned update events infer saved model changes without a description', function (): void {
-    $subject = ActivityLog::query()->create([
-        'log_name' => 'recording-subject',
-        'description' => 'Before',
-        'event' => ActivityEvent::Created,
-    ]);
+    Schema::create('mutable_activity_subjects', fn (Blueprint $table) => [$table->id(), $table->string('description')]);
+    $subject = new class extends Model
+    {
+        protected $table = 'mutable_activity_subjects';
+
+        protected $guarded = [];
+
+        public $timestamps = false;
+    };
+    $subject->fill(['description' => 'Before'])->save();
     $subject->timestamps = false;
     $subject->forceFill(['description' => 'After'])->save();
 
@@ -267,8 +273,8 @@ test('package owned update events infer saved model changes without a descriptio
 
     expect($activity?->event)->toBe(ActivityEvent::Updated->value)
         ->and($activity?->description)->toBe(ActivityEvent::Updated->value)
-        ->and($activity?->properties?->get('attributes'))->toBe(['description' => 'After'])
-        ->and($activity?->properties?->get('old'))->toBe(['description' => 'Before']);
+        ->and($activity?->attribute_changes?->get('attributes'))->toBe(['description' => 'After'])
+        ->and($activity?->attribute_changes?->get('old'))->toBe(['description' => 'Before']);
 });
 
 test('the canonical writer normalizes caller supplied log names and descriptions', function (): void {
@@ -310,7 +316,8 @@ test('ambient authentication never changes system purge classification', functio
     $activity?->forceFill([
         'created_at' => now()->subDays(120),
         'updated_at' => now()->subDays(120),
-    ])->save();
+    ]);
+    DB::connection($activity->getConnectionName())->table($activity->getTable())->where('id', $activity->id)->update($activity->getDirty());
 
     expect(PurgeActivityLogsJob::countPurgeable(90, systemOnly: true))->toBe(1)
         ->and($activity?->causer_id)->toBeNull()

@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityCaptureContext;
+use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\MappingRegistry;
-use Nvl\Activity\Services\NvlActivityLogger;
 use Nvl\Activity\Tests\Fixtures\OwnershipActor;
 use Nvl\Activity\Tests\Fixtures\OwnershipCompany;
 use Nvl\Activity\Tests\Fixtures\OwnershipSubject;
@@ -31,7 +31,7 @@ it('captures audit facts and groups subject or causer queries inside their nativ
         foreach ([7, 8] as $id) {
             $runner->run(OwnershipCompany::query()->findOrFail($id), $actor, function () use ($id, $actor, &$foreign): void {
                 $subject = app(OwnershipWriter::class)->create(OwnershipSubject::class, fn (OwnershipAssignment $assignment): OwnershipSubject => OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => $id, 'name' => 'Owned subject']));
-                $fact = app(NvlActivityLogger::class)->performedOn($subject)->causedBy($actor)->log('changed');
+                $fact = app(ActivityRecorder::class)->record(['subject' => $subject, 'event' => 'updated'], $actor);
                 expect($fact)->toBeInstanceOf(ActivityLog::class)
                     ->and(ActivityLog::query()->where('subject_id', 7)->orWhere('causer_id', 1)->count())->toBe(1);
                 if ($id === 7) {
@@ -52,12 +52,12 @@ it('runs captured retention under its producer owner and restores the surroundin
         $runner = app(OwnershipRunner::class);
         $actor = OwnershipActor::query()->firstOrFail();
         $job = $runner->run(OwnershipCompany::query()->findOrFail(7), $actor, function (): PurgeActivityLogsJob {
-            ActivityLog::query()->create(['description' => 'old A', 'created_at' => now()->subDays(120)]);
+            ActivityLog::query()->create(['description' => 'old A', 'created_at' => now()->subDays(120), 'event' => 'created']);
 
             return new PurgeActivityLogsJob(90);
         });
         $runner->run(OwnershipCompany::query()->findOrFail(8), $actor, function () use ($job): void {
-            ActivityLog::query()->create(['description' => 'old B', 'created_at' => now()->subDays(120)]);
+            ActivityLog::query()->create(['description' => 'old B', 'created_at' => now()->subDays(120), 'event' => 'created']);
             app(Dispatcher::class)->dispatchSync($job);
             expect(ActivityLog::query()->pluck('description')->all())->toBe(['old B']);
         });
@@ -74,7 +74,7 @@ it('keeps retention deletion inside the canonical source write fence', function 
             $table->uuid('id')->primary();
             $table->string('description');
         });
-        $fact = app(OwnershipRunner::class)->run(OwnershipCompany::query()->findOrFail(7), OwnershipActor::query()->firstOrFail(), fn () => ActivityLog::query()->create(['description' => 'old', 'created_at' => now()->subDays(120)]));
+        $fact = app(OwnershipRunner::class)->run(OwnershipCompany::query()->findOrFail(7), OwnershipActor::query()->firstOrFail(), fn () => ActivityLog::query()->create(['description' => 'old', 'created_at' => now()->subDays(120), 'event' => 'created']));
         $other->table($fact->getTable())->insert(['id' => $fact->getKey(), 'description' => 'foreign']);
         ActivityLog::deleting(static function (ActivityLog $model): void {
             $model->setConnection('activity_escape');

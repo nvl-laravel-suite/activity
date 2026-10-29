@@ -76,7 +76,7 @@ final class ActivityLogBuilder extends Builder
      */
     public function olderThan(CarbonInterface $cutoff): static
     {
-        return $this->where('created_at', '<', $cutoff);
+        return $this->where('created_at', '<', $cutoff->format('Y-m-d H:i:s.u'));
     }
 
     /**
@@ -84,7 +84,7 @@ final class ActivityLogBuilder extends Builder
      */
     public function newerThanOrEqual(CarbonInterface $cutoff): static
     {
-        return $this->where('created_at', '>=', $cutoff);
+        return $this->where('created_at', '>=', $cutoff->format('Y-m-d H:i:s.u'));
     }
 
     /**
@@ -277,11 +277,11 @@ final class ActivityLogBuilder extends Builder
         }
 
         if (($filters['created_at_from'] ?? null) !== null) {
-            $this->where('created_at', '>=', $filters['created_at_from']);
+            $this->where('created_at', '>=', $filters['created_at_from'] instanceof \DateTimeInterface ? $filters['created_at_from']->format('Y-m-d H:i:s.u') : $filters['created_at_from']);
         }
 
         if (($filters['created_at_to'] ?? null) !== null) {
-            $this->where('created_at', '<=', $filters['created_at_to']);
+            $this->where('created_at', '<=', $filters['created_at_to'] instanceof \DateTimeInterface ? $filters['created_at_to']->format('Y-m-d H:i:s.u') : $filters['created_at_to']);
         }
 
         return $this;

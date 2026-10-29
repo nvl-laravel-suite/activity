@@ -40,7 +40,7 @@ test('late host policy replacement reaches the next scoped service', function ()
 
 test('recorder has explicit domain collaborators', function (): void {
     $constructor = new ReflectionMethod(ActivityRecorder::class, '__construct');
-    expect(array_map(fn (ReflectionParameter $parameter): string => $parameter->getName(), $constructor->getParameters()))->toBe(['ownership', 'access']);
+    expect(array_map(fn (ReflectionParameter $parameter): string => $parameter->getName(), $constructor->getParameters()))->toBe(['ownership', 'access', 'policies']);
 });
 
 test('provider discovery preserves a preconstructed recorder', function (): void {

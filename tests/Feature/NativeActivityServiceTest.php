@@ -41,7 +41,7 @@ it('redacts secrets from immutable delivered facts and retains replay identity',
     $recorder = app(ActivityRecorder::class);
     $record = $recorder->recordEnvelope($envelope);
     expect($record->properties->get('context'))->toBe(['password' => '[REDACTED]', 'nested' => ['token' => '[REDACTED]', 'state' => 'active']])
-        ->and($record->properties->get('attributes'))->toBe(['api_key' => '[REDACTED]', 'title' => 'After'])
+        ->and($record->attribute_changes->get('attributes'))->toBe(['api_key' => '[REDACTED]', 'title' => 'After'])
         ->and($record->properties->get('actor_id'))->toBe('deleted-operator')
         ->and($recorder->recordEnvelope($envelope)->getKey())->toBe($record->getKey())
         ->and(ActivityLog::query()->count())->toBe(1);
@@ -126,9 +126,9 @@ it('authorizes canonical persisted actor facts and rejects transient subjects', 
 });
 
 it('preserves semantic event inference for historical rows without stored event names', function (): void {
-    $activity = new ActivityLog(['description' => 'Historical', 'properties' => ['attributes' => ['name' => 'After'], 'old' => ['name' => 'Before']]]);
+    $activity = new ActivityLog(['description' => 'Historical', 'attribute_changes' => ['attributes' => ['name' => 'After'], 'old' => ['name' => 'Before']]]);
     expect($activity->semanticEvent())->toBe('updated');
     expect(app(TimelineFilter::class)->shouldIncludeInSignalTimeline($activity))->toBeTrue();
-    $activity->properties = [];
+    $activity->attribute_changes = [];
     expect($activity->semanticEvent())->toBe('activity_logged');
 });

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
 use Nvl\Activity\Contracts\ActivityMapping;
 use Nvl\Activity\Contracts\ProvidesActivityHeadlinePlaceholders;
-use Spatie\Activitylog\Models\Activity;
+use Nvl\Activity\Models\ActivityLog as Activity;
 use Stringable;
 
 /**
@@ -237,7 +237,9 @@ final class LabelResolver
         /** @var array<string, mixed> $props */
         $props = $propsRaw instanceof Arrayable ? $propsRaw->toArray() : (array) $propsRaw;
 
-        return $props;
+        $values = [...$props, ...($activity->attribute_changes?->all() ?? [])];
+
+        return array_filter($values, is_string(...), ARRAY_FILTER_USE_KEY);
     }
 
     /**

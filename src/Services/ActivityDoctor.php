@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Services;
 
-use Composer\InstalledVersions;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Builder;
@@ -64,7 +63,7 @@ final class ActivityDoctor
             $this->configurationCheck(),
             $this->migrationOwnershipCheck(),
             $this->activityModelCheck(),
-            $this->spatieVersionCheck(),
+            $this->eventPoliciesCheck(),
             $this->retentionImportanceCheck(),
             $this->queueCheck(),
             $this->cacheLockCheck(),
@@ -152,7 +151,6 @@ final class ActivityDoctor
             'nvl-activity.retention.external_visibility_timeout_seconds',
         );
         $passed = is_bool($migrationsEnabled)
-            && is_bool(config('nvl-activity.adoption.spatie'))
             && is_bool(config('nvl-activity.retention.schedule.enabled'))
             && ($externalVisibilityTimeout === null
                 || (is_int($externalVisibilityTimeout) && $externalVisibilityTimeout > 0))
@@ -206,7 +204,7 @@ final class ActivityDoctor
     }
 
     /**
-     * Validate required columns for the installed Spatie major version.
+     * Validate the native fact schema.
      *
      * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
@@ -390,39 +388,24 @@ final class ActivityDoctor
      */
     private function activityModelCheck(): array
     {
-        $activityModel = config('activitylog.activity_model');
-        $adopted = config('nvl-activity.adoption.spatie') === true;
-        $passed = ! $adopted || $activityModel === ActivityModelRegistry::modelClass();
+        $class = ActivityModelRegistry::modelClass();
 
-        return $this->check(
-            key: 'binding.activity_model',
-            severity: ActivityDoctorSeverity::Error,
-            passed: $passed,
-            message: $passed
-                ? ($adopted ? 'Explicit global activity model adoption: '.ActivityModelRegistry::modelClass() : 'NVL writes use package storage; the host global activity model is preserved.')
-                : $this->translated('activity_model_incompatible'),
-        );
+        return $this->check('binding.activity_model', ActivityDoctorSeverity::Error,
+            is_subclass_of($class, ActivityLog::class) || $class === ActivityLog::class,
+            'Native Activity model: '.$class);
     }
 
-    /**
-     * Validate the installed Spatie Activitylog major version.
-     *
-     * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
-     */
-    private function spatieVersionCheck(): array
+    /** @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string} */
+    private function eventPoliciesCheck(): array
     {
-        $major = $this->spatieMajorVersion();
-        $passed = $major === 5;
-        $version = InstalledVersions::getPrettyVersion('spatie/laravel-activitylog') ?? 'unknown';
+        try {
+            $passed = app(ActivityPolicyRegistry::class)->all() !== [];
+        } catch (Throwable) {
+            $passed = false;
+        }
 
-        return $this->check(
-            key: 'dependency.spatie_activitylog',
-            severity: ActivityDoctorSeverity::Error,
-            passed: $passed,
-            message: $passed
-                ? $this->translated('spatie_supported', ['version' => $version])
-                : $this->translated('spatie_unsupported', ['version' => $version]),
-        );
+        return $this->check('events.policies', ActivityDoctorSeverity::Error, $passed,
+            $passed ? 'Native Activity event policies are registered.' : 'Register valid nvl-activity.events policies before recording facts.');
     }
 
     /**
@@ -703,16 +686,6 @@ final class ActivityDoctor
             "nvl-activity::activity/general.doctor.messages.{$key}",
             $replacements,
         );
-    }
-
-    /**
-     * Resolve the installed Spatie Activitylog major version.
-     */
-    private function spatieMajorVersion(): int
-    {
-        $version = InstalledVersions::getVersion('spatie/laravel-activitylog');
-
-        return is_string($version) ? (int) $version : 0;
     }
 
     /** @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string} */

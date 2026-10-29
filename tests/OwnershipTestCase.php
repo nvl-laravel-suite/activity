@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Tests\Fixtures\AllowsActivity;
+use Nvl\Activity\Tests\Fixtures\ConfiguresActivityPolicies;
 use Nvl\Activity\Tests\Fixtures\OwnershipActor;
 use Nvl\Activity\Tests\Fixtures\OwnershipCompany;
 use Nvl\Activity\Tests\Fixtures\OwnershipSubject;
@@ -29,7 +30,6 @@ use Nvl\Support\Ownership\ValueObjects\OwnershipResourceDefinition;
 use Nvl\Support\Providers\LocaleServiceProvider;
 use Nvl\Support\Providers\SupportServiceProvider;
 use Orchestra\Testbench\TestCase;
-use Spatie\Activitylog\ActivitylogServiceProvider;
 
 /** Exercises committed ownership and audit behavior without NVL Tenancy or Auth providers. */
 abstract class OwnershipTestCase extends TestCase
@@ -37,7 +37,7 @@ abstract class OwnershipTestCase extends TestCase
     /** @return list<class-string> */
     protected function getPackageProviders($app): array
     {
-        return [LocaleServiceProvider::class, SupportServiceProvider::class, OwnershipServiceProvider::class, ActivitylogServiceProvider::class, ActivityServiceProvider::class];
+        return [LocaleServiceProvider::class, SupportServiceProvider::class, OwnershipServiceProvider::class, ActivityServiceProvider::class];
     }
 
     /** Configure owned package roots before immutable resource registration. */
@@ -62,9 +62,12 @@ abstract class OwnershipTestCase extends TestCase
     }
 
     /** Install real package storage and activate through the reviewed coordinator. */
+    use ConfiguresActivityPolicies;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->configureActivityPolicies();
         $this->app->bind(ActivityAuthorization::class, AllowsActivity::class);
         $schema = DB::getSchemaBuilder();
         if (getenv('NVL_OWNERSHIP_TEST_DRIVER') === 'pgsql') {

@@ -27,7 +27,6 @@ use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
 use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
 use Nvl\Support\Enums\SystemActor;
-use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 test('causer normalization honors configured display attributes and scalar actor metadata', function (): void {
     config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
@@ -266,7 +265,7 @@ test('timeline reads fall back safely when a custom activity model relation is p
         ]);
         $subject->setRelation(
             'activitiesAsSubject',
-            new EloquentCollection([new SpatieActivity]),
+            new EloquentCollection([new ActivityLog]),
         );
 
         $timeline = app(ActivityReader::class)->timeline($subject, SystemActor::Background, 1000);
@@ -289,7 +288,7 @@ test('activity exceptions expose stable scoped metadata without leaking diagnost
     expect($configuration->responseCode())->toBe(ActivityResponseCode::InvalidConfiguration->value)
         ->and($configuration->suggestedStatus())->toBe(500)
         ->and($configuration->publicContext())->toBe([])
-        ->and($configuration->context())->toBe(['configuration' => 'activity.storage.table'])
+        ->and($configuration->context())->toBe(['configuration' => 'nvl-activity.tables.log'])
         ->and($recording->responseCode())->toBe(ActivityResponseCode::InvalidBatchIdentifier->value)
         ->and($recording->suggestedStatus())->toBe(422)
         ->and($recording->publicContext())->toBe(['field' => 'batch_uuid'])

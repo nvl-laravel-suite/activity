@@ -258,11 +258,20 @@ test('model identifiers are accepted only when they match integer uuid ulid or d
 });
 
 test('canonical recording derives safe diffs and honors explicit enum metadata', function (): void {
-    $subject = ActivityLog::query()->create([
-        'log_name' => 'recording-subject',
-        'description' => 'Before',
-        'event' => 'created',
-    ]);
+    Schema::create('mutable_activity_subjects', function (Blueprint $table): void {
+        $table->id();
+        $table->string('description');
+        $table->timestamp('updated_at')->nullable();
+    });
+    $subject = new class extends Model
+    {
+        protected $table = 'mutable_activity_subjects';
+
+        protected $guarded = [];
+
+        public $timestamps = false;
+    };
+    $subject->fill(['description' => 'Before'])->save();
     $subject->timestamps = false;
     $subject->forceFill([
         'description' => 'After',
@@ -299,12 +308,12 @@ test('canonical recording derives safe diffs and honors explicit enum metadata',
         ->and($recorded->properties?->get('source'))->toBe(ActivitySource::System->value)
         ->and($recorded->properties?->get('visibility'))->toBe(ActivityVisibility::AuditOnly->value)
         ->and($recorded->properties?->get('importance'))->toBe(ActivityImportance::Important->value)
-        ->and($recorded->properties?->get('attributes'))->toBe(['description' => 'After'])
-        ->and($recorded->properties?->get('old'))->toBe(['description' => 'Before'])
-        ->and($unchanged->properties?->get('attributes'))->toBe([])
-        ->and($nonDiff->properties?->get('attributes'))->toBe([])
-        ->and($explicit->properties?->get('attributes'))->toBe(['status' => 'published'])
-        ->and($explicit->properties?->get('old'))->toBe(['status' => 'draft']);
+        ->and($recorded->attribute_changes?->get('attributes'))->toBe(['description' => 'After'])
+        ->and($recorded->attribute_changes?->get('old'))->toBe(['description' => 'Before'])
+        ->and($unchanged->attribute_changes?->get('attributes'))->toBe([])
+        ->and($nonDiff->attribute_changes?->get('attributes'))->toBe([])
+        ->and($explicit->attribute_changes?->get('attributes'))->toBe(['status' => 'published'])
+        ->and($explicit->attribute_changes?->get('old'))->toBe(['status' => 'draft']);
 });
 
 test('diff rendering preserves scalar and structured changes while suppressing noise', function (): void {

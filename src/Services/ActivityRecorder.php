@@ -36,11 +36,13 @@ final class ActivityRecorder
     public function __construct(
         private readonly ActivityOwnershipGuard $ownership,
         private readonly ActivityAccess $access,
+        private readonly ActivityPolicyRegistry $policies,
     ) {}
 
     /** Deliver one immutable activity fact and return the same row on an identical retry. */
     public function recordEnvelope(ActivityRecordEnvelope $envelope): ActivityLog
     {
+        $this->policies->get($envelope->event);
         $this->ownership->attributes();
         $existing = ActivityModelRegistry::query()->find($envelope->id);
         if ($existing instanceof ActivityLog) {
@@ -61,7 +63,8 @@ final class ActivityRecorder
                     'event' => $envelope->event,
                     'log_name' => $envelope->logName,
                     'description' => $envelope->event,
-                    'properties' => $properties,
+                    'properties' => array_diff_key($properties, ['attributes' => true, 'old' => true]),
+                    'attribute_changes' => ['attributes' => $properties['attributes'], 'old' => $properties['old']],
                     'created_at' => $envelope->occurredAt->utc(),
                     'updated_at' => $envelope->occurredAt->utc(),
                 ]);
@@ -81,14 +84,19 @@ final class ActivityRecorder
     {
         $serialized = json_encode($this->canonicalEnvelopeValue($envelope->toArray()), JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
 
+        [$attributes, $old, $context] = $this->policies->get($envelope->event)->prepare(
+            $envelope->subject->type, $envelope->causer?->type, $envelope->causer === null && $envelope->scalarActorId === null,
+            $envelope->attributes ?? [], $envelope->old ?? [], $envelope->context,
+        );
+
         return [
             'source' => $envelope->causer !== null || $envelope->scalarActorId !== null
                 ? ActivitySource::User->value : ActivitySource::System->value,
             'visibility' => ActivityVisibility::Timeline->value,
             'importance' => ActivityImportance::Normal->value,
-            'context' => ActivityMetadata::redact($envelope->context),
-            'attributes' => $envelope->attributes === null ? null : ActivityMetadata::redact($envelope->attributes),
-            'old' => $envelope->old === null ? null : ActivityMetadata::redact($envelope->old),
+            'context' => $context,
+            'attributes' => $attributes,
+            'old' => $old,
             'actor_id' => $envelope->scalarActorId,
             'occurred_at' => $envelope->occurredAt->format('Y-m-d\TH:i:s.uP'),
             '_envelope_hash' => hash('sha256', $serialized),
@@ -98,7 +106,7 @@ final class ActivityRecorder
     /** Require an existing ID to represent the exact same immutable event. */
     private function assertMatchingEnvelope(ActivityLog $existing, ActivityRecordEnvelope $envelope): ActivityLog
     {
-        $properties = $existing->properties?->toArray() ?? [];
+        $properties = [...($existing->properties?->toArray() ?? []), ...($existing->attribute_changes?->all() ?? [])];
         $expected = $this->envelopeProperties($envelope);
         $actualPayload = array_intersect_key($properties, $expected);
 
@@ -109,7 +117,7 @@ final class ActivityRecorder
             || $existing->event !== $envelope->event
             || $existing->log_name !== $envelope->logName
             || $existing->description !== $envelope->event
-            || $existing->created_at?->format('Y-m-d H:i:s') !== $envelope->occurredAt->utc()->format('Y-m-d H:i:s')
+            || $existing->created_at?->format('Y-m-d H:i:s.u') !== $envelope->occurredAt->utc()->format('Y-m-d H:i:s.u')
             || count($actualPayload) !== count($expected)
             || json_encode($this->canonicalEnvelopeValue($actualPayload), JSON_THROW_ON_ERROR)
                 !== json_encode($this->canonicalEnvelopeValue($expected), JSON_THROW_ON_ERROR)) {
@@ -161,7 +169,9 @@ final class ActivityRecorder
         if ($subject !== null && ! $subject instanceof Model && ! $subject instanceof ActivitySubjectReference) {
             throw new InvalidArgumentException('Activity subjects must be persisted models or immutable references.');
         }
-        if ($subject instanceof Model && (! $subject->exists || $subject->getKey() === null
+        $capturedDeletion = $subject instanceof Model && ! $subject->exists && $event === 'deleted'
+            && $this->ownership->consumeDeletingSubject($subject);
+        if ($subject instanceof Model && ((! $subject->exists && ! $capturedDeletion) || $subject->getKey() === null
             || $subject->getRawOriginal($subject->getKeyName()) !== $subject->getKey())) {
             throw new InvalidArgumentException('Activity model subjects must have persisted identities.');
         }
@@ -186,18 +196,21 @@ final class ActivityRecorder
         }
         $this->access->authorize($actor, 'record', $subject);
         $this->ownership->attributes();
-        if ($subject instanceof Model) {
+        if ($subject instanceof Model && ! $capturedDeletion) {
             $this->ownership->assertSubject($subject);
         }
         [$attributes, $old] = $this->resolveChangePayload(
             $subject instanceof Model ? $subject : null, $event, $attributes, $old,
             ($entry['resolve_changes'] ?? true) && ! array_key_exists('attributes', $entry) && ! array_key_exists('old', $entry),
         );
+        [$attributes, $old, $context] = $this->policies->get($event)->prepare(
+            $subject instanceof Model ? $subject->getMorphClass() : $subject?->type,
+            $actor instanceof Model ? $actor->getMorphClass() : null,
+            $actor instanceof SystemActor, $attributes, $old, $context,
+        );
         $properties = [
             'source' => $actor instanceof SystemActor ? ActivitySource::System->value : ActivitySource::User->value,
-            'visibility' => $visibility, 'importance' => $importance,
-            'context' => ActivityMetadata::redact($context),
-            'attributes' => ActivityMetadata::redact($attributes), 'old' => ActivityMetadata::redact($old),
+            'visibility' => $visibility, 'importance' => $importance, 'context' => $context,
         ];
         $reference = $subject instanceof ActivitySubjectReference ? $subject : null;
         $causer = $actor instanceof Model ? $this->ownership->canonicalCauser($actor) : null;
@@ -205,16 +218,20 @@ final class ActivityRecorder
         if ($causerId !== null && ! is_string($causerId) && ! is_int($causerId)) {
             throw new InvalidArgumentException('Activity causers require scalar identities.');
         }
+        $subjectId = $subject instanceof Model ? $subject->getKey() : $reference?->id;
+        if ($subjectId !== null && ! is_string($subjectId) && ! is_int($subjectId)) {
+            throw new InvalidArgumentException('Activity subjects require scalar identities.');
+        }
         $model = ActivityModelRegistry::newInstance();
 
-        return $model->getConnection()->transaction(static function () use ($description, $logName, $subject, $reference, $event, $causer, $causerId, $properties, $batch): ActivityLog {
+        return $model->getConnection()->transaction(static function () use ($description, $logName, $subject, $reference, $subjectId, $event, $causer, $causerId, $properties, $batch, $attributes, $old): ActivityLog {
             return ActivityModelRegistry::query()->create([
                 'subject_type' => $subject instanceof Model ? $subject->getMorphClass() : $reference?->type,
-                'subject_id' => $subject instanceof Model ? $subject->getKey() : $reference?->id,
+                'subject_id' => $subjectId === null ? null : (string) $subjectId,
                 'causer_type' => $causer?->getMorphClass(), 'causer_id' => $causerId === null ? null : (string) $causerId,
                 'event' => $event, 'description' => $description ?: $event,
                 'log_name' => $logName ?: 'default',
-                'properties' => $properties, 'batch_uuid' => $batch,
+                'properties' => $properties, 'attribute_changes' => ['attributes' => $attributes, 'old' => $old], 'batch_uuid' => $batch,
             ]);
         });
     }

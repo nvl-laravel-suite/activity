@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Nvl\Activity\Tests\Stubs;
 
 use Illuminate\Database\Eloquent\Model;
+use Nvl\Activity\Models\ActivityLog as Activity;
 use Nvl\Activity\Traits\HasModelActivity;
-use Spatie\Activitylog\Models\Activity;
 
 /**
  * Capturable model fixture for mapping tests.

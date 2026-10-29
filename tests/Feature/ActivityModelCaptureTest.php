@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -10,9 +12,12 @@ use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityCaptureContext;
+use Nvl\Activity\Services\ActivityPolicyRegistry;
 use Nvl\Activity\Services\MappingRegistry;
+use Nvl\Activity\Support\ActivityEventPolicy;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
 use Nvl\Activity\Tests\Stubs\TestActivitySubjectWithHasModelActivity;
+use Nvl\Activity\Traits\HasModelActivity;
 use Nvl\Support\Enums\SystemActor;
 
 beforeEach(function (): void {
@@ -51,7 +56,7 @@ test('registered mappings own automatic model capture options and log names', fu
     });
 });
 
-test('historical tracked changes remain readable from the legacy v4 properties layout', function (): void {
+test('native changes use their dedicated column without a legacy properties fallback', function (): void {
     app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
         $activity = new ActivityLog;
         $activity->forceFill([
@@ -63,10 +68,7 @@ test('historical tracked changes remain readable from the legacy v4 properties l
             ],
         ]);
 
-        expect($activity->attribute_changes?->all())->toBe([
-            'attributes' => ['name' => 'Updated name'],
-            'old' => ['name' => 'Initial name'],
-        ]);
+        expect($activity->attribute_changes)->toBeNull();
 
     });
 });
@@ -259,4 +261,50 @@ test('nullable mapped authorized updates preserve pending and original diff fact
     $fact = ActivityLog::query()->sole();
     expect($fact->attribute_changes->get('attributes'))->toBe(['name' => 'Pending value'])
         ->and($fact->attribute_changes->get('old'))->toBe(['name' => null]);
+});
+
+test('capture rejects event policy fields before changing an autocommitted subject', function (): void {
+    $subject = TestActivitySubjectWithHasModelActivity::query()->create(['name' => 'Before']);
+    app(MappingRegistry::class)->register(new TestActivityMapping(TestActivitySubjectWithHasModelActivity::class));
+    $policies = new ActivityPolicyRegistry;
+    $policies->register(new ActivityEventPolicy('updated'));
+    app()->instance(ActivityPolicyRegistry::class, $policies);
+
+    expect(fn () => app(ActivityCaptureContext::class)->run(SystemActor::Background, fn () => $subject->update(['name' => 'Denied'])))
+        ->toThrow(InvalidArgumentException::class);
+    expect($subject->fresh()->name)->toBe('Before')
+        ->and(ActivityLog::query()->count())->toBe(0);
+});
+
+test('native capture preserves cast values and emits one event per soft lifecycle transition', function (): void {
+    Schema::table('activity_mapping_subjects', function (Blueprint $table): void {
+        $table->softDeletes();
+    });
+    $subject = new class extends Model
+    {
+        use HasModelActivity;
+        use SoftDeletes;
+
+        protected $table = 'activity_mapping_subjects';
+
+        protected $guarded = [];
+
+        public $timestamps = false;
+
+        protected function casts(): array
+        {
+            return ['name' => 'array'];
+        }
+    };
+    app(MappingRegistry::class)->register(new TestActivityMapping($subject::class));
+    app(ActivityCaptureContext::class)->run(SystemActor::Background, function () use ($subject): void {
+        $subject->fill(['name' => ['en' => 'Initial']])->save();
+        $subject->update(['name' => ['en' => 'Changed']]);
+        $subject->delete();
+        $subject->restore();
+    });
+    $facts = ActivityLog::query()->oldestFirst()->get();
+    expect($facts->pluck('event')->all())->toBe(['created', 'updated', 'deleted', 'restored'])
+        ->and($facts[1]->attribute_changes->get('attributes'))->toBe(['name' => ['en' => 'Changed']])
+        ->and($facts[1]->attribute_changes->get('old'))->toBe(['name' => ['en' => 'Initial']]);
 });

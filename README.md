@@ -1,12 +1,35 @@
 # NVL Activity
 
-Native audit recording, model capture, historical reads, semantic mappings and bounded merged timelines for PHP 8.4 and Laravel 13. Install `nvl/activity`; Core and Spatie Activitylog v5 are required domain dependencies. Spatie Data, TypeScript Transformer, Tenancy and Ownership are not required. Install and explicitly configure `nvl/ownership` when audit facts need owner isolation.
+Native audit recording, model capture, historical reads, semantic mappings and bounded merged timelines for PHP 8.4 and Laravel 13. Install `nvl/activity`; Core is the only required NVL package; Activity has no Spatie Activitylog dependency. Spatie Data, TypeScript Transformer, Tenancy and Ownership are not required. Install and explicitly configure `nvl/ownership` when audit facts need owner isolation.
 
 Consumers own Actions, controllers, routes, request validation, resources, DTOs, frontend types and headline segments. Activity registers no HTTP routes. Its useful models and services are the application API.
 
 ## Model replacement
 
-Configure `nvl-activity.models.activity_log` before provider boot to select a concrete subclass of `Nvl\Activity\Models\ActivityLog`. Native recording, reads, capture, retention jobs, factories and Ownership adoption use that class; opt-in global Spatie adoption selects it too. Existing morph aliases remain readable. The selection is immutable for the application lifetime. Subclasses may add attributes, casts, accessors and relations while retaining native UUID identity, required casts, query/persistence hooks and the package ownership declaration. Native invariant listeners are final; add listeners through an observer or a bootable trait. Storage remains package-configured: the selected model must use the native effective table and connection. Added columns require host migrations. This does not replace timeline source models or historical subject/causer classes.
+Configure `nvl-activity.models.activity_log` before provider boot to select a concrete subclass of `Nvl\Activity\Models\ActivityLog`. Native recording, reads, capture, retention jobs, factories and Ownership adoption use that class. Existing morph aliases remain readable. The selection is immutable for the application lifetime. Subclasses may add attributes, casts, accessors and relations while retaining native UUID identity, required casts, query/persistence hooks and the package ownership declaration. Native invariant listeners are final; add listeners through an observer or a bootable trait. Storage remains package-configured: the selected model must use the native effective table and connection. Added columns require host migrations. This does not replace timeline source models or historical subject/causer classes.
+
+## Event policies
+
+Declare the closed event catalog in `config/nvl-activity.php` before recording or reading. Unknown writes fail. A provider may instead register `ActivityEventPolicy` values with `ActivityPolicyRegistry` during boot; duplicate and late registrations fail after first use.
+
+```php
+'events' => [
+    'order.approved' => [
+        'subject_types' => ['order'], // Use your actual morph alias.
+        'actor' => 'required',
+        'actor_types' => ['user'],
+        'change_fields' => ['status', 'private_note'],
+        'metadata_fields' => ['reason'],
+        'redacted_fields' => ['private_note'],
+        'retention_days' => 365,
+        'audience' => 'authorized',
+    ],
+],
+```
+
+`change_fields` and `metadata_fields` default to empty lists, admitting no values; explicit `null` admits any bounded JSON record. Subject and actor type lists default to unrestricted (`null`). Actor mode is `required` (human attribution), `optional`, or `system`; these rules never grant operation authority. Every captured CRUD event also needs a policy. Capture fields must fit those policies.
+
+Audiences are `authorized` (the host read permission), `administrative`, `subject`, `actor`, or `subject_or_actor`. Restricted audiences constrain SQL before counts, limits and hydration. Identity audiences compare the reader's morph type and key to the stored references. An explicit host authorization for `read_all` overrides those audience restrictions within the current ownership scope. Unregistered historical facts still require host read authority and are never purged by policy retention. `retention_days: null` preserves an event forever; the default is 365 days. The caller's purge cutoff cannot shorten an event's minimum retention.
 
 ## Authorize direct operations
 
@@ -34,9 +57,9 @@ $timeline = app(ActivityReader::class)->timeline($order, $actor, 50);
 $causers = app(ActivityReader::class)->causers($actor, search: 'Ada', limit: 10);
 ```
 
-`record(array $entry, Authenticatable|SystemActor $actor): ActivityLog` accepts only `subject`, `event`, `description`, `log_name`, `context`, `attributes`, `old`, `visibility`, `importance`, `resolve_changes` and `batch_uuid`. Subject may be a persisted model, immutable subject reference, or null. Event is a nonblank string or backed enum, at most 255 characters. Visibility accepts `timeline`, `audit_only`, `hidden`; importance accepts the package enum values. Batch UUIDs must be valid. Actor/source/ownership/primary-key overrides and unknown keys fail before persistence.
+`record(array $entry, Authenticatable|SystemActor $actor): ActivityLog` accepts only `subject`, `event`, `description`, `log_name`, `context`, `attributes`, `old`, `visibility`, `importance`, `resolve_changes` and `batch_uuid`. Subject may be a persisted model, immutable subject reference, or null. Event is a registered lowercase stable alias (or backed enum value), at most 255 characters. Visibility accepts `timeline`, `audit_only`, `hidden`; importance accepts the package enum values. Batch UUIDs must be valid. Actor/source/ownership/primary-key overrides and unknown keys fail before persistence.
 
-Context and diffs are JSON-safe records, with a 64 KiB limit per record and bounded nesting. Null context means an empty record. Omitted diff arrays infer saved model changes for update/status events; explicit null suppresses that side and disables inference. `resolve_changes: false` disables inference. Credentials with password, secret, token, API-key, authorization or cookie keys are recursively replaced with `[REDACTED]`. Business metadata keys keep their original spelling.
+Context and diffs are JSON-safe records, with a 64 KiB limit per record and bounded nesting. Null context means an empty record. Omitted diff arrays infer saved model changes for update/status events; explicit null suppresses that side and disables inference. `resolve_changes: false` disables inference. Canonical diffs live only in `attribute_changes` (`attributes` and `old`); `properties` holds context and classifications. Credentials with password, secret, token, API-key, authorization or cookie keys are recursively replaced with `[REDACTED]`. Business metadata keys keep their original spelling.
 
 ## Immutable delivery and transaction guarantees
 
@@ -46,7 +69,7 @@ Both recording operations transact on the Activity model's actual connection and
 
 ## Automatic model capture
 
-Use `HasModelActivity` on host models and register a concrete `ActivityMapping` with `MappingRegistry`. Mapping-owned Spatie `LogOptions` define tracked fields, log names and semantic labels. Unmapped models and empty changes remain silent.
+Use `HasModelActivity` on host models and register a concrete `ActivityMapping` with `MappingRegistry`. Implement `captureOptions(): ActivityCaptureOptions` with explicit fields, for example `new ActivityCaptureOptions(['name', 'status'])`. Options admit `created`, `updated`, `deleted`, `restored` and default to dirty fields only. The mapping separately supplies `logName()` and semantic labels. Unmapped models and empty changes remain silent.
 
 Wrap mapped model mutations in an explicit capture scope:
 
@@ -60,11 +83,13 @@ app(ActivityCaptureContext::class)->run($actor, function () use ($order): void {
 });
 ```
 
-Capture validates/authorizes mapped events before model mutation where Laravel provides a before-event, and uses the same explicit actor for the resulting fact. Scope restoration uses `finally`, including nested scopes and reused workers. Mapped capture without a scope fails closed. A host transaction on the shared model/Activity connection makes model and audit writes atomic. Separate Activity storage cannot roll back with a business connection; use a domain outbox for that requirement. Global Spatie storage remains host-owned unless `adoption.spatie` is explicitly enabled.
+Capture validates/authorizes mapped events before model mutation where Laravel provides a before-event, and uses the same explicit actor for the resulting fact. Scope restoration uses `finally`, including nested scopes and reused workers. Mapped capture without a scope fails closed. A host transaction on the shared model/Activity connection makes model and audit writes atomic. Separate Activity storage cannot roll back with a business connection; use a domain outbox for that requirement. Soft restoration emits one `restored` fact. Quiet saves and bulk business-model writes do not emit Eloquent lifecycle events; use explicit semantic recording inside your business transaction for those operations.
 
 ## Bounded subject references and event filters
 
 `paginate()` accepts native snake-case filters: `search`, `event`, `events` (up to 100), `causer_id`, `subject_type`, `subject_id`, `subjects` (up to 100 exact `ActivitySubjectReference` pairs), `subject_or_causer`, `created_at_from`, `created_at_to`, `per_page` (1–100), and `page`. Empty `subjects` matches nothing. Dates accept `DateTimeInterface|string|null`; reversed ranges fail. Date-only strings retain midnight precision. Transport aliases, comma-separated event strings and response envelopes belong to consumers.
+
+`cursor($filters, $actor, $cursor = null)` returns `['items' => EloquentCollection, 'next_cursor' => ?string]` without a total-count query. It accepts the same filters except `page` and orders by timestamp then UUID, preserving microseconds and ties. Pass the returned opaque cursor unchanged; keep the same filters across pages. `find($id, $actor)` returns an authorized fact or null for missing/hidden identities.
 
 `timeline()` returns a Laravel collection of native models ordered by creation instant, descending morph type and descending native key within that type (numeric for integer keys, lexical for string keys). Source storage and its declared key type must agree, including sortable timestamps and string-key collation. It accepts limits 1–1000, scans at most 5000 base facts in batches of 100, and may return fewer results when the scan bound is reached. Historical visibility and noisy-only updates are filtered before the final limit. Equal timestamps retain distinct events. Missing historical relations safely yield null in service reads.
 
@@ -86,7 +111,7 @@ Operational commands: `nvl:activity:purge`, `nvl:activity:purge-system`, and `nv
 
 ## Ownership and direct model reads
 
-`ActivityLog` is an immutable-owner captured fact. Optional Ownership supplies admission, quarantine/adoption, safe queries and worker restoration. Removing/disabling the valid runtime cannot expose previously adopted storage. Subject/causer relations use canonical declared storage and fixed causer projections. Caller-supplied relations and changed identities are re-admitted. Useful direct model queries retain ownership safeguards but do not substitute for a host operation policy.
+`ActivityLog` is an immutable-owner captured fact. Optional Ownership supplies admission, quarantine/adoption, safe queries and worker restoration. Removing/disabling the valid runtime cannot expose previously adopted storage. Subject/causer relations use canonical declared storage and fixed causer projections. Caller-supplied relations and changed identities are re-admitted. Native Eloquent update, upsert, quiet update, truncate and deletion APIs reject changes to persisted facts; only native retention may delete. This protects package APIs, not privileged raw SQL or database administration. Direct queries retain ownership safeguards but do not substitute for service authorization, policy validation or safe projections. Use services for application operations.
 
 See [upgrade notes](UPGRADING.md) and [events](docs/events.md). The supported consumer catalog is `resources/consumer-api.json`.
 

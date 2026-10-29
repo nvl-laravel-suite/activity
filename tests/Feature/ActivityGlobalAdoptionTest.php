@@ -34,6 +34,7 @@ it('keeps host global activity storage while recording and capturing into NVL st
         $provider = new ActivityServiceProvider(app());
         $provider->register();
         $provider->boot();
+        $this->configureActivityPolicies();
         expect(config('activitylog'))->toBe($hostConfiguration);
         Schema::create('host_activity', function (Blueprint $table): void {
             $table->id();
@@ -58,16 +59,16 @@ it('keeps host global activity storage while recording and capturing into NVL st
         expect(ActivityLog::query()->count())->toBe(3)
             ->and($subject->activitiesAsSubject()->count())->toBe(3)
             ->and(HostActivity::query()->count())->toBe(0);
-        activity()->log('Host event');
+        HostActivity::query()->create(['description' => 'Host event']);
         expect(HostActivity::query()->count())->toBe(1)
             ->and(ActivityLog::query()->count())->toBe(3);
 
     });
 });
 
-it('adopts global Spatie activity storage only when explicitly requested', function (): void {
+it('never adopts third party global activity storage', function (): void {
     $this->adoptGlobalActivityStorage = true;
     $this->refreshApplication();
     $this->runDatabaseMigrations();
-    expect(config('activitylog.activity_model'))->toBe(ActivityLog::class);
+    expect(config('activitylog.activity_model'))->toBe(HostActivity::class);
 });

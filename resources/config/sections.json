@@ -3,12 +3,13 @@
     "configs": {
         "nvl-activity": {
             "common": [
-                "adoption.spatie",
                 "connection",
+                "events",
                 "migrations.enabled",
                 "models.activity_log",
                 "queue.connection",
                 "queue.name",
+                "reads.include_soft_deleted_subjects",
                 "retention.schedule.enabled",
                 "tables.log"
             ],

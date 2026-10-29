@@ -13,6 +13,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Services\ActivityModelRegistry;
+use Nvl\Activity\Services\ActivityPolicyRegistry;
+use Nvl\Activity\Services\ActivityRetentionContext;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Support\Config\PackageOptions;
 use Nvl\Support\Facades\PackageLog;
@@ -96,7 +98,7 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
         }
 
         try {
-            $this->purge($criteria, $boundary);
+            app(ActivityRetentionContext::class)->run(fn () => $this->purge($criteria, $boundary));
         } finally {
             $lock->release();
         }
@@ -244,6 +246,8 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
         if (! $query instanceof ActivityLogBuilder) {
             throw new UnexpectedValueException('Activity purge requires the canonical Activity query builder.');
         }
+
+        app(ActivityPolicyRegistry::class)->retainable($query);
 
         return $query->applyPurgeCriteria($criteria);
     }

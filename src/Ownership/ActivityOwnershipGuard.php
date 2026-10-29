@@ -64,7 +64,7 @@ readonly class ActivityOwnershipGuard
         return new OwnershipViolation($message);
     }
 
-    /** Stamp every newly persisted Spatie activity, including automatic model logging. */
+    /** Stamp every newly persisted native activity, including automatic model logging. */
     public function stamp(ActivityLog $activity): void
     {
         $ownership = $this->attributes();
@@ -106,6 +106,21 @@ readonly class ActivityOwnershipGuard
         if ($this->enabled() && $activity->isDirty(['owner_scope_key', 'owner_reference'])) {
             throw $this->violation('Activity ownership is immutable.');
         }
+    }
+
+    /** Consume the exact pre-deletion owner receipt in the same admitted scope. */
+    public function consumeDeletingSubject(Model $subject): bool
+    {
+        $captured = $this->deletingSubjects[$subject] ?? null;
+        if ($captured === null) {
+            return false;
+        }
+        unset($this->deletingSubjects[$subject]);
+        if ($captured !== ['ownership' => $this->attributes(), 'admission' => $this->boundary->key('activity.events', 'relations')]) {
+            throw $this->violation('Activity deletion capture crossed an ownership boundary.');
+        }
+
+        return true;
     }
 
     /**

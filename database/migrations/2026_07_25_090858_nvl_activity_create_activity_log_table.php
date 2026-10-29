@@ -22,13 +22,7 @@ return new class extends Migration
         $this->assertCanonicalManagedStorage();
 
         if (Schema::connection(PackageStorage::connection('activity'))->hasTable(ActivityTables::get(ActivityTables::ActivityLog))) {
-            $defaultConnection = config('database.default');
-
-            if (! is_string($defaultConnection) || trim($defaultConnection) === '') {
-                throw new LogicException('The default database connection must be configured for Activity adoption.');
-            }
-
-            $this->assertAdoptableCanonicalTable(Schema::connection($defaultConnection));
+            $this->assertAdoptableCanonicalTable(Schema::connection(PackageStorage::connection('activity')));
 
             return;
         }
@@ -45,7 +39,7 @@ return new class extends Migration
             $table->json('attribute_changes')->nullable();
             $table->json('properties')->nullable();
             $table->uuid('batch_uuid')->nullable();
-            $table->timestamps();
+            $table->timestamps(6);
 
             $table->index(['subject_type', 'subject_id']);
             $table->index(['causer_type', 'causer_id']);
@@ -82,6 +76,7 @@ return new class extends Migration
             'causer_type',
             'causer_id',
             'properties',
+            'attribute_changes',
             'batch_uuid',
             'created_at',
             'updated_at',
@@ -125,10 +120,7 @@ return new class extends Migration
             );
         }
 
-        $jsonColumns = ['properties'];
-        if ($schema->hasColumn(ActivityTables::get(ActivityTables::ActivityLog), 'attribute_changes')) {
-            $jsonColumns[] = 'attribute_changes';
-        }
+        $jsonColumns = ['properties', 'attribute_changes'];
 
         $compatibleJsonTypes = $schema->getConnection()->getDriverName() === 'pgsql'
             ? ['json', 'jsonb']

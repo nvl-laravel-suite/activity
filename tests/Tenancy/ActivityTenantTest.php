@@ -270,12 +270,12 @@ test('timeline host reads apply canonical ownership before hydration', function 
 
 test('serialized retention runs in its producer context and restores the worker owner', function (): void {
     $job = activityOwner(7, function (): PurgeActivityLogsJob {
-        ActivityLog::query()->create(['description' => 'old A', 'created_at' => now()->subDays(120)]);
+        ActivityLog::query()->create(['description' => 'old A', 'created_at' => now()->subDays(120), 'event' => 'created']);
 
         return unserialize(serialize(new PurgeActivityLogsJob(90)));
     });
     activityOwner(8, function () use ($job): void {
-        ActivityLog::query()->create(['description' => 'old B', 'created_at' => now()->subDays(120)]);
+        ActivityLog::query()->create(['description' => 'old B', 'created_at' => now()->subDays(120), 'event' => 'created']);
         app(Dispatcher::class)->dispatchSync($job);
         expect(ActivityLog::query()->pluck('description')->all())->toBe(['old B']);
     });

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use Illuminate\Support\Collection;
-use Spatie\Activitylog\Models\Activity;
+use Nvl\Activity\Models\ActivityLog as Activity;
 
 /**
  * Builds natural-language headlines and summaries for activity entries.
