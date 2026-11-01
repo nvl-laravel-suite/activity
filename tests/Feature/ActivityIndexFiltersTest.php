@@ -34,3 +34,22 @@ test('native activity filters accept timestamp upper bounds', function (): void 
     ActivityLog::query()->create(['description' => 'noon', 'event' => 'created', 'created_at' => '2026-08-01 12:00:00']);
     expect(app(ActivityReader::class)->paginate(['created_at_to' => '2026-08-01 12:00:00'], SystemActor::Background)->total())->toBe(1);
 });
+
+test('activity search treats wildcard and escape characters as literal text', function (string $term): void {
+    $match = ActivityLog::query()->create(['description' => 'literal '.$term.' value', 'event' => 'created']);
+    ActivityLog::query()->create(['description' => 'unrelated value', 'event' => 'created']);
+
+    expect(app(ActivityReader::class)->paginate(['search' => $term], SystemActor::Background)->pluck('id')->all())->toBe([$match->id]);
+    expect(app(ActivityReader::class)->cursor(['search' => $term], SystemActor::Background)['items']->pluck('id')->all())->toBe([$match->id]);
+})->with(['%', '_', '!', '\\', "'", 'Пример']);
+
+test('activity search rejects invalid raw terms on both public read paths', function (string $term): void {
+    expect(fn () => app(ActivityReader::class)->paginate(['search' => $term], SystemActor::Background))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => app(ActivityReader::class)->causers(SystemActor::Background, $term))->toThrow(InvalidArgumentException::class);
+})->with([
+    'oversized literal' => [str_repeat('x', 201)],
+    'oversized whitespace' => [str_repeat(' ', 201)],
+    'leading NUL' => ["\0Operator"],
+    'trailing NUL' => ["Operator\0"],
+    'invalid UTF8' => ["\xff"],
+]);

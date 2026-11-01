@@ -23,6 +23,21 @@ test('causer suggestions do not assume a host user model', function (): void {
     expect($suggestions)->toHaveCount(0);
 });
 
+test('causer suggestions preserve literal wildcard searches', function (string $term): void {
+    Schema::create('activity_test_causers', function (Blueprint $table): void {
+        $table->increments('causer_key');
+        $table->string('name');
+    });
+    config(['nvl-activity.causer_suggestions.model' => TestActivityCauser::class]);
+    $match = TestActivityCauser::query()->create(['name' => 'literal '.$term.' user']);
+    $other = TestActivityCauser::query()->create(['name' => 'unrelated user']);
+    foreach ([$match, $other] as $causer) {
+        ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $causer->getMorphClass(), 'causer_id' => $causer->getKey(), 'event' => 'created']);
+    }
+
+    expect(app(ActivityReader::class)->causers(SystemActor::Background, $term)->modelKeys())->toBe([$match->getKey()]);
+})->with(['%', '_', '!', '\\']);
+
 test('causer suggestions safely reject unavailable configured models', function (): void {
     config()->set('nvl-activity.causer_suggestions.model', AbstractTestActivitySubject::class);
 

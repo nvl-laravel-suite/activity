@@ -20,6 +20,7 @@ use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Contracts\ActivityTimelineSource;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
+use Nvl\Activity\Support\ActivitySearch;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
 use Nvl\Support\Enums\SystemActor;
@@ -383,7 +384,7 @@ final readonly class ActivityReader
         $this->access->authorize($actor, 'causers');
         $this->ownership->attributes();
         $resolvedLimit = min(50, max(1, $limit));
-        $term = trim((string) $search);
+        $term = trim(ActivitySearch::validate((string) $search));
 
         $userClass = $this->resolveCauserModelClass();
         if ($userClass === null) {
@@ -493,7 +494,7 @@ final readonly class ActivityReader
             ->when($term !== '', function (Builder $query) use ($searchAttributes, $searchKey, $term, $userKey, $userTable): void {
                 $query->where(function (Builder $searchQuery) use ($searchAttributes, $searchKey, $term, $userKey, $userTable): void {
                     foreach ($searchAttributes as $attribute) {
-                        $searchQuery->getQuery()->orWhereLike("{$userTable}.{$attribute}", "%{$term}%");
+                        ActivitySearch::contains($searchQuery, "{$userTable}.{$attribute}", $term, or: true);
                     }
 
                     if ($searchKey !== null) {

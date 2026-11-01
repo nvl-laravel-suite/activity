@@ -11,7 +11,6 @@ return [
     'queue' => ['connection' => null, 'name' => null],
     'events' => [],
     'reads' => ['include_soft_deleted_subjects' => false],
-    'name' => 'Activity',
 
     'migrations' => [
         'enabled' => true,
@@ -26,7 +25,6 @@ return [
         'model' => null,
         'label_attribute' => 'name',
         'sublabel_attribute' => 'email',
-        'type_attribute' => 'type',
         'search_attributes' => ['name', 'email'],
         'scan_limit' => 5000,
     ],
@@ -34,7 +32,6 @@ return [
     'retention' => [
         'default_days' => 365,
         'system_logs_days' => 90,
-        'allowed_purge_options' => [90, 365, 730],
         'external_visibility_timeout_seconds' => null,
         'lock_seconds' => 3600,
         'schedule' => [

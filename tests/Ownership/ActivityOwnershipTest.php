@@ -30,7 +30,13 @@ it('captures audit facts and groups subject or causer queries inside their nativ
         $foreign = null;
         foreach ([7, 8] as $id) {
             $runner->run(OwnershipCompany::query()->findOrFail($id), $actor, function () use ($id, $actor, &$foreign): void {
-                $subject = app(OwnershipWriter::class)->create(OwnershipSubject::class, fn (OwnershipAssignment $assignment): OwnershipSubject => OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => $id, 'name' => 'Owned subject']));
+                $subject = app(OwnershipWriter::class)->create(OwnershipSubject::class, function (OwnershipAssignment $assignment) use ($id): OwnershipSubject {
+                    $subject = OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => $id, 'name' => 'Owned subject']);
+                    expect($subject->getKey())->toBe($id)
+                        ->and($subject->getRawOriginal($subject->getKeyName()))->toBe($id);
+
+                    return $subject;
+                });
                 $fact = app(ActivityRecorder::class)->record(['subject' => $subject, 'event' => 'updated'], $actor);
                 expect($fact)->toBeInstanceOf(ActivityLog::class)
                     ->and(ActivityLog::query()->where('subject_id', 7)->orWhere('causer_id', 1)->count())->toBe(1);

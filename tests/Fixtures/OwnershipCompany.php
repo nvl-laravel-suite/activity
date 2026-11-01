@@ -13,5 +13,7 @@ final class OwnershipCompany extends Model
 
     protected $guarded = [];
 
+    public $incrementing = false;
+
     public $timestamps = false;
 }

@@ -140,7 +140,7 @@ return [
     ],
     'api' => [
         'parameters' => [
-            'purge_days' => 'Retention window in days. Accepted values are configured by activity.retention.allowed_purge_options.',
+            'purge_days' => 'Retention window in days. Native retention policy and host authorization determine permitted purges.',
             'include_important' => 'Explicitly include protected important evidence. Defaults to false.',
         ],
     ],

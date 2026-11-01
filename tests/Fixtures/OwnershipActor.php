@@ -13,5 +13,7 @@ final class OwnershipActor extends User
 
     protected $guarded = [];
 
+    public $incrementing = false;
+
     public $timestamps = false;
 }

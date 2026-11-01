@@ -20,6 +20,8 @@ final class OwnershipSubject extends Model implements Ownable
 
     protected $guarded = [];
 
+    public $incrementing = false;
+
     public $timestamps = false;
 
     public static function ownershipDefinition(): OwnershipDefinition

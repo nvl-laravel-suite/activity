@@ -10,6 +10,7 @@ use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
+use Nvl\Activity\Support\ActivitySearch;
 
 /**
  * Dedicated query builder for Activity read concerns.
@@ -248,13 +249,12 @@ final class ActivityLogBuilder extends Builder
     public function applyIndexFilters(array $filters): static
     {
         if (($filters['search'] ?? null) !== null) {
-            $term = $filters['search'];
+            $term = ActivitySearch::validate($filters['search']);
 
             $this->where(function (Builder $query) use ($term): void {
-                $query->whereLike('description', "%{$term}%")
-                    ->orWhereLike('event', "%{$term}%")
-                    ->orWhereLike('log_name', "%{$term}%")
-                    ->orWhereLike('subject_type', "%{$term}%");
+                foreach (['description', 'event', 'log_name', 'subject_type'] as $index => $column) {
+                    ActivitySearch::contains($query, $column, $term, $index !== 0);
+                }
             });
         }
 

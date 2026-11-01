@@ -88,7 +88,11 @@ class ActivityLog extends Model implements Ownable
     }
 
     /** @var list<string> */
-    protected $guarded = [];
+    protected $fillable = [
+        'id', 'log_name', 'description', 'subject_type', 'subject_id', 'event',
+        'causer_type', 'causer_id', 'attribute_changes', 'properties', 'batch_uuid',
+        'created_at', 'updated_at', 'owner_scope_key', 'owner_reference',
+    ];
 
     /** Native JSON casts belong to the package model, independently of logging adapters.
      * @return array<string,string>

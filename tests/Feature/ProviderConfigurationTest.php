@@ -15,6 +15,12 @@ it('resolves legacy and neutral guard names to one scoped state holder', functio
         ->toBe(app(ActivityOwnershipGuard::class));
 });
 
+test('advertised activity defaults omit retired configuration without runtime readers', function (): void {
+    foreach (['name', 'causer_suggestions.type_attribute', 'retention.allowed_purge_options'] as $key) {
+        expect(config()->has('nvl-activity.'.$key))->toBeFalse();
+    }
+});
+
 test('partial consumer config preserves nested activity defaults', function (): void {
     config()->set('nvl-activity', [
         'routes' => [

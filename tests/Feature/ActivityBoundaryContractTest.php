@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\MassAssignmentException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -27,6 +28,21 @@ use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestActivityTimelineSubject;
 use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
 use Nvl\Support\Enums\SystemActor;
+
+test('native activity mass assignment rejects undeclared host columns', function (): void {
+    $previous = ActivityLog::preventsSilentlyDiscardingAttributes();
+    ActivityLog::preventSilentlyDiscardingAttributes(true);
+
+    try {
+        expect(fn () => new ActivityLog(['description' => 'Declared fact', 'unregistered_host_column' => 'unexpected']))
+            ->toThrow(MassAssignmentException::class);
+        $activity = new ActivityLog(['description' => 'Declared fact', 'properties' => ['source' => 'system']]);
+        expect($activity->description)->toBe('Declared fact')
+            ->and($activity->properties?->get('source'))->toBe('system');
+    } finally {
+        ActivityLog::preventSilentlyDiscardingAttributes($previous);
+    }
+});
 
 test('causer normalization honors configured display attributes and scalar actor metadata', function (): void {
     config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');

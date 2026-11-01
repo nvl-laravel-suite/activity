@@ -1,32 +1,68 @@
 ---
 name: nvl-activity
-description: Use native NVL Activity recording, explicit capture scopes, bounded model timelines, semantic mappings, immutable delivery and retention in Laravel consumers.
+description: Use when integrating native Activity recording, explicit model capture, audit timelines, immutable outbox delivery, semantic labels or scoped retention with nvl/activity.
 ---
 
 # NVL Activity
 
-Use PHP 8.4 and Laravel 13. Activity requires Core and has no Spatie Activitylog dependency. Optional Ownership supplies owner admission. Data, TypeScript Transformer and Tenancy are not runtime dependencies. Read the package README for exact native input shapes.
+Activity targets PHP 8.4 and Laravel 13, requires Core and has no Spatie Activitylog dependency.
+Optional Ownership supplies admission; DTO/TypeScript libraries and Tenancy are not runtime dependencies.
+Consumers own transport, presentation, visual headline segments and domain outboxes.
 
-Declare `nvl-activity.events` policies before first use, or register native `ActivityEventPolicy` values during provider boot. Unknown writes and duplicate/late policies fail. Explicit field/metadata allowlists default to empty; `null` intentionally admits bounded native JSON. Policies define actor/subject types, mandatory field redaction, minimum retention (`null` means forever), and audiences. Register every captured CRUD event. Actor policy governs attribution, never execution authority.
+## Portable references
 
-Bind `ActivityAuthorization` for `record`, `read`, `timeline`, `causers`, `purge`. Missing bindings deny. Pass persisted `Authenticatable` or explicitly authorized `SystemActor::Background`; never infer a principal from Request, null, scalar payload or historical facts.
+- [Installation](references/installation.md): provider, exact publish tags, migration ownership and configuration.
+- [Native API](references/api.md): all public declarations, contracts, model capabilities and shaped arrays.
+- [Usage](references/usage.md): event policy setup, capture, immutable delivery, bounded reads and retention examples.
 
-- `ActivityRecorder::record(array $entry, Authenticatable|SystemActor $actor): ActivityLog` implements validation, attribution, redaction, ownership and persistence. Native entry keys are `subject`, `event`, `description`, `log_name`, `context`, `attributes`, `old`, `visibility`, `importance`, `resolve_changes`, `batch_uuid`. Unknown/protected fields fail. Metadata is bounded JSON; omission and explicit null differ for inferred diffs.
-- `recordEnvelope(ActivityRecordEnvelope): ActivityLog` is trusted immutable-fact delivery for a domain outbox. Preserve UUID, subject/causer reference, occurrence time and complete facts across retries. Historical actors may be deleted and are never execution authority. Equal retries return the same row; conflicting facts fail. Envelope delivery does not create an outbox.
-- `ActivityReader::paginate(array $filters, $actor)` returns a Laravel paginator of native ActivityLog rows; page size is 1–100 and exact subject references/event lists are bounded at 100.
-- `ActivityReader::cursor($filters, $actor, $cursor = null)` returns native `items` and opaque `next_cursor` without a total count; it preserves stored microseconds and UUID tie-breaks. Keep filters stable and omit `page`. `find($id, $actor)` hides both missing and inaccessible identities.
-- `ActivityReader::timeline($subject, $actor, $limit = 100, $sources = [])` returns native models; limit is 1–1000, at most ten `ActivityTimelineSource` query implementations, base scan at most 5000. Host sources own subject constraints, source permissions and field selection. Activity adds current owner scope and deterministic ordering. Keep source timestamp storage chronologically sortable.
-- `ActivityReader::causers($actor, $search = null, $limit = 10)` returns fixed safe identity projections, including historical soft-deleted actors when supported.
-- `ActivityPurgeDispatcher::dispatch($criteria, $actor)` and `count($criteria, $actor)` operate only in the admitted scope. Jobs capture native ownership and retain locks, bounded chunks and retry/failure behavior. The queue request/event follow the Activity connection's outer commit; local callbacks do not promise crash-durable delivery.
+Read usage for capability selection and API before assembling native arguments.
+Read installation when creating a consumer or changing storage/adoption.
+All local references remain available after Laravel Boost publication.
 
-Restricted audiences (`administrative`, `subject`, `actor`, `subject_or_actor`) filter SQL before counts and pagination. Explicit `read_all` host authorization overrides audiences within admitted ownership. Event minimum retention constrains every purge; unknown and forever events are preserved. Canonical changes are in `attribute_changes`, never duplicated into `properties`. Native Eloquent mutation is append-only; privileged raw SQL is outside that guarantee.
+## Define events before writing
 
-Register `ActivityMapping` implementations with `MappingRegistry` and use `HasModelActivity`. Mappings return native `ActivityCaptureOptions`, e.g. `new ActivityCaptureOptions(['name', 'status'])`; no wildcard fields or third-party log options. Soft restoration emits one restored fact; quiet/bulk business writes require explicit recording. Wrap mapped model mutations in `ActivityCaptureContext::run($actor, fn () => ...)`; the scope restores nested state in `finally`. Use the model connection's transaction when audit/model writes share a connection. Different database connections cannot share rollback. Unmapped models remain silent. Do not emit duplicate manual facts for automatically captured CRUD unless a separate semantic event is needed.
+Declare `nvl-activity.events` before first catalog use, or register `ActivityEventPolicy` during boot.
+Unknown events and duplicate/late policy registration fail.
+Empty field/metadata allowlists admit none; explicit null admits bounded native JSON.
+Policies define attribution types, redaction, audiences and minimum retention.
+Null retention means forever, including during requested purges.
+Actor policy governs attribution; execution still needs host permission.
 
-Keep business context meaningful, diffs narrow, technical noise suppressed and mappings deterministic. `LabelResolver`, `HeadlineRenderer` and `ActivityDiffBuilder` retain semantic labels, plain-text headlines and documented diff arrays. Consumers own visual headline segments, merged-source presentation, Actions, HTTP routes/controllers/resources, DTO libraries and frontend types. Never recreate package transport DTOs or compatibility facades.
+## Choose the complete capability
 
-Useful model reads retain immutable ownership and canonical relation admission. Never weaken fresh admission or cache authority to meet a query budget. Measure protected row SQL separately from schema/admission probes. Do not hydrate foreign subjects or arbitrary security attributes; causers expose only fixed identity columns.
+- `ActivityRecorder::record`: validate, authorize, redact and persist one explicit semantic fact.
+- `recordEnvelope`: idempotently deliver already-authorized immutable facts from a domain outbox.
+- `ActivityCaptureContext::run` with `HasModelActivity` and mappings: capture native CRUD facts.
+- `ActivityReader::paginate` / `cursor` / `find`: admitted native history reads.
+- `ActivityReader::timeline`: merge bounded subject history with host-owned query sources.
+- `ActivityReader::causers`: safe historical actor identity projections.
+- `MappingRegistry`, `LabelResolver`, `HeadlineRenderer`, `ActivityDiffBuilder`: semantic presentation facts.
+- `ActivityPurgeDispatcher::count` / `dispatch`: preview or queue scoped policy-constrained retention.
 
-Verify explicit principal denial, pre-mutation capture denial, metadata/redaction, direct service inputs, deterministic bounds, owner isolation/quarantine, host rollback/outer commit, replay conflicts, safe relations and retained retention behavior. Use the owning package suite, Pint and configured maximum PHPStan; verify optional libraries physically absent in an independent no-dev installation.
+## Supply explicit execution authority
 
-Configure `nvl-activity.models.activity_log` before provider boot to select a concrete subclass of `Nvl\Activity\Models\ActivityLog`. Native recording, reads, capture, retention jobs, factories and Ownership adoption use that class. Existing morph aliases remain readable. The selection is immutable for the application lifetime. Subclasses may add attributes, casts, accessors and relations while retaining native UUID identity, required casts, query/persistence hooks and the package ownership declaration. Native invariant listeners are final; add listeners through an observer or a bootable trait. Storage remains package-configured: the selected model must use the native effective table and connection. Added columns require host migrations. This does not replace timeline source models or historical subject/causer classes.
+Bind `ActivityAuthorization`; missing permission decisions deny, including background calls.
+Pass persisted Authenticatable actors or an explicitly authorized `SystemActor::Background`.
+Never infer authority from Request, null, scalar historical attribution or captured source facts.
+Restricted audiences filter SQL before counts/pages; `read_all` overrides only within admitted ownership.
+Custom timeline sources own subject predicates, permissions and field selection.
+
+## Preserve immutable facts and transactions
+
+Native fact rows are append-only; retention owns deletion.
+Record/envelope writes use the actual Activity source connection and join its enclosing transaction.
+Different source connections cannot share rollback; use a domain outbox where needed.
+Envelope UUID, occurrence instant, subject/causer references and all facts must survive retries unchanged.
+Equal delivery returns the same row; conflicting facts reject.
+The envelope API does not create a durable outbox.
+Capture scopes restore nested state in `finally`; quiet/bulk writes need explicit semantic recording.
+
+## Models, reads and retention
+
+Configure `models.activity_log` before boot to a compatible ActivityLog subclass.
+Preserve native UUIDs, casts, query/persistence hooks, ownership and package table/connection.
+Add native listeners through observers or traits; invariant listeners remain final.
+Use bounded native projections; do not hydrate arbitrary actor security attributes.
+Purge queue requests/events follow outer commit through process-local callbacks.
+Once queued, jobs retain captured owner scope, locks, bounded chunks, backoff and failure handling.
+Use `nvl:activity:doctor`, `nvl:activity:purge` and `nvl:activity:purge-system` as documented in usage.
