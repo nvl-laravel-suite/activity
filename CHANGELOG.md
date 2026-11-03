@@ -5,6 +5,10 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [7.0.0] - 2026-11-03
+
+- Adopt the reviewed NVL 7 family for PHP 8.4+ and Laravel 13, with compatible required and optional NVL peers. Review the package upgrade guide before deployment.
+
 - Replace Spatie Activitylog with native Eloquent storage, recording, explicit-field CRUD capture and canonical diffs.
 - Add closed event policies for admitted fields, attribution, redaction, SQL audience filtering and minimum retention.
 - Enforce append-only Eloquent mutation boundaries and retain immutable envelope replay checks and optional Ownership.
