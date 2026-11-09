@@ -391,7 +391,9 @@ public const string DEFAULT_TABLE=\Nvl\Activity\Definitions\Tables\ActivityTable
 public function causer(): Illuminate\Database\Eloquent\Relations\MorphTo
 @return ActivityMorphTo<$this>
 resolved @return Nvl\Activity\Ownership\ActivityMorphTo<$this>
-public function delete(): ?bool
+public function delete(): mixed
+@return ($this is Pivot ? (bool | int | null) : (bool | null))
+resolved @return ($this is Illuminate\Database\Eloquent\Relations\Pivot ? (bool | int | null) : (bool | null))
 public static function forDisplay(): Nvl\Activity\Builders\ActivityLogBuilder
 public static function forSubjectTimeline(string $subjectType, string|int|array $subjectId): Nvl\Activity\Builders\ActivityLogBuilder
 @param (string | int | list<(string | int)>) $subjectId
