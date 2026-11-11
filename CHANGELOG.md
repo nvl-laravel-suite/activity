@@ -5,6 +5,8 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [7.0.2] - 2026-11-11
+
 ### Fixed
 
 - Keep builder-level `forceDelete()`, `updateOrInsert()` and `updateFrom()` on the activity log inside the ownership boundary by adopting Core's owned write trait on the activity log builder. Require Core 7.0.6.
@@ -25,6 +27,12 @@ All notable changes to `nvl/activity` are documented here.
 - Remove `retention.external_visibility_timeout_seconds`; the Doctor now reads the visibility timeout from the queue connection's `retry_after`.
 - Reject page offsets that overflow instead of returning the first page, name at most five fields in an update headline and quote at most 255 characters of a changed value.
 - Remove the no-op `TimelineFilter::deduplicateByTimestamp()`, the provider's `provides()` list and empty `src/Http`, `routes` and `database/tenancy-migrations` directories.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- correct capture, filters, purge and timezone handling
+<!-- NVL GENERATED CHANGES END -->
 
 ## [7.0.1] - 2026-11-09
 
