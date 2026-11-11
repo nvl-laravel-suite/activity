@@ -69,6 +69,5 @@ it('keeps host global activity storage while recording and capturing into NVL st
 it('never adopts third party global activity storage', function (): void {
     $this->adoptGlobalActivityStorage = true;
     $this->refreshApplication();
-    $this->runDatabaseMigrations();
     expect(config('activitylog.activity_model'))->toBe(HostActivity::class);
 });

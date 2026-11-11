@@ -54,7 +54,6 @@ test('partial consumer config preserves nested activity defaults', function (): 
         ->and(config('nvl-activity.routes.timeline_subjects'))->toBe([TestActivityTimelineSubject::class])
         ->and(config('nvl-activity.authorization.abilities.view'))->toBe('activity.custom-view')
         ->and(config('nvl-activity.authorization.abilities.timeline'))->toBeNull()
-        ->and(config('nvl-activity.causer_suggestions.label_attribute'))->toBe('name')
         ->and(config('nvl-activity.causer_suggestions.search_attributes'))->toBe(['username'])
         ->and(config('nvl-activity.capture.ignored_attributes'))->toBe(['revision']);
 });

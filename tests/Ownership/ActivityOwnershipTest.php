@@ -110,3 +110,22 @@ it('keeps automatic create update and deleted-subject evidence in the captured o
 
     });
 });
+
+it('records an owned actor deleting its own record inside the captured owner', function (): void {
+    app(MappingRegistry::class)->register(new TestActivityMapping(OwnershipSubject::class));
+    $runner = app(OwnershipRunner::class);
+    $operator = OwnershipActor::query()->firstOrFail();
+    $runner->run(OwnershipCompany::query()->findOrFail(7), $operator, function (): void {
+        $account = app(ActivityCaptureContext::class)->run(SystemActor::Background, fn () => app(OwnershipWriter::class)->create(OwnershipSubject::class, fn (OwnershipAssignment $assignment): OwnershipSubject => OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => 31, 'name' => 'Departing'])));
+
+        app(ActivityCaptureContext::class)->run($account, fn () => $account->delete());
+
+        $fact = ActivityLog::query()->where('event', 'deleted')->sole();
+        expect(OwnershipSubject::query()->count())->toBe(0)
+            ->and($fact->causer_type)->toBe($account->getMorphClass())
+            ->and($fact->causer_id)->toBe('31')
+            ->and($fact->subject_id)->toBe('31')
+            ->and($fact->owner_scope_key)->toBe(ActivityLog::query()->where('event', 'created')->sole()->owner_scope_key);
+    });
+    $runner->run(OwnershipCompany::query()->findOrFail(8), $operator, fn () => expect(ActivityLog::query()->count())->toBe(0));
+});

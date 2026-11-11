@@ -14,7 +14,7 @@
         "ext-mbstring": "*",
         "laravel/framework": "^13.0",
         "nesbot/carbon": "^2.72 || ^3.0",
-        "nvl/core": "^7.0",
+        "nvl/core": "^7.0.6",
         "php": "^8.4"
     },
     "require-dev": {
@@ -71,7 +71,6 @@
         "exclude": [
             "/database/factories/.gitkeep",
             "/database/seeders/.gitkeep",
-            "/src/Http/Controllers/.gitkeep",
             "/src/Providers/.gitkeep",
             "/.temp",
             "/build",

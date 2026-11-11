@@ -75,18 +75,20 @@ final class ActivityPolicyRegistry
             if (! $actor instanceof Model) {
                 return;
             }
+            $actorId = $actor->getKey();
+            $actorId = is_int($actorId) ? (string) $actorId : $actorId;
             foreach ($restricted as $policy) {
                 if ($policy->audience === 'administrative') {
                     continue;
                 }
-                $query->orWhere(function (Builder $event) use ($policy, $actor): void {
-                    $event->where('event', $policy->event)->where(function (Builder $identities) use ($policy, $actor): void {
+                $query->orWhere(function (Builder $event) use ($policy, $actor, $actorId): void {
+                    $event->where('event', $policy->event)->where(function (Builder $identities) use ($policy, $actor, $actorId): void {
                         $identities->whereRaw('1 = 0');
                         foreach (['subject', 'causer'] as $side) {
                             if (($side === 'subject' && $policy->audience === 'actor') || ($side === 'causer' && $policy->audience === 'subject')) {
                                 continue;
                             }
-                            $identities->orWhere(fn (Builder $reference) => $reference->where($side.'_type', $actor->getMorphClass())->where($side.'_id', $actor->getKey()));
+                            $identities->orWhere(fn (Builder $reference) => $reference->where($side.'_type', $actor->getMorphClass())->where($side.'_id', $actorId));
                         }
                     });
                 });

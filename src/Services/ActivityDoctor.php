@@ -52,7 +52,7 @@ final class ActivityDoctor
                 $this->columnCheck($schema, $table, $exists),
                 $this->identifierCheck($schema, $table, $exists),
                 $this->jsonCheck($schema, $table, $exists, $driver),
-                $this->indexCheck($schema, $table, $exists),
+                $this->indexCheck($schema, $table, $exists, $driver),
             ];
         } catch (Throwable) {
             $schemaChecks = [$this->connectionCheck(false)];
@@ -147,13 +147,8 @@ final class ActivityDoctor
             $storageValid = false;
         }
         $migrationsEnabled = config('nvl-activity.migrations.enabled');
-        $externalVisibilityTimeout = config(
-            'nvl-activity.retention.external_visibility_timeout_seconds',
-        );
         $passed = is_bool($migrationsEnabled)
             && is_bool(config('nvl-activity.retention.schedule.enabled'))
-            && ($externalVisibilityTimeout === null
-                || (is_int($externalVisibilityTimeout) && $externalVisibilityTimeout > 0))
             && trim($table) !== ''
             && ($connection === null || trim($connection) !== '')
             && $storageValid;
@@ -343,7 +338,7 @@ final class ActivityDoctor
      *
      * @return array{key:string,severity:ActivityDoctorSeverity,passed:bool,message:string}
      */
-    private function indexCheck(Builder $schema, string $table, bool $exists): array
+    private function indexCheck(Builder $schema, string $table, bool $exists, string $driver): array
     {
         if (! $exists) {
             return $this->check(
@@ -365,6 +360,9 @@ final class ActivityDoctor
             $required,
             fn (array $columns): bool => ! $this->hasIndexColumns($indexes, $columns),
         ));
+        if ($driver === 'pgsql' && ! $schema->hasIndex($table, str_replace('.', '_', $table).'_newest_first_index')) {
+            $missing[] = ['created_at DESC NULLS LAST', 'id DESC'];
+        }
 
         return $this->check(
             key: 'schema.indexes',
@@ -437,17 +435,10 @@ final class ActivityDoctor
             return $this->check('retention.queue', ActivityDoctorSeverity::Warning, false, $exception->getMessage());
         }
         $connections = config('queue.connections');
-        $externalVisibilityTimeout = config(
-            'nvl-activity.retention.external_visibility_timeout_seconds',
-        );
         $passed = trim($queue) !== ''
             && trim($defaultConnection) !== ''
             && is_array($connections)
-            && $this->queueConnectionHasSafeVisibility(
-                trim($defaultConnection),
-                $connections,
-                is_int($externalVisibilityTimeout) ? $externalVisibilityTimeout : null,
-            );
+            && $this->queueConnectionHasSafeVisibility(trim($defaultConnection), $connections);
 
         return $this->check(
             key: 'retention.queue',
@@ -472,7 +463,6 @@ final class ActivityDoctor
     private function queueConnectionHasSafeVisibility(
         string $connectionName,
         array $connections,
-        ?int $externalVisibilityTimeout,
         array $visited = [],
     ): bool {
         if ($connectionName === '' || in_array($connectionName, $visited, true)) {
@@ -513,7 +503,6 @@ final class ActivityDoctor
                     || ! $this->queueConnectionHasSafeVisibility(
                         trim($failoverConnection),
                         $connections,
-                        $externalVisibilityTimeout,
                         $visited,
                     )) {
                     return false;
@@ -523,15 +512,9 @@ final class ActivityDoctor
             return true;
         }
 
-        if (array_key_exists('retry_after', $connection)) {
-            $retryAfter = $connection['retry_after'];
+        $retryAfter = $connection['retry_after'] ?? null;
 
-            return is_int($retryAfter)
-                && $retryAfter > PurgeActivityLogsJob::TIMEOUT_SECONDS;
-        }
-
-        return $externalVisibilityTimeout !== null
-            && $externalVisibilityTimeout > PurgeActivityLogsJob::TIMEOUT_SECONDS;
+        return is_int($retryAfter) && $retryAfter > PurgeActivityLogsJob::TIMEOUT_SECONDS;
     }
 
     /**

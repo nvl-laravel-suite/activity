@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Nvl\Activity\Traits;
 
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use InvalidArgumentException;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Services\ActivityAccess;
@@ -16,7 +19,11 @@ use Nvl\Activity\Services\ActivityCaptureContext;
 use Nvl\Activity\Services\ActivityModelRegistry;
 use Nvl\Activity\Services\ActivityPolicyRegistry;
 use Nvl\Activity\Services\ActivityRecorder;
+use Nvl\Activity\Support\ActivityCauserReference;
 use Nvl\Activity\Support\ActivityMetadata;
+use Nvl\Activity\Support\ActivityRecordEnvelope;
+use Nvl\Activity\Support\ActivitySubjectMorphMany;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Support\Enums\SystemActor;
 
@@ -31,7 +38,7 @@ use Nvl\Support\Enums\SystemActor;
  */
 trait HasModelActivity
 {
-    /** @var array<string,array{attributes:array<string,mixed>,old:array<string,mixed>}> */
+    /** @var array<string,array{attributes:array<string,mixed>,old:array<string,mixed>,deletedActor:?ActivityCauserReference}> */
     private array $nativeActivityChanges = [];
 
     protected static function bootHasModelActivity(): void
@@ -54,7 +61,8 @@ trait HasModelActivity
                 $original = (clone $model)->setRawAttributes($model->getRawOriginal());
                 $old = $original->nativeActivityValues($options->fields);
                 if ($event === 'updated' && $options->onlyDirty) {
-                    $values = array_filter($values, static fn (mixed $value, string $field): bool => ! array_key_exists($field, $old) || $old[$field] !== $value, ARRAY_FILTER_USE_BOTH);
+                    $values = array_filter($values, static fn (mixed $value, string $field): bool => ! array_key_exists($field, $old)
+                        || ($old[$field] !== $value && ! $model->originalIsEquivalent(explode('.', $field, 2)[0])), ARRAY_FILTER_USE_BOTH);
                     $old = array_intersect_key($old, $values);
                 }
                 if ($event === 'created') {
@@ -69,7 +77,7 @@ trait HasModelActivity
                 $actor = app(ActivityCaptureContext::class)->actor();
                 app(ActivityAccess::class)->authorize($actor, 'record', $model);
                 app(ActivityPolicyRegistry::class)->get($event)->prepare($model->getMorphClass(), $actor instanceof Model ? $actor->getMorphClass() : null, $actor instanceof SystemActor, $values, $old, []);
-                $model->nativeActivityChanges[$event] = ['attributes' => $values, 'old' => $old];
+                $model->nativeActivityChanges[$event] = ['attributes' => $values, 'old' => $old, 'deletedActor' => $event === 'deleted' ? self::actorDeletingItself($actor, $model) : null];
             });
             static::registerModelEvent($event, static function (self $model) use ($event): void {
                 $changes = $model->nativeActivityChanges[$event] ?? null;
@@ -78,12 +86,42 @@ trait HasModelActivity
                     return;
                 }
                 $mapping = ModelActivityMappingResolver::forModel($model);
+                $deletedActor = $changes['deletedActor'];
+                if ($deletedActor !== null) {
+                    app(ActivityOwnershipGuard::class)->consumeDeletingSubject($model);
+                    app(ActivityRecorder::class)->recordEnvelope(new ActivityRecordEnvelope(
+                        id: ActivityModelRegistry::newInstance()->newUniqueId(),
+                        subject: new ActivitySubjectReference($deletedActor->type, $deletedActor->id), causer: $deletedActor,
+                        event: $event, logName: trim($mapping?->logName() ?? '') ?: 'default', occurredAt: CarbonImmutable::now(),
+                        attributes: $changes['attributes'], old: $changes['old'],
+                    ));
+
+                    return;
+                }
                 app(ActivityRecorder::class)->record([
                     'subject' => $event === 'created' ? (clone $model)->syncOriginal() : $model, 'event' => $event, 'log_name' => $mapping?->logName() ?? 'default',
                     'attributes' => $changes['attributes'], 'old' => $changes['old'], 'resolve_changes' => false,
                 ], app(ActivityCaptureContext::class)->actor());
             });
         }
+    }
+
+    /**
+     * Identify an admitted actor that is the record being deleted: its row is gone or trashed
+     * once the fact is written, so the fact is delivered as an already-authorized envelope.
+     */
+    private static function actorDeletingItself(Authenticatable|SystemActor $actor, Model $model): ?ActivityCauserReference
+    {
+        if (! $actor instanceof Model || $actor::class !== $model::class || ! $actor->is($model)) {
+            return null;
+        }
+        $causer = app(ActivityOwnershipGuard::class)->canonicalCauser($actor);
+        $identifier = $causer->getKey();
+        if (! is_string($identifier) && ! is_int($identifier)) {
+            throw new InvalidArgumentException('Activity causers require scalar identities.');
+        }
+
+        return new ActivityCauserReference($causer->getMorphClass(), $identifier);
     }
 
     /** @param list<string> $fields
@@ -130,6 +168,8 @@ trait HasModelActivity
     /** @return MorphMany<ActivityLog,$this> @internal */
     public function activitiesAsSubject(): MorphMany
     {
-        return $this->morphMany(ActivityModelRegistry::modelClass(), 'subject');
+        $related = $this->newRelatedInstance(ActivityModelRegistry::modelClass());
+
+        return new ActivitySubjectMorphMany($related->newQuery(), $this, $related->qualifyColumn('subject_type'), $related->qualifyColumn('subject_id'), $this->getKeyName());
     }
 }

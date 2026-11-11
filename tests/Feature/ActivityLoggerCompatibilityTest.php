@@ -36,8 +36,13 @@ test('native capture options declare bounded fields and lifecycle events', funct
 });
 
 test('the canonical activity model rejects an empty configured table', function (): void {
+    $configured = config('nvl-activity.tables.log');
     config()->set('nvl-activity.tables.log', ' ');
-    (new ActivityLog)->getTable();
+    try {
+        (new ActivityLog)->getTable();
+    } finally {
+        config()->set('nvl-activity.tables.log', $configured);
+    }
 })->throws(ActivityConfigurationException::class, 'Activity table name cannot be empty.');
 
 test('event policies reject unregistered facts and enforce redaction before persistence', function (): void {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -51,9 +52,10 @@ final class ActivityRecorder
 
         $properties = $this->envelopeProperties($envelope);
         $model = ActivityModelRegistry::newInstance();
+        $occurredAt = $this->storedOccurrence($envelope);
 
         try {
-            return $model->getConnection()->transaction(static function () use ($envelope, $properties): ActivityLog {
+            return $model->getConnection()->transaction(static function () use ($envelope, $properties, $occurredAt): ActivityLog {
                 return ActivityModelRegistry::query()->create([
                     'id' => $envelope->id,
                     'subject_type' => $envelope->subject->type,
@@ -65,8 +67,8 @@ final class ActivityRecorder
                     'description' => $envelope->event,
                     'properties' => array_diff_key($properties, ['attributes' => true, 'old' => true]),
                     'attribute_changes' => ['attributes' => $properties['attributes'], 'old' => $properties['old']],
-                    'created_at' => $envelope->occurredAt->utc(),
-                    'updated_at' => $envelope->occurredAt->utc(),
+                    'created_at' => $occurredAt,
+                    'updated_at' => $occurredAt,
                 ]);
             });
         } catch (UniqueConstraintViolationException $exception) {
@@ -77,6 +79,26 @@ final class ActivityRecorder
 
             return $this->assertMatchingEnvelope($existing, $envelope);
         }
+    }
+
+    /** Express the occurrence as the application-timezone wall clock Eloquent stores for every other fact. */
+    private function storedOccurrence(ActivityRecordEnvelope $envelope): CarbonImmutable
+    {
+        return $envelope->occurredAt->setTimezone(date_default_timezone_get());
+    }
+
+    /**
+     * The wall clocks one occurrence may be stored as: the application timezone, and the UTC
+     * wall clock written by releases that predate the application-timezone convention.
+     *
+     * @return list<string>
+     */
+    private function storedOccurrenceForms(ActivityRecordEnvelope $envelope): array
+    {
+        return [
+            $this->storedOccurrence($envelope)->format('Y-m-d H:i:s.u'),
+            $envelope->occurredAt->utc()->format('Y-m-d H:i:s.u'),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -117,7 +139,7 @@ final class ActivityRecorder
             || $existing->event !== $envelope->event
             || $existing->log_name !== $envelope->logName
             || $existing->description !== $envelope->event
-            || $existing->created_at?->format('Y-m-d H:i:s.u') !== $envelope->occurredAt->utc()->format('Y-m-d H:i:s.u')
+            || ! in_array($existing->created_at?->format('Y-m-d H:i:s.u'), $this->storedOccurrenceForms($envelope), true)
             || count($actualPayload) !== count($expected)
             || json_encode($this->canonicalEnvelopeValue($actualPayload), JSON_THROW_ON_ERROR)
                 !== json_encode($this->canonicalEnvelopeValue($expected), JSON_THROW_ON_ERROR)) {
@@ -177,11 +199,6 @@ final class ActivityRecorder
         }
         $description = $this->text($entry['description'] ?? '', 65535);
         $logName = $this->text($entry['log_name'] ?? '', 255);
-        foreach (['description', 'log_name'] as $key) {
-            if (array_key_exists($key, $entry) && (! is_string($entry[$key]) || str_contains($entry[$key], "\0") || mb_strlen($entry[$key]) > ($key === 'description' ? 65535 : 255))) {
-                throw new InvalidArgumentException('Invalid Activity '.$key.'.');
-            }
-        }
         if (array_key_exists('resolve_changes', $entry) && ! is_bool($entry['resolve_changes'])) {
             throw new InvalidArgumentException('Activity resolve_changes must be boolean.');
         }
@@ -236,10 +253,10 @@ final class ActivityRecorder
         });
     }
 
-    /** Validate optional descriptive text without converting caller objects. */
+    /** Validate optional descriptive text without converting caller objects; TEXT columns hold 65,535 bytes. */
     private function text(mixed $value, int $limit): string
     {
-        if (! is_string($value) || str_contains($value, "\0") || mb_strlen($value) > $limit) {
+        if (! is_string($value) || str_contains($value, "\0") || mb_strlen($value) > $limit || strlen($value) > 65535) {
             throw new InvalidArgumentException('Invalid Activity descriptive text.');
         }
 

@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Builders;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Activity\Support\ActivitySearch;
+use Nvl\Support\Ownership\Traits\ScopesOwnedBuilderWrites;
 
 /**
  * Dedicated query builder for Activity read concerns.
@@ -19,13 +22,28 @@ use Nvl\Activity\Support\ActivitySearch;
  */
 final class ActivityLogBuilder extends Builder
 {
+    use ScopesOwnedBuilderWrites;
+
     /**
-     * Apply the default newest-first ordering for activity reads.
+     * Apply the default newest-first ordering for activity reads, keeping undated legacy rows last.
+     *
+     * MySQL, MariaDB and SQLite already sort NULL last in descending order, so the
+     * (created_at, id) index serves the sort. PostgreSQL states the NULL order its
+     * dedicated newest-first index declares; other drivers need the explicit NULL rank.
      */
     public function newestFirst(): static
     {
-        return $this->orderByRaw('CASE WHEN created_at IS NULL THEN 1 ELSE 0 END')->orderByDesc('created_at')
-            ->orderByDesc('id');
+        $driver = $this->getModel()->getConnection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            return $this->orderByRaw('created_at DESC NULLS LAST')->orderByDesc('id');
+        }
+
+        if (! in_array($driver, ['mysql', 'mariadb', 'sqlite'], true)) {
+            $this->orderByRaw('CASE WHEN created_at IS NULL THEN 1 ELSE 0 END');
+        }
+
+        return $this->orderByDesc('created_at')->orderByDesc('id');
     }
 
     /**
@@ -40,7 +58,7 @@ final class ActivityLogBuilder extends Builder
     /**
      * Apply the Activity index listing query profile.
      */
-    /** @param array{search?:string|null,event?:string|null,events?:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,created_at_from?:\DateTimeInterface|string|null,created_at_to?:\DateTimeInterface|string|null} $filters */
+    /** @param array{search?:string|null,event?:string|null,events?:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,created_at_from?:DateTimeInterface|string|null,created_at_to?:DateTimeInterface|string|null} $filters */
     public function forIndex(array $filters): static
     {
         return $this->applyIndexFilters($filters);
@@ -56,9 +74,9 @@ final class ActivityLogBuilder extends Builder
         $this->where('subject_type', $subjectType);
 
         if (is_array($subjectId)) {
-            $this->whereIn('subject_id', $subjectId);
+            $this->whereIn('subject_id', array_map(strval(...), $subjectId));
         } else {
-            $this->where('subject_id', $subjectId);
+            $this->where('subject_id', (string) $subjectId);
         }
 
         return $this;
@@ -69,7 +87,7 @@ final class ActivityLogBuilder extends Builder
      */
     public function withinDateRange(CarbonInterface $startDate, CarbonInterface $endDate): static
     {
-        return $this->whereBetween('created_at', [$startDate, $endDate]);
+        return $this->whereBetween('created_at', [$this->storedTimestamp($startDate), $this->storedTimestamp($endDate)]);
     }
 
     /**
@@ -77,7 +95,7 @@ final class ActivityLogBuilder extends Builder
      */
     public function olderThan(CarbonInterface $cutoff): static
     {
-        return $this->where('created_at', '<', $cutoff->format('Y-m-d H:i:s.u'));
+        return $this->where('created_at', '<', $this->storedTimestamp($cutoff));
     }
 
     /**
@@ -85,7 +103,13 @@ final class ActivityLogBuilder extends Builder
      */
     public function newerThanOrEqual(CarbonInterface $cutoff): static
     {
-        return $this->where('created_at', '>=', $cutoff->format('Y-m-d H:i:s.u'));
+        return $this->where('created_at', '>=', $this->storedTimestamp($cutoff));
+    }
+
+    /** Format an instant as the application-timezone wall clock Eloquent stores for every fact. */
+    private function storedTimestamp(DateTimeInterface|string $instant): string
+    {
+        return CarbonImmutable::parse($instant)->setTimezone(date_default_timezone_get())->format('Y-m-d H:i:s.u');
     }
 
     /**
@@ -164,12 +188,12 @@ final class ActivityLogBuilder extends Builder
     /**
      * Restrict the query to one or more subject identifiers.
      *
-     * @param  list<string>  $subjectIds
+     * @param  list<string|int>  $subjectIds
      */
     public function whereSubjectIds(array $subjectIds): static
     {
         if ($subjectIds !== []) {
-            $this->whereIn('subject_id', $subjectIds);
+            $this->whereIn('subject_id', array_map(strval(...), $subjectIds));
         }
 
         return $this;
@@ -192,12 +216,12 @@ final class ActivityLogBuilder extends Builder
     /**
      * Restrict the query to one or more causer identifiers.
      *
-     * @param  list<string>  $causerIds
+     * @param  list<string|int>  $causerIds
      */
     public function whereCauserIds(array $causerIds): static
     {
         if ($causerIds !== []) {
-            $this->whereIn('causer_id', $causerIds);
+            $this->whereIn('causer_id', array_map(strval(...), $causerIds));
         }
 
         return $this;
@@ -245,7 +269,7 @@ final class ActivityLogBuilder extends Builder
     /**
      * Apply index filters without exposing HTTP concerns in callers.
      */
-    /** @param array{search?:string|null,event?:string|null,events?:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,created_at_from?:\DateTimeInterface|string|null,created_at_to?:\DateTimeInterface|string|null} $filters */
+    /** @param array{search?:string|null,event?:string|null,events?:list<string>,causer_id?:string|int|null,subject_type?:string|null,subject_id?:string|int|null,created_at_from?:DateTimeInterface|string|null,created_at_to?:DateTimeInterface|string|null} $filters */
     public function applyIndexFilters(array $filters): static
     {
         if (($filters['search'] ?? null) !== null) {
@@ -265,7 +289,7 @@ final class ActivityLogBuilder extends Builder
         }
 
         if (($filters['causer_id'] ?? null) !== null) {
-            $this->where('causer_id', $filters['causer_id']);
+            $this->where('causer_id', (string) $filters['causer_id']);
         }
 
         if (($filters['subject_type'] ?? null) !== null) {
@@ -273,15 +297,15 @@ final class ActivityLogBuilder extends Builder
         }
 
         if (($filters['subject_id'] ?? null) !== null) {
-            $this->where('subject_id', $filters['subject_id']);
+            $this->where('subject_id', (string) $filters['subject_id']);
         }
 
         if (($filters['created_at_from'] ?? null) !== null) {
-            $this->where('created_at', '>=', $filters['created_at_from'] instanceof \DateTimeInterface ? $filters['created_at_from']->format('Y-m-d H:i:s.u') : $filters['created_at_from']);
+            $this->where('created_at', '>=', $this->storedTimestamp($filters['created_at_from']));
         }
 
         if (($filters['created_at_to'] ?? null) !== null) {
-            $this->where('created_at', '<=', $filters['created_at_to'] instanceof \DateTimeInterface ? $filters['created_at_to']->format('Y-m-d H:i:s.u') : $filters['created_at_to']);
+            $this->where('created_at', '<=', $this->storedTimestamp($filters['created_at_to']));
         }
 
         return $this;

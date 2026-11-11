@@ -23,8 +23,6 @@ return [
          * Activity causers come from another Eloquent model.
          */
         'model' => null,
-        'label_attribute' => 'name',
-        'sublabel_attribute' => 'email',
         'search_attributes' => ['name', 'email'],
         'scan_limit' => 5000,
     ],
@@ -32,7 +30,6 @@ return [
     'retention' => [
         'default_days' => 365,
         'system_logs_days' => 90,
-        'external_visibility_timeout_seconds' => null,
         'lock_seconds' => 3600,
         'schedule' => [
             'enabled' => false,

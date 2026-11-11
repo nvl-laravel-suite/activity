@@ -9,14 +9,19 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Contracts\ActivityAuthorization;
+use Nvl\Activity\Contracts\ActivityMapping;
 use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Services\ActivityCaptureContext;
 use Nvl\Activity\Services\ActivityPolicyRegistry;
+use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\MappingRegistry;
+use Nvl\Activity\Support\ActivityCaptureOptions;
 use Nvl\Activity\Support\ActivityEventPolicy;
+use Nvl\Activity\Tests\Stubs\TestActivityAccount;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
 use Nvl\Activity\Tests\Stubs\TestActivitySubjectWithHasModelActivity;
+use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityAccount;
 use Nvl\Activity\Traits\HasModelActivity;
 use Nvl\Support\Enums\SystemActor;
 
@@ -240,8 +245,9 @@ test('nullable mapped updates are authorized before source mutation', function (
     $operation = $denyPolicy
         ? fn () => app(ActivityCaptureContext::class)->run(SystemActor::Background, $update)
         : $update;
+    $level = DB::transactionLevel();
     expect($operation)->toThrow(AuthorizationException::class);
-    expect(DB::transactionLevel())->toBe(0)
+    expect(DB::transactionLevel())->toBe($level)
         ->and($subject->fresh()->name)->toBeNull()
         ->and(ActivityLog::query()->count())->toBe(0);
 })->with(['missing capture context' => false, 'denied host policy' => true]);
@@ -307,4 +313,128 @@ test('native capture preserves cast values and emits one event per soft lifecycl
     expect($facts->pluck('event')->all())->toBe(['created', 'updated', 'deleted', 'restored'])
         ->and($facts[1]->attribute_changes->get('attributes'))->toBe(['name' => ['en' => 'Changed']])
         ->and($facts[1]->attribute_changes->get('old'))->toBe(['name' => ['en' => 'Initial']]);
+});
+
+test('an actor deleting its own record still records the admitted deletion', function (bool $soft, bool $sameInstance, bool $inTransaction): void {
+    if ($soft) {
+        Schema::table('activity_mapping_subjects', function (Blueprint $table): void {
+            $table->softDeletes();
+        });
+    }
+    $account = $soft ? new TestSoftDeletedActivityAccount : new TestActivityAccount;
+    app(MappingRegistry::class)->register(new TestActivityMapping($account::class));
+    app(ActivityCaptureContext::class)->run(SystemActor::Background, fn () => $account->fill(['name' => 'Departing account'])->save());
+    $actor = $sameInstance ? $account : $account->newQuery()->findOrFail($account->getKey());
+
+    app(ActivityCaptureContext::class)->run($actor, fn () => $inTransaction ? DB::transaction(fn () => $account->delete()) : $account->delete());
+
+    $fact = ActivityLog::query()->where('event', 'deleted')->sole();
+    expect($account->newQuery()->count())->toBe(0)
+        ->and($fact->subject_type)->toBe($account->getMorphClass())
+        ->and($fact->subject_id)->toBe((string) $account->getKey())
+        ->and($fact->causer_type)->toBe($account->getMorphClass())
+        ->and($fact->causer_id)->toBe((string) $account->getKey())
+        ->and($fact->log_name)->toBe('mapped')
+        ->and($fact->properties->get('source'))->toBe('user')
+        ->and($fact->attribute_changes->get('old'))->toBe(['name' => 'Departing account'])
+        ->and($fact->attribute_changes->get('attributes'))->toBe([]);
+})->with([
+    'hard delete' => [false, true, false],
+    'soft delete' => [true, true, false],
+    'hard delete by another instance' => [false, false, false],
+    'soft delete in a host transaction' => [true, false, true],
+]);
+
+test('a deleted actor remains refused for every other captured subject', function (): void {
+    $account = new TestActivityAccount;
+    app(MappingRegistry::class)->register(new TestActivityMapping($account::class));
+    app(MappingRegistry::class)->register(new TestActivityMapping(TestActivitySubjectWithHasModelActivity::class));
+    [$other] = app(ActivityCaptureContext::class)->run(SystemActor::Background, function () use ($account): array {
+        $account->fill(['name' => 'Departing account'])->save();
+
+        return [TestActivitySubjectWithHasModelActivity::query()->create(['name' => 'Other subject'])];
+    });
+    app(ActivityCaptureContext::class)->run($account, fn () => $account->delete());
+
+    expect(fn () => app(ActivityCaptureContext::class)->run($account, fn () => $other->delete()))
+        ->toThrow(AuthorizationException::class);
+    expect(fn () => app(ActivityRecorder::class)->record(['subject' => $other, 'event' => 'deleted'], $account))
+        ->toThrow(AuthorizationException::class);
+    expect($other->fresh())->not->toBeNull()
+        ->and(ActivityLog::query()->where('event', 'deleted')->count())->toBe(1);
+});
+
+test('updated facts ignore values that are equivalent to the stored original', function (): void {
+    Schema::table('activity_mapping_subjects', function (Blueprint $table): void {
+        $table->integer('quantity')->default(0);
+    });
+    $subject = new class extends Model
+    {
+        use HasModelActivity;
+
+        protected $table = 'activity_mapping_subjects';
+
+        protected $guarded = [];
+
+        public $timestamps = false;
+    };
+    app(MappingRegistry::class)->register(new readonly class($subject::class) implements ActivityMapping
+    {
+        /** @param class-string $model */
+        public function __construct(private string $model) {}
+
+        public function modelClass(): string
+        {
+            return $this->model;
+        }
+
+        public function entityLabel(): string
+        {
+            return 'Counted entity';
+        }
+
+        public function subjectLabel(Model $subject): string
+        {
+            return 'Counted subject';
+        }
+
+        public function logName(): string
+        {
+            return 'counted';
+        }
+
+        public function captureOptions(): ActivityCaptureOptions
+        {
+            return new ActivityCaptureOptions(['name', 'quantity']);
+        }
+
+        public function fieldLabel(string $key): string
+        {
+            return $key;
+        }
+
+        public function fieldValue(string $key, mixed $value): string
+        {
+            return (string) $value;
+        }
+
+        public function eventDisplayValue(string $event, array $properties): ?string
+        {
+            return null;
+        }
+
+        public function eventTemplates(): array
+        {
+            return [];
+        }
+    });
+    app(ActivityCaptureContext::class)->run(SystemActor::Background, function () use ($subject): void {
+        $subject->fill(['name' => 'Before', 'quantity' => 5])->save();
+        $subject->refresh();
+        $subject->update(['name' => 'After', 'quantity' => '5']);
+    });
+
+    $fact = ActivityLog::query()->where('event', 'updated')->sole();
+    expect($fact->attribute_changes->get('attributes'))->toBe(['name' => 'After'])
+        ->and($fact->attribute_changes->get('old'))->toBe(['name' => 'Before']);
 });

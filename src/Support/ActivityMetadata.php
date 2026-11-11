@@ -47,7 +47,7 @@ final class ActivityMetadata
     public static function redact(array $values): array
     {
         foreach ($values as $key => $value) {
-            if (is_string($key) && preg_match('/(?:password|secret|token|api[_-]?key|authorization|cookie)/i', $key) === 1) {
+            if (is_string($key) && self::namesSecret($key)) {
                 $values[$key] = '[REDACTED]';
             } elseif (is_array($value)) {
                 $values[$key] = self::redact($value);
@@ -55,6 +55,25 @@ final class ActivityMetadata
         }
 
         return $values;
+    }
+
+    /**
+     * Report whether a key names a credential rather than merely containing one of the words.
+     *
+     * The key is split into segments on `_`, `-`, `.` and camelCase boundaries. A segment ending in a
+     * credential word (`token`, `api_token`, `accessToken`, `csrftoken`) is a secret; `secretary_id` is not.
+     * Keys whose last segment describes the credential (`token_count`, `authorization_status`) are kept.
+     */
+    private static function namesSecret(string $key): bool
+    {
+        $segments = strtolower((string) preg_replace(
+            ['/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', '/[^A-Za-z0-9]+/'],
+            '_',
+            $key,
+        ));
+
+        return preg_match('/(?:^|_)[a-z0-9]*(?:passwords?|secrets?|tokens?|api_?keys?|authorization|cookies?)(?:hash|key|value)?(?:_|$)/', $segments) === 1
+            && preg_match('/_(?:count|status|type|length|at)$/', $segments) !== 1;
     }
 
     private static function jsonValue(mixed $value, int $depth): bool

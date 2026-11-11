@@ -635,10 +635,7 @@ test('doctor requires queue redelivery visibility to exceed the purge timeout', 
     config()->set('queue.default', 'sqs');
     $externalMissing = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
 
-    config()->set(
-        'nvl-activity.retention.external_visibility_timeout_seconds',
-        PurgeActivityLogsJob::TIMEOUT_SECONDS + 1,
-    );
+    config()->set('queue.connections.sqs.retry_after', PurgeActivityLogsJob::TIMEOUT_SECONDS + 1);
     $externalSafe = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
 
     config()->set('queue.default', 'failover');
@@ -650,7 +647,7 @@ test('doctor requires queue redelivery visibility to exceed the purge timeout', 
     config()->set('queue.default', 'deferred');
     $nonDurable = collect(app(ActivityDoctor::class)->inspect())->firstWhere('key', 'retention.queue');
 
-    config()->set('nvl-activity.retention.external_visibility_timeout_seconds', '901');
+    config()->set('nvl-activity.migrations.enabled', 'yes');
     $invalidConfiguration = collect(app(ActivityDoctor::class)->inspect())
         ->firstWhere('key', 'configuration.values');
 

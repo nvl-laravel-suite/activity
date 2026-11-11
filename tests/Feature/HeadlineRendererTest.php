@@ -142,3 +142,23 @@ test('package owned activity events render through shared headline templates', f
 })->with(collect(ActivityEvent::cases())->mapWithKeys(
     static fn (ActivityEvent $event): array => [$event->name => [$event]],
 )->all());
+
+test('headlines and change sentences stay bounded for very large diffs', function (): void {
+    $renderer = headline_test_renderer();
+    $activity = headline_test_activity(subjectType: 'Consumer\\Models\\Record', event: 'updated');
+    $details = collect(range(1, 300))->map(static fn (int $index): array => [
+        'key' => "field_{$index}", 'label' => "Field {$index}", 'old' => 'a', 'new' => 'b', 'description' => '',
+    ]);
+    $large = str_repeat('x', 60000);
+
+    $manyFields = $renderer->resolveHeadline('updated', $activity, 'Ada', null, $details);
+    $fewFields = $renderer->resolveHeadline('updated', $activity, 'Ada', null, $details->take(2));
+    $largeValue = $renderer->resolveHeadline('updated', $activity, 'Ada', null, collect([
+        ['key' => 'body', 'label' => 'Body', 'old' => null, 'new' => $large, 'description' => ''],
+    ]));
+
+    expect($manyFields)->toBe('Ada updated this record.')
+        ->and($fewFields)->toBe('Ada updated Field 1, Field 2.')
+        ->and(mb_strlen($largeValue))->toBeLessThan(300)
+        ->and(mb_strlen($renderer->buildChangedText('Body', $large, $large.'y')))->toBeLessThan(600);
+});

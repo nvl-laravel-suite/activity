@@ -7,6 +7,7 @@ namespace Nvl\Activity\Jobs;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -26,6 +27,9 @@ use UnexpectedValueException;
 
 /**
  * Queued job that deletes old activity log entries in chunks.
+ *
+ * One run deletes a bounded number of rows and hands the rest to a new job that
+ * continues after the last row it handled, so a run stays far below its timeout.
  */
 final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
 {
@@ -39,6 +43,9 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
      * @var int Chunk size for batch deletion
      */
     private const int CHUNK_SIZE = 1000;
+
+    /** Chunks one run deletes before it continues in a new job. */
+    private const int CHUNKS_PER_RUN = 10;
 
     private const int LOCK_RETRY_DELAY_SECONDS = 60;
 
@@ -61,18 +68,36 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
     /** Mark the job as failed when its worker timeout is reached. */
     public bool $failOnTimeout = true;
 
+    /** Continuation cursor: stored timestamp of the last handled row. Defaulted so payloads queued before continuations still run. */
+    public ?string $afterCreatedAt = null;
+
+    /** Continuation cursor: identifier of the last handled row. */
+    public ?string $afterId = null;
+
+    /** Rows deleted by the earlier runs of this purge. */
+    public int $deletedBefore = 0;
+
     /**
      * Create a new job instance.
      *
      * @param  int  $days  Delete entries older than this many days
      * @param  bool  $systemOnly  Only delete system-originated entries
      * @param  ActivityPurgeCriteria|null  $criteria  Immutable serialized purge filters
+     * @param  string|null  $afterCreatedAt  Continuation cursor: stored timestamp of the last handled row
+     * @param  string|null  $afterId  Continuation cursor: identifier of the last handled row
+     * @param  int  $deletedBefore  Rows deleted by the earlier runs of this purge
      */
     public function __construct(
         public readonly int $days,
         public readonly bool $systemOnly = false,
         public readonly ?ActivityPurgeCriteria $criteria = null,
+        ?string $afterCreatedAt = null,
+        ?string $afterId = null,
+        int $deletedBefore = 0,
     ) {
+        $this->afterCreatedAt = $afterCreatedAt;
+        $this->afterId = $afterId;
+        $this->deletedBefore = $deletedBefore;
         $this->captureOwnership();
         $this->onConnection(PackageOptions::queueConnection('activity'));
         $this->onQueue(PackageOptions::queueName('activity'));
@@ -80,7 +105,7 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
     }
 
     /**
-     * Execute the job: delete old activity logs in chunks.
+     * Execute the job: delete one bounded run of old activity logs, then continue in a new job.
      */
     public function handle(OwnershipBoundary $boundary): void
     {
@@ -98,9 +123,13 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
         }
 
         try {
-            app(ActivityRetentionContext::class)->run(fn () => $this->purge($criteria, $boundary));
+            $continuation = app(ActivityRetentionContext::class)->run(fn (): ?self => $this->purge($criteria, $boundary));
         } finally {
             $lock->release();
+        }
+
+        if ($continuation !== null) {
+            dispatch($continuation);
         }
     }
 
@@ -147,26 +176,32 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
     }
 
     /**
-     * Delete all rows matching the immutable criteria in bounded chunks.
+     * Delete one bounded run of rows matching the immutable criteria, oldest first.
+     *
+     * @return self|null The job continuing after the last handled row, or null once the purge is complete.
      */
-    private function purge(ActivityPurgeCriteria $criteria, OwnershipBoundary $boundary): void
+    private function purge(ActivityPurgeCriteria $criteria, OwnershipBoundary $boundary): ?self
     {
-        $totalDeleted = 0;
+        $totalDeleted = $this->deletedBefore;
+        $afterCreatedAt = $this->afterCreatedAt;
+        $afterId = $this->afterId;
 
-        while (true) {
-            $ids = $this->purgeableQuery($criteria, $boundary)
+        for ($chunk = 0; $chunk < self::CHUNKS_PER_RUN; $chunk++) {
+            $rows = $this->purgeableQuery($criteria, $boundary)
+                ->when($afterCreatedAt !== null && $afterId !== null, static fn (Builder $query) => $query->where(
+                    static fn (Builder $after) => $after->where('created_at', '>', $afterCreatedAt)
+                        ->orWhere(static fn (Builder $same) => $same->where('created_at', $afterCreatedAt)->where('id', '>', $afterId)),
+                ))
                 ->oldestFirst()
                 ->limit(self::CHUNK_SIZE)
-                ->pluck('id')
-                ->filter(static fn (mixed $id): bool => is_string($id) || is_int($id))
-                ->map(static fn (string|int $id): string => (string) $id)
-                ->all();
+                ->get(['id', 'created_at']);
+            $last = $rows->last();
 
-            if ($ids === []) {
+            if ($last === null) {
                 break;
             }
 
-            $query = $boundary->query(ActivityModelRegistry::query(), 'activity.events')->whereKey($ids);
+            $query = $boundary->query(ActivityModelRegistry::query(), 'activity.events')->whereKey($rows->modelKeys());
             if (isset($boundary->attributes('activity.events')['owner_scope_key'])) {
                 $deleted = 0;
                 foreach ($query->get() as $activity) {
@@ -184,9 +219,16 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
             }
 
             $totalDeleted += $deleted;
+            $createdAt = $last->getRawOriginal('created_at');
+            $afterCreatedAt = is_string($createdAt) ? $createdAt : null;
+            $afterId = $last->id;
 
-            if ($deleted === 0 || count($ids) < self::CHUNK_SIZE) {
+            if ($rows->count() < self::CHUNK_SIZE) {
                 break;
+            }
+
+            if ($chunk === self::CHUNKS_PER_RUN - 1) {
+                return new self($this->days, $this->systemOnly, $this->criteria, $afterCreatedAt, $afterId, $totalDeleted);
             }
         }
 
@@ -204,6 +246,8 @@ final class PurgeActivityLogsJob implements OwnershipQueuedJob, ShouldQueue
             'causer_types' => $criteria->causerTypes,
             'causer_ids' => $criteria->causerIds,
         ], 'normal');
+
+        return null;
     }
 
     /**

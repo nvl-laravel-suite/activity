@@ -71,8 +71,6 @@ test('causer suggestions query integer keyed models without cross type joins', f
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestActivityCauser::class);
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         config()->set('nvl-activity.causer_suggestions.type_attribute', 'kind');
         config()->set('nvl-activity.causer_suggestions.search_attributes', ['name', 'email']);
 
@@ -134,8 +132,6 @@ test('causer suggestions isolate malformed historical uuid identifiers and norma
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestUuidActivitySubject::class);
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute');
         config()->set('nvl-activity.causer_suggestions.type_attribute');
         config()->set('nvl-activity.causer_suggestions.search_attributes', ['name']);
 
@@ -176,8 +172,6 @@ test('historical causer suggestions include soft deleted actors', function (): v
 
     try {
         config()->set('nvl-activity.causer_suggestions.model', TestSoftDeletedActivityCauser::class);
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         config()->set('nvl-activity.causer_suggestions.search_attributes', ['name', 'email']);
 
         $causer = TestSoftDeletedActivityCauser::query()->create([
@@ -265,4 +259,28 @@ test('causer suggestions never apply fuzzy matching to integer columns', functio
     } finally {
         Schema::dropIfExists('activity_test_causers');
     }
+});
+
+test('causer suggestions scan a bounded number of the newest facts instead of aggregating the whole log', function (): void {
+    Schema::create('activity_test_causers', function (Blueprint $table): void {
+        $table->increments('causer_key');
+        $table->string('name');
+    });
+    config(['nvl-activity.causer_suggestions.model' => TestActivityCauser::class, 'nvl-activity.causer_suggestions.scan_limit' => 3]);
+    [$stale, $recent, $latest] = collect(['Stale', 'Recent', 'Latest'])->map(fn (string $name) => TestActivityCauser::query()->create(['name' => $name]))->all();
+    foreach ([[$stale, '2026-11-01 10:00:00'], [$recent, '2026-11-02 10:00:00'], [$latest, '2026-11-03 10:00:00'], [$recent, '2026-11-04 10:00:00'], [$latest, '2026-11-05 10:00:00']] as [$causer, $createdAt]) {
+        ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $causer->getMorphClass(), 'causer_id' => $causer->getKey(), 'event' => 'created', 'created_at' => $createdAt]);
+    }
+    $statements = [];
+    DB::listen(function (QueryExecuted $query) use (&$statements): void {
+        if (str_contains($query->sql, (new ActivityLog)->getTable())) {
+            $statements[] = strtolower($query->sql);
+        }
+    });
+
+    $suggestions = app(ActivityReader::class)->causers(SystemActor::Background, limit: 2);
+
+    expect($suggestions->modelKeys())->toBe([$latest->getKey(), $recent->getKey()])
+        ->and($statements)->toHaveCount(1)
+        ->and($statements[0])->toContain('limit 3')->not->toContain('group by')->not->toContain('max(');
 });

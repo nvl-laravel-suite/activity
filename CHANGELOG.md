@@ -5,6 +5,27 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep builder-level `forceDelete()`, `updateOrInsert()` and `updateFrom()` on the activity log inside the ownership boundary by adopting Core's owned write trait on the activity log builder. Require Core 7.0.6.
+- Record the `deleted` fact when the capture actor deletes or soft-deletes its own record. The actor admitted before the write is delivered as the causer instead of failing the persisted-actor check after its row is gone.
+- Store envelope facts in the application timezone like every other fact, and convert offset-bearing `created_at_from` / `created_at_to` filters, date-range scopes and purge cutoffs to it before comparing.
+- Bind subject and causer identifiers as strings in reader filters, builder scopes, audience predicates and the `activitiesAsSubject` relation so integer keys keep the varchar indexes usable and valid on PostgreSQL.
+- Return `null` from `ActivityReader::find()` for a malformed identifier instead of querying the UUID key.
+- Stop capturing unchanged fields in `updated` facts when a resubmitted value is equivalent to the stored original, such as `"5"` for `5`.
+- Let the `(created_at, id)` index serve newest-first reads on MySQL, MariaDB and SQLite.
+- Add a PostgreSQL `created_at DESC NULLS LAST, id DESC` index and emit the matching plain `ORDER BY` so newest-first reads on PostgreSQL use an index instead of sorting through a `CASE` expression. Run the new migration; `nvl:activity:doctor` reports the index.
+- Bound each `PurgeActivityLogsJob` run to 10,000 rows and continue in a new job from a `(created_at, id)` cursor, so a purge no longer runs into its timeout while holding the purge lock.
+- Redact metadata keys by whole segment: `token`, `api_token` and `accessToken` are redacted, while `token_count`, `authorization_status` and `secretary_id` are no longer replaced by `[REDACTED]`.
+- Remove the unused `CauserNormalizer` and the `causer_suggestions.label_attribute` / `sublabel_attribute` settings, which never affected the fixed safe causer projection.
+- Compare integer subject keys as text in `whereHas('activitiesAsSubject')`, `whereDoesntHave()` and `withCount()`, so they work on PostgreSQL.
+- Recognise a retried envelope whose fact was stored with the earlier UTC wall clock on a non-UTC application as the same fact instead of reporting a conflict.
+- Read causer suggestions from the newest `scan_limit` attributed facts instead of aggregating the whole log on every call.
+- Limit `description` to 65,535 bytes, the capacity of the `TEXT` column, instead of 65,535 characters.
+- Remove `retention.external_visibility_timeout_seconds`; the Doctor now reads the visibility timeout from the queue connection's `retry_after`.
+- Reject page offsets that overflow instead of returning the first page, name at most five fields in an update headline and quote at most 255 characters of a changed value.
+- Remove the no-op `TimelineFilter::deduplicateByTimestamp()`, the provider's `provides()` list and empty `src/Http`, `routes` and `database/tenancy-migrations` directories.
+
 ## [7.0.1] - 2026-11-09
 
 ### Changed

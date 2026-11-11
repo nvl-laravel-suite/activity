@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Tests;
 
-use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Tests\Fixtures\AllowsActivity;
@@ -19,7 +19,7 @@ use Orchestra\Testbench\TestCase as Orchestra;
 abstract class TestCase extends Orchestra
 {
     use ConfiguresActivityPolicies;
-    use DatabaseMigrations;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {

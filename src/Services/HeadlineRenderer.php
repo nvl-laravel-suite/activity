@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Nvl\Activity\Services;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Nvl\Activity\Models\ActivityLog as Activity;
 
 /**
@@ -17,6 +18,12 @@ use Nvl\Activity\Models\ActivityLog as Activity;
 final class HeadlineRenderer
 {
     private const string TRANS_PREFIX = 'nvl-activity::activity/general';
+
+    /** Changed fields a headline names before it falls back to the generic update sentence. */
+    private const int MAX_HEADLINE_FIELDS = 5;
+
+    /** Characters of a changed value a headline or change sentence quotes. */
+    private const int MAX_VALUE_LENGTH = 255;
 
     /**
      * Create the headline renderer with model-aware label resolution.
@@ -99,8 +106,8 @@ final class HeadlineRenderer
 
         $emptyValue = (string) trans(self::TRANS_PREFIX.'.changes.empty_value');
 
-        $oldValue = $old ?? $emptyValue;
-        $newValue = $new ?? $emptyValue;
+        $oldValue = $old === null ? $emptyValue : Str::limit($old, self::MAX_VALUE_LENGTH);
+        $newValue = $new === null ? $emptyValue : Str::limit($new, self::MAX_VALUE_LENGTH);
 
         if ($old !== null && $new !== null) {
             return (string) trans(self::TRANS_PREFIX.'.changes.from_to', [
@@ -211,7 +218,7 @@ final class HeadlineRenderer
                     [
                         ...$basePlaceholders,
                         'field' => ['type' => 'field', 'text' => (string) $fieldLabel],
-                        'value' => ['type' => 'value', 'text' => (string) $newValue],
+                        'value' => ['type' => 'value', 'text' => Str::limit((string) $newValue, self::MAX_VALUE_LENGTH)],
                     ],
                 ];
             }
@@ -225,7 +232,7 @@ final class HeadlineRenderer
                     ],
                 ];
             }
-        } elseif ($changeCount > 1) {
+        } elseif ($changeCount > 1 && $changeCount <= self::MAX_HEADLINE_FIELDS) {
             $fieldList = $changeDetails
                 ->map(static fn (array $detail): string => $detail['label'])
                 ->filter()

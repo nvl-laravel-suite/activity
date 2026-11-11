@@ -25,7 +25,6 @@ use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
 use Nvl\Support\Enums\SystemActor;
 use ReflectionClass;
-use Stringable;
 
 /**
  * Authorized native activity queries, bounded merged timelines and safe historical causers.
@@ -76,7 +75,7 @@ final readonly class ActivityReader
             } else {
                 $query->where(function (Builder $query) use ($references): void {
                     foreach ($references as $reference) {
-                        $query->orWhere(fn (Builder $pair) => $pair->where('subject_type', $reference->type)->where('subject_id', $reference->id));
+                        $query->orWhere(fn (Builder $pair) => $pair->where('subject_type', $reference->type)->where('subject_id', (string) $reference->id));
                     }
                 });
             }
@@ -84,8 +83,8 @@ final readonly class ActivityReader
         if (isset($filters['subject_or_causer'])) {
             $reference = $filters['subject_or_causer'];
             $query->where(fn (Builder $query) => $query
-                ->where(fn (Builder $subject) => $subject->where('subject_type', $reference->type)->where('subject_id', $reference->id))
-                ->orWhere(fn (Builder $causer) => $causer->where('causer_type', $reference->type)->where('causer_id', $reference->id)));
+                ->where(fn (Builder $subject) => $subject->where('subject_type', $reference->type)->where('subject_id', (string) $reference->id))
+                ->orWhere(fn (Builder $causer) => $causer->where('causer_type', $reference->type)->where('causer_id', (string) $reference->id)));
         }
 
         return $query;
@@ -95,6 +94,9 @@ final readonly class ActivityReader
     public function find(string $id, Authenticatable|SystemActor $actor): ?ActivityLog
     {
         $this->access->authorize($actor, 'read');
+        if (! Str::isUuid($id)) {
+            return null;
+        }
         $query = ActivityModelRegistry::query()->whereKey($id);
         $this->policies->visible($query, $actor, $this->access);
         $fact = $query->first();
@@ -304,8 +306,8 @@ final readonly class ActivityReader
             'subject_id' => $this->identifier($filters['subject_id'] ?? null),
             'causer_id' => $this->identifier($filters['causer_id'] ?? null),
             'created_at_from' => $from, 'created_at_to' => $to,
-            'page' => $this->positiveInteger($filters['page'] ?? 1, PHP_INT_MAX),
-            'per_page' => $this->positiveInteger($filters['per_page'] ?? 20, 100),
+            'per_page' => $perPage = $this->positiveInteger($filters['per_page'] ?? 20, 100),
+            'page' => $this->positiveInteger($filters['page'] ?? 1, intdiv(PHP_INT_MAX, $perPage)),
         ];
         if (isset($filters['subjects'])) {
             $subjects = $filters['subjects'];
@@ -411,12 +413,6 @@ final readonly class ActivityReader
         }
 
         $searchAttributes = $this->searchAttributes($schema->getColumns($userTable));
-        if ($this->ownership->enabled() === true) {
-            $searchAttributes = array_values(array_intersect(
-                $searchAttributes,
-                $this->ownership->causerColumns($user),
-            ));
-        }
         $searchAttributes = array_values(array_intersect($searchAttributes, $this->ownership->causerColumns($user)));
         $searchKey = $this->searchableKeyValue($user, $term);
 
@@ -430,15 +426,15 @@ final readonly class ActivityReader
             is_int($configuredScanLimit) ? $configuredScanLimit : 5000,
         ));
 
+        // Read the newest attributed facts through the timestamp index instead of aggregating the whole log.
         $latestCausers = ActivityModelRegistry::query()
-            ->select('causer_id')
-            ->selectRaw('MAX(created_at) as latest_activity_at')
             ->where('causer_type', $user->getMorphClass())
             ->whereNotNull('causer_id')
-            ->groupBy('causer_id')
-            ->orderByDesc('latest_activity_at')->orderByDesc('causer_id')
+            ->newestFirst()
             ->limit($scanLimit)
-            ->get();
+            ->get(['causer_id'])
+            ->unique('causer_id')
+            ->values();
 
         if ($latestCausers->isEmpty()) {
             return new EloquentCollection;
@@ -449,27 +445,18 @@ final readonly class ActivityReader
             array_values($latestCausers->pluck('causer_id')->all()),
         );
 
-        /** @var array<int|string, string> $latestActivityByCauser */
-        $latestActivityByCauser = [];
+        /** @var array<int|string, int> $recencyByCauser Position in the newest-first scan; lower is more recent. */
+        $recencyByCauser = [];
         /** @var array<int|string, int|string> $validCauserIdsByKey */
         $validCauserIdsByKey = [];
 
-        foreach ($latestCausers->values() as $index => $activity) {
-            $causerId = $normalizedCauserIds[$index] ?? null;
-            $latestActivity = $activity->getAttribute('latest_activity_at');
-
-            if ($causerId === null
-                || (! is_string($latestActivity) && ! $latestActivity instanceof Stringable)) {
+        foreach ($normalizedCauserIds as $index => $causerId) {
+            if (array_key_exists((string) $causerId, $recencyByCauser)) {
                 continue;
             }
 
-            $key = (string) $causerId;
-            if (array_key_exists($key, $latestActivityByCauser)) {
-                continue;
-            }
-
-            $latestActivityByCauser[$key] = (string) $latestActivity;
-            $validCauserIdsByKey[$key] = $causerId;
+            $recencyByCauser[(string) $causerId] = $index;
+            $validCauserIdsByKey[(string) $causerId] = $causerId;
         }
 
         $validCauserIds = array_values($validCauserIdsByKey);
@@ -503,13 +490,11 @@ final readonly class ActivityReader
                 });
             })
             ->get()
-            ->sortByDesc(
-                static function (Model $causer) use ($latestActivityByCauser): string {
+            ->sortBy(
+                static function (Model $causer) use ($recencyByCauser): int {
                     $key = $causer->getKey();
 
-                    return is_string($key) || is_int($key)
-                        ? ($latestActivityByCauser[(string) $key] ?? '')
-                        : '';
+                    return is_string($key) || is_int($key) ? ($recencyByCauser[(string) $key] ?? PHP_INT_MAX) : PHP_INT_MAX;
                 },
             )
             ->take($resolvedLimit)

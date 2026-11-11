@@ -354,3 +354,11 @@ test('blank event keys never create activity rows', function (): void {
     expect(fn () => app(ActivityRecorder::class)->record(['event' => ' '], SystemActor::Background))->toThrow(InvalidArgumentException::class);
     expect(ActivityLog::query()->count())->toBe(0);
 });
+
+test('descriptions are bounded by the bytes a TEXT column stores', function (): void {
+    $recorder = app(ActivityRecorder::class);
+
+    expect($recorder->record(['event' => 'reviewed', 'description' => str_repeat('я', 32767)], SystemActor::Background)->description)->toHaveLength(32767)
+        ->and(fn () => $recorder->record(['event' => 'reviewed', 'description' => str_repeat('я', 32768)], SystemActor::Background))
+        ->toThrow(InvalidArgumentException::class);
+});

@@ -101,12 +101,12 @@ final readonly class ActivityPurgeCriteria
     }
 
     /**
-     * Resolve the exclusive upper cutoff for purge eligibility.
+     * Resolve the exclusive upper cutoff for purge eligibility in the application timezone.
      */
     public function cutoff(): CarbonImmutable
     {
         if ($this->before !== null) {
-            return CarbonImmutable::parse($this->before);
+            return CarbonImmutable::parse($this->before)->setTimezone(date_default_timezone_get());
         }
 
         if ($this->days !== null) {
@@ -117,7 +117,7 @@ final readonly class ActivityPurgeCriteria
     }
 
     /**
-     * Resolve the inclusive lower cutoff when present.
+     * Resolve the inclusive lower cutoff in the application timezone when present.
      */
     public function afterCutoff(): ?CarbonImmutable
     {
@@ -125,7 +125,7 @@ final readonly class ActivityPurgeCriteria
             return null;
         }
 
-        return CarbonImmutable::parse($this->after);
+        return CarbonImmutable::parse($this->after)->setTimezone(date_default_timezone_get());
     }
 
     /**

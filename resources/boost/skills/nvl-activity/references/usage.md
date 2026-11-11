@@ -79,7 +79,7 @@ Identical retries return the same Activity row; conflicting facts under the same
 
 `timeline(subject, actor, limit:100, sources:[])` permits 1–1000 results, at most ten `ActivityTimelineSource` query sources and a 5000-row base scan. Each source supplies subject constraints, source authorization, safe columns and sortable canonical `created_at` storage. Activity adds owner admission, stable key tie-breaks and independent bounds; supersession applies only when the source returns visible facts. Source timestamps and declared key types must agree with database ordering. Consumers own merged-source presentation.
 
-`causers(actor, search:null, limit:10)` returns fixed safe identity projections including supported soft-deleted historical actors. It cannot expose credentials through custom label settings. Relation hydration batches by model type while retaining fresh admission; count protected data queries separately from schema/admission probes.
+`causers(actor, search:null, limit:10)` returns fixed safe identity projections including supported soft-deleted historical actors. It scans the newest `causer_suggestions.scan_limit` attributed facts. Relation hydration batches by model type while retaining fresh admission; count protected data queries separately from schema/admission probes.
 
 ## Retention, storage and errors
 

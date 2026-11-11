@@ -53,3 +53,8 @@ test('activity search rejects invalid raw terms on both public read paths', func
     'trailing NUL' => ["Operator\0"],
     'invalid UTF8' => ["\xff"],
 ]);
+
+test('page offsets that cannot be represented are rejected instead of wrapping to the first page', function (): void {
+    expect(fn () => app(ActivityReader::class)->paginate(['page' => PHP_INT_MAX, 'per_page' => 100], SystemActor::Background))
+        ->toThrow(InvalidArgumentException::class, 'Activity pagination values are outside their bounds.');
+});

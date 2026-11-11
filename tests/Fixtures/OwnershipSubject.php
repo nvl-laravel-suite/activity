@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Tests\Fixtures;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Model;
 use Nvl\Activity\Traits\HasModelActivity;
 use Nvl\Support\Ownership\Contracts\Ownable;
 use Nvl\Support\Ownership\Traits\HasOwnership;
 use Nvl\Support\Ownership\ValueObjects\OwnershipDefinition;
 
-/** Native owned subject whose current persisted identity controls Activity relation resolution. */
+/** Native owned, authenticatable subject whose current persisted identity controls Activity relation resolution. */
 final class OwnershipSubject extends Model implements Ownable
 {
     use HasModelActivity;

@@ -21,7 +21,6 @@ use Nvl\Activity\Services\ActivityRelationLoader;
 use Nvl\Activity\Services\LabelResolver;
 use Nvl\Activity\Services\TimelineFilter;
 use Nvl\Activity\Support\ActivitySubjectReference;
-use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\TimelineActivityRules;
 use Nvl\Activity\Tests\Stubs\AbstractTestActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
@@ -44,29 +43,6 @@ test('native activity mass assignment rejects undeclared host columns', function
     }
 });
 
-test('causer normalization honors configured display attributes and scalar actor metadata', function (): void {
-    config()->set('nvl-activity.causer_suggestions.label_attribute', 'display_name');
-    config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'contact');
-
-    $causer = new TestActivityCauser;
-    $causer->forceFill([
-        'causer_key' => 42,
-        'display_name' => 'Grace Hopper',
-        'contact' => 'grace@example.test',
-    ]);
-    $normalizer = new CauserNormalizer;
-
-    expect($normalizer->normalize($causer))->toBe([
-        'id' => 42,
-        'name' => 'Grace Hopper',
-        'email' => 'grace@example.test',
-    ])->and($normalizer->normalize(null, ['actor_id' => 'operator-1']))->toBe([
-        'id' => 'operator-1',
-        'name' => null,
-        'email' => null,
-    ]);
-});
-
 test('display reads support causer tables without name or email columns', function (): void {
     Schema::create('activity_test_causers', function (Blueprint $table): void {
         $table->increments('causer_key');
@@ -75,8 +51,6 @@ test('display reads support causer tables without name or email columns', functi
     });
 
     try {
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         $causer = TestActivityCauser::query()->create([
             'name' => 'Custom operator',
             'email' => 'operator@example.test',
@@ -109,8 +83,6 @@ test('display reads preserve soft deleted historical causers', function (): void
     });
 
     try {
-        config()->set('nvl-activity.causer_suggestions.label_attribute', 'name');
-        config()->set('nvl-activity.causer_suggestions.sublabel_attribute', 'email');
         $causer = TestSoftDeletedActivityCauser::query()->create([
             'name' => 'Historical operator',
             'email' => 'history@example.test',

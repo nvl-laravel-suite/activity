@@ -27,7 +27,6 @@ use Nvl\Activity\Services\LabelResolver;
 use Nvl\Activity\Services\MappingRegistry;
 use Nvl\Activity\Services\TimelineFilter;
 use Nvl\Activity\Support\ActivityEventPolicy;
-use Nvl\Activity\Support\CauserNormalizer;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Ownership\Services\OwnershipAdoptionRegistry;
 use Nvl\Support\Doctor\PackageDoctorContributor;
@@ -44,10 +43,6 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
 {
     use MergesPackageConfiguration;
     use RegistersNamespacedResources;
-
-    protected string $name = 'Activity';
-
-    protected string $nameLower = 'activity';
 
     /**
      * Register the service provider bindings.
@@ -167,7 +162,6 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
     private function registerSingletons(): void
     {
         $this->app->singleton(MappingRegistry::class);
-        $this->app->singleton(CauserNormalizer::class);
         $this->app->singleton(TimelineFilter::class);
         $this->app->scoped(ActivityRelationLoader::class);
         $this->app->scoped(ActivityOwnershipGuard::class);
@@ -210,7 +204,7 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
         $this->app->make(GlobalNames::class)->translations('activity', $langPath, $this->app->make('translation.loader'));
 
         $this->publishes([
-            $langPath => lang_path('vendor/nvl-'.$this->nameLower),
+            $langPath => lang_path('vendor/nvl-activity'),
         ], 'nvl-activity-translations');
     }
 
@@ -222,24 +216,5 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
         $this->publishes([
             __DIR__.'/../../config/nvl-activity.php' => config_path('nvl-activity.php'),
         ], 'nvl-activity-config');
-    }
-
-    /**
-     * Get the services provided by the provider.
-     *
-     * @return array<int, class-string>
-     */
-    public function provides(): array
-    {
-        return [
-            MappingRegistry::class,
-            ActivityDiffBuilder::class,
-            HeadlineRenderer::class,
-            LabelResolver::class,
-            TimelineFilter::class,
-            ActivityRelationLoader::class,
-            CauserNormalizer::class,
-            ActivityRecorder::class,
-        ];
     }
 }

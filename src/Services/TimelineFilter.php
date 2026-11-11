@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Services;
 
-use Illuminate\Support\Collection;
 use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Support\TimelineActivityRules;
@@ -44,17 +43,6 @@ final class TimelineFilter
         }
 
         return true;
-    }
-
-    /**
-     * Preserve the historical public API without collapsing distinct events that share a timestamp.
-     *
-     * @param  Collection<int, ActivityLog>  $activities
-     * @return Collection<int, ActivityLog>
-     */
-    public function deduplicateByTimestamp(Collection $activities): Collection
-    {
-        return $activities;
     }
 
     /**

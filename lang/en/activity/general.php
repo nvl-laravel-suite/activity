@@ -199,7 +199,7 @@ return [
             'routes_safe' => 'Management routes have middleware, defined named abilities, and an explicit timeline subject allowlist.',
             'routes_unsafe' => 'Enabled routes require middleware, defined view/timeline/purge abilities, and timeline subjects.',
             'queue_safe' => 'Retention purge queue visibility exceeds the :seconds-second job timeout.',
-            'queue_unsafe' => 'Retention purge requires a named durable queue whose retry_after or declared external visibility timeout exceeds :seconds seconds.',
+            'queue_unsafe' => 'Retention purge requires a named durable queue whose retry_after exceeds :seconds seconds.',
             'cache_lock_safe' => 'The default cache supports atomic locks. All workers and schedulers must share its backend; file storage is single-host only.',
             'cache_lock_unsafe' => 'Retention locking requires one canonical LockProvider-backed cache; array, null, and failover stores are not production-safe.',
             'schedule_disabled' => 'Automatic system retention is disabled.',
