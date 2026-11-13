@@ -451,8 +451,19 @@ readonly class ActivityOwnershipGuard
     public function causerColumns(Model $model): array
     {
         $columns = $model->getConnection()->getSchemaBuilder()->getColumnListing($model->getTable());
+        $allowed = [$model->getKeyName(), 'name', 'email', 'first_name', 'last_name'];
 
-        return array_values(array_intersect([$model->getKeyName(), 'name', 'email', 'first_name', 'last_name'], $columns));
+        $definition = $this->definition($model::class);
+        if ($definition !== null && $definition->ownership->strategy !== 'unscoped' && $this->enabled()) {
+            $allowed[] = 'owner_scope_key';
+            if ($definition->ownership->strategy === 'column' && is_string($definition->ownership->foreignKey)) {
+                $allowed[] = $definition->ownership->foreignKey;
+            } elseif ($definition->ownership->strategy === 'captured') {
+                $allowed[] = 'owner_reference';
+            }
+        }
+
+        return array_values(array_intersect(array_values(array_unique($allowed)), $columns));
     }
 
     /** Look up immutable class names without instantiating an untrusted stored type. */

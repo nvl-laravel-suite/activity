@@ -9,9 +9,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Grammar;
+use LogicException;
 
 /**
- * Morph-many relation that binds integer subject keys as text, matching the varchar
+ * Morph-many relation that binds subject keys as text, matching the varchar
  * `subject_id` column so its index stays usable and PostgreSQL accepts the comparison.
  *
  * @internal
@@ -43,7 +44,7 @@ final class ActivitySubjectMorphMany extends MorphMany
     }
 
     /**
-     * Compare an integer parent key as text in `whereHas`, `withCount` and other existence queries.
+     * Compare parent keys as text in `whereHas`, `withCount` and other existence queries.
      *
      * @param  array<int, string>|string  $columns
      * @return Builder<TRelatedModel>
@@ -51,18 +52,25 @@ final class ActivitySubjectMorphMany extends MorphMany
     #[\Override]
     public function getRelationExistenceQuery(Builder $query, Builder $parentQuery, $columns = ['*']): Builder
     {
-        if ($this->parent->getKeyType() !== 'int' || $query->getQuery()->from === $parentQuery->getQuery()->from) {
-            return parent::getRelationExistenceQuery($query, $parentQuery, $columns);
+        if ($query->getModel()->getConnection()->getName() !== $parentQuery->getModel()->getConnection()->getName()) {
+            throw new LogicException('Cross-connection Activity subject existence queries are not supported.');
         }
 
         $grammar = $query->getQuery()->getGrammar();
-        $textType = match ($query->getModel()->getConnection()->getDriverName()) {
-            'pgsql' => 'varchar',
-            'mysql', 'mariadb' => 'char character set ascii',
-            default => 'text',
-        };
+        $textType = $query->getModel()->getConnection()->getDriverName() === 'pgsql' ? 'varchar' : 'text';
 
-        $comparison = $grammar->wrap($this->getExistenceCompareKey()).' = cast('.$grammar->wrap($this->getQualifiedParentKeyName()).' as '.$textType.')';
+        if ($query->getQuery()->from === $parentQuery->getQuery()->from) {
+            $hash = $this->getRelationCountHash();
+            $query->from($query->getModel()->getTable().' as '.$hash);
+            $query->getModel()->setTable($hash);
+            $compareKey = $hash.'.'.$this->getForeignKeyName();
+            $morphTypeColumn = $hash.'.'.$this->getMorphType();
+        } else {
+            $compareKey = $this->getExistenceCompareKey();
+            $morphTypeColumn = $query->qualifyColumn($this->getMorphType());
+        }
+
+        $comparison = $grammar->wrap($compareKey).' = cast('.$grammar->wrap($this->getQualifiedParentKeyName()).' as '.$textType.')';
 
         return $query->select($columns)
             ->whereRaw(new class($comparison) implements Expression
@@ -74,7 +82,7 @@ final class ActivitySubjectMorphMany extends MorphMany
                     return $this->sql;
                 }
             })
-            ->where($query->qualifyColumn($this->getMorphType()), $this->morphClass);
+            ->where($morphTypeColumn, $this->morphClass);
     }
 
     private static function text(mixed $key): mixed

@@ -26,9 +26,12 @@ use Nvl\Activity\Tests\Fixtures\UnknownActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
 use Nvl\Ownership\Services\OwnershipRunner;
 use Nvl\Ownership\Services\OwnershipWriter;
+use Nvl\Ownership\Tests\Fixtures\OptsIntoAdoptedSchemaReuse;
 use Nvl\Ownership\ValueObjects\OwnershipAssignment;
 use Nvl\Support\Enums\SystemActor;
 use Nvl\Support\Ownership\Exceptions\OwnershipViolation;
+
+uses(OptsIntoAdoptedSchemaReuse::class);
 
 function activityOwner(int $id, Closure $operation): mixed
 {
@@ -53,7 +56,7 @@ test('selected adoption installs immutable native ownership storage', function (
     expect(DB::getSchemaBuilder()->hasColumns((new ActivityLog)->getTable(), ['owner_scope_key', 'owner_reference']))->toBeTrue();
     $fact = activityOwner(7, fn () => activityOwnedFact());
     expect($fact->owner_scope_key)->not->toBeEmpty()->and($fact->owner_reference)->not->toBeEmpty();
-});
+})->group('fresh-adoption');
 
 test('a shared subject reference does not merge owner timelines', function (): void {
     $a = activityOwner(7, fn () => activityOwnedFact());

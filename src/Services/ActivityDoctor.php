@@ -41,12 +41,21 @@ final class ActivityDoctor
     {
         try {
             $model = ActivityModelRegistry::newInstance();
-            $schema = Schema::connection($model->getConnectionName());
-            $driver = $model->getConnection()->getDriverName();
+            $connection = $model->getConnection();
+            $schema = $connection->getSchemaBuilder();
+            $driver = $connection->getDriverName();
             $table = $model->getTable();
-            $exists = $schema->hasTable($table);
+            $probe = static fn () => [
+                $exists = $schema->hasTable($table),
+                $schema,
+                $driver,
+                $table,
+            ];
+            [$exists, $schema, $driver, $table] = $connection->transactionLevel() > 0
+                ? $connection->transaction($probe)
+                : $probe();
 
-            $schemaChecks = [
+            $runSchemaChecks = fn (): array => [
                 $this->connectionCheck(true),
                 $this->tableCheck($table, $exists),
                 $this->columnCheck($schema, $table, $exists),
@@ -54,6 +63,9 @@ final class ActivityDoctor
                 $this->jsonCheck($schema, $table, $exists, $driver),
                 $this->indexCheck($schema, $table, $exists, $driver),
             ];
+            $schemaChecks = $connection->transactionLevel() > 0
+                ? $connection->transaction($runSchemaChecks)
+                : $runSchemaChecks();
         } catch (Throwable) {
             $schemaChecks = [$this->connectionCheck(false)];
         }

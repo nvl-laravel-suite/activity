@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,6 +25,7 @@ use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Tests\Stubs\TestActivitySubjectWithHasModelActivity;
 use Nvl\Activity\Tests\Stubs\TestActivityUser;
+use Nvl\Activity\Traits\HasModelActivity;
 use Nvl\Support\Enums\SystemActor;
 
 /** Run one scenario with a non-UTC application timezone, as Laravel configures it at boot. */
@@ -221,4 +223,46 @@ test('subject existence queries bind integer keys as text', function (): void {
     expect(TestActivitySubjectWithHasModelActivity::query()->whereHas('activitiesAsSubject')->pluck('id')->all())->toBe([$subject->getKey()])
         ->and(TestActivitySubjectWithHasModelActivity::query()->whereDoesntHave('activitiesAsSubject')->pluck('id')->all())->toBe([$silent->getKey()])
         ->and(TestActivitySubjectWithHasModelActivity::query()->withCount('activitiesAsSubject')->orderBy('id')->pluck('activities_as_subject_count')->all())->toBe([1, 0]);
+});
+
+test('uuid subject existence queries and joined activity ordering qualify columns safely', function (): void {
+    Schema::create('activity_uuid_subjects', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('name')->nullable();
+        $table->timestamps();
+    });
+
+    $uuidModel = new class extends Model
+    {
+        use HasModelActivity;
+        use HasUuids;
+
+        protected $table = 'activity_uuid_subjects';
+
+        protected $guarded = [];
+    };
+
+    $subject = $uuidModel->newQuery()->create(['name' => 'UUID Subject']);
+    $silent = $uuidModel->newQuery()->create(['name' => 'UUID Silent']);
+    $fact = ActivityLog::query()->create([
+        'description' => 'uuid row',
+        'event' => 'created',
+        'subject_type' => $subject->getMorphClass(),
+        'subject_id' => (string) $subject->getKey(),
+    ]);
+
+    expect($uuidModel->newQuery()->whereHas('activitiesAsSubject')->pluck('id')->all())->toBe([(string) $subject->getKey()])
+        ->and($uuidModel->newQuery()->whereDoesntHave('activitiesAsSubject')->pluck('id')->all())->toBe([(string) $silent->getKey()])
+        ->and($uuidModel->newQuery()->withCount('activitiesAsSubject')->whereKey($subject->getKey())->value('activities_as_subject_count'))->toBe(1);
+
+    $activityTable = (new ActivityLog)->getTable();
+    $joinedIds = ActivityLog::query()
+        ->leftJoin('activity_uuid_subjects', 'activity_uuid_subjects.name', '=', "{$activityTable}.description")
+        ->where("{$activityTable}.id", $fact->id)
+        ->select("{$activityTable}.*")
+        ->newestFirst()
+        ->pluck("{$activityTable}.id")
+        ->all();
+
+    expect($joinedIds)->toBe([$fact->id]);
 });

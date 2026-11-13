@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
+use InvalidArgumentException;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Models\ActivityLog;
@@ -27,23 +28,23 @@ final class ActivityLogBuilder extends Builder
     /**
      * Apply the default newest-first ordering for activity reads, keeping undated legacy rows last.
      *
-     * MySQL, MariaDB and SQLite already sort NULL last in descending order, so the
-     * (created_at, id) index serves the sort. PostgreSQL states the NULL order its
-     * dedicated newest-first index declares; other drivers need the explicit NULL rank.
+     * SQLite sorts NULL last in descending order. PostgreSQL specifies the NULL
+     * order declared by its newest-first index.
      */
     public function newestFirst(): static
     {
         $driver = $this->getModel()->getConnection()->getDriverName();
+        $createdAt = $this->qualifyColumn('created_at');
+        $id = $this->qualifyColumn('id');
 
         if ($driver === 'pgsql') {
-            return $this->orderByRaw('created_at DESC NULLS LAST')->orderByDesc('id');
+            $sql = $this->getQuery()->getGrammar()->wrap($createdAt).' DESC NULLS LAST';
+            $this->assertSafeNewestFirstSql($sql);
+
+            return $this->orderByRaw($sql)->orderByDesc($id);
         }
 
-        if (! in_array($driver, ['mysql', 'mariadb', 'sqlite'], true)) {
-            $this->orderByRaw('CASE WHEN created_at IS NULL THEN 1 ELSE 0 END');
-        }
-
-        return $this->orderByDesc('created_at')->orderByDesc('id');
+        return $this->orderByDesc($createdAt)->orderByDesc($id);
     }
 
     /**
@@ -51,8 +52,8 @@ final class ActivityLogBuilder extends Builder
      */
     public function oldestFirst(): static
     {
-        return $this->orderBy('created_at')
-            ->orderBy('id');
+        return $this->orderBy($this->qualifyColumn('created_at'))
+            ->orderBy($this->qualifyColumn('id'));
     }
 
     /**
@@ -309,5 +310,15 @@ final class ActivityLogBuilder extends Builder
         }
 
         return $this;
+    }
+
+    /**
+     * @phpstan-assert literal-string $sql
+     */
+    private function assertSafeNewestFirstSql(string $sql): void
+    {
+        if (preg_match('/^[A-Za-z0-9_."`\[\]]+ DESC NULLS LAST$/D', $sql) !== 1) {
+            throw new InvalidArgumentException('Activity newest-first ordering produced unsafe SQL.');
+        }
     }
 }

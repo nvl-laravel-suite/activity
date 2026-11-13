@@ -112,7 +112,11 @@ final class ActivityPolicyRegistry
             $query->whereRaw('1 = 0');
             foreach ($policies as $policy) {
                 if ($policy->retentionDays !== null) {
-                    $query->orWhere(fn (Builder $event) => $event->where('event', $policy->event)->where('created_at', '<', now()->subDays($policy->retentionDays)));
+                    $cutoff = now()
+                        ->subDays($policy->retentionDays)
+                        ->setTimezone(date_default_timezone_get())
+                        ->format('Y-m-d H:i:s.u');
+                    $query->orWhere(fn (Builder $event) => $event->where('event', $policy->event)->where('created_at', '<', $cutoff));
                 }
             }
         });

@@ -33,6 +33,7 @@ use Nvl\Support\Doctor\PackageDoctorContributor;
 use Nvl\Support\Globals\GlobalNames;
 use Nvl\Support\Ownership\Contracts\OwnershipIntegratedProvider;
 use Nvl\Support\Ownership\Services\OwnershipResourceRegistry;
+use Nvl\Support\Providers\SupportServiceProvider;
 use Nvl\Support\Traits\MergesPackageConfiguration;
 use Nvl\Support\Traits\RegistersNamespacedResources;
 
@@ -49,6 +50,8 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
      */
     public function register(): void
     {
+        $this->app->register(SupportServiceProvider::class);
+
         PackageDoctorContributor::register($this->app, 'nvl/activity', fn (): array => $this->app->make(ActivityDoctor::class)->inspect());
 
         $this->mergePackageConfiguration(__DIR__.'/../../config/nvl-activity.php', 'activity');

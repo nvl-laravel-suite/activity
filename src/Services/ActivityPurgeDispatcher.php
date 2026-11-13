@@ -9,6 +9,7 @@ use Nvl\Activity\Events\ActivityLogPurgeQueued;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Support\Enums\SystemActor;
+use Nvl\Support\Events\ConnectionCommitCallbacks;
 use Nvl\Support\Events\DomainEventDispatcher;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
 use Nvl\Support\Ownership\Contracts\OwnershipContext;
@@ -35,13 +36,11 @@ final readonly class ActivityPurgeDispatcher
         $this->boundary->attributes('activity.events');
         OwnershipJobEnvelope::capture($this->ownership);
         $job = new PurgeActivityLogsJob($criteria->days ?? 0, $criteria->systemOnly, $criteria);
+        $job->beforeCommit();
         $connection = (ActivityModelRegistry::newInstance())->getConnection();
-        $dispatch = static fn () => dispatch($job);
-        if ($connection->transactionLevel() > 0) {
-            $connection->afterCommit($dispatch);
-        } else {
-            $dispatch();
-        }
+        app(ConnectionCommitCallbacks::class)->afterCommit($connection, static function () use ($job): void {
+            dispatch($job);
+        });
         $this->events->dispatch(new ActivityLogPurgeQueued($criteria->days ?? 0, $criteria->systemOnly, $criteria->includeImportant), $connection);
 
         return 1;

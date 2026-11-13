@@ -44,7 +44,11 @@ trait HasModelActivity
     protected static function bootHasModelActivity(): void
     {
         static::deleting(static function (Model $subject): void {
-            app(ActivityOwnershipGuard::class)->captureDeletingSubject($subject);
+            $mapping = ModelActivityMappingResolver::forModel($subject);
+            $options = $mapping?->captureOptions();
+            if ($options !== null && in_array('deleted', $options->events, true)) {
+                app(ActivityOwnershipGuard::class)->captureDeletingSubject($subject);
+            }
         });
         foreach (['created' => 'creating', 'updated' => 'updating', 'deleted' => 'deleting', 'restored' => 'restoring'] as $event => $before) {
             static::registerModelEvent($before, static function (self $model) use ($event): void {

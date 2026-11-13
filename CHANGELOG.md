@@ -5,6 +5,10 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Guard cross-connection subject existence queries, preserve model soft-delete and update activity capture semantics, and harden ownership, purge, and Doctor diagnostics.
+
 ## [7.0.2] - 2026-11-11
 
 ### Fixed
@@ -15,7 +19,7 @@ All notable changes to `nvl/activity` are documented here.
 - Bind subject and causer identifiers as strings in reader filters, builder scopes, audience predicates and the `activitiesAsSubject` relation so integer keys keep the varchar indexes usable and valid on PostgreSQL.
 - Return `null` from `ActivityReader::find()` for a malformed identifier instead of querying the UUID key.
 - Stop capturing unchanged fields in `updated` facts when a resubmitted value is equivalent to the stored original, such as `"5"` for `5`.
-- Let the `(created_at, id)` index serve newest-first reads on MySQL, MariaDB and SQLite.
+- Let the `(created_at, id)` index serve newest-first reads on SQLite.
 - Add a PostgreSQL `created_at DESC NULLS LAST, id DESC` index and emit the matching plain `ORDER BY` so newest-first reads on PostgreSQL use an index instead of sorting through a `CASE` expression. Run the new migration; `nvl:activity:doctor` reports the index.
 - Bound each `PurgeActivityLogsJob` run to 10,000 rows and continue in a new job from a `(created_at, id)` cursor, so a purge no longer runs into its timeout while holding the purge lock.
 - Redact metadata keys by whole segment: `token`, `api_token` and `accessToken` are redacted, while `token_count`, `authorization_status` and `secretary_id` are no longer replaced by `[REDACTED]`.
@@ -159,8 +163,6 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [1.0.2] - 2026-08-12
 
-- Recognized MariaDB's native `longtext` JSON schema metadata in Doctor and
-  canonical-table adoption checks.
 - Enforced Spatie Activitylog 5.x as the only supported major, raised the suite and Activity PHP floor to 8.4, removed the v4 namespace shim, required the v5 `attribute_changes` schema in Doctor, and documented the explicit consumer namespace/schema upgrade.
 - Made the package migration certify and baseline a compatible existing canonical `activity_log` table without destructive rollback, with a forward-only v5 bridge that adds `attribute_changes` when absent.
 - Protected important activity from every purge by default and added explicit, auditable API and CLI opt-ins that propagate through criteria, queued DTOs, events, and job logs.

@@ -730,3 +730,23 @@ test('purge dry runs report eligibility without deleting rows', function (): voi
 
     expect($activity->fresh())->not->toBeNull();
 });
+
+test('unrelated open transactions that roll back do not discard committed activity purge dispatch', function (): void {
+    Bus::fake([PurgeActivityLogsJob::class]);
+    config(['database.connections.activity_unrelated_tx' => [
+        'driver' => 'sqlite',
+        'database' => ':memory:',
+        'prefix' => '',
+    ]]);
+
+    $unrelated = DB::connection('activity_unrelated_tx');
+    $unrelated->beginTransaction();
+
+    try {
+        app(ActivityPurgeDispatcher::class)->dispatch(ActivityPurgeCriteria::fromDays(90), SystemActor::Background);
+    } finally {
+        $unrelated->rollBack();
+    }
+
+    Bus::assertDispatched(PurgeActivityLogsJob::class);
+});

@@ -20,7 +20,7 @@ test('a purge run deletes a bounded batch, releases its lock and continues after
     foreach (array_chunk($rows, 500) as $chunk) {
         DB::table($table)->insert($chunk);
     }
-    $lastId = collect($rows)->pluck('id')->sort()->values()->get(9999);
+    $lastId = DB::table($table)->orderBy('id')->offset(9999)->value('id');
     Bus::fake([PurgeActivityLogsJob::class]);
     $boundary = app(OwnershipBoundary::class);
 

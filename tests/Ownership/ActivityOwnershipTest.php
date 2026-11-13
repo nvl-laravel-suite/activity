@@ -7,6 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Nvl\Activity\Jobs\PurgeActivityLogsJob;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Services\ActivityCaptureContext;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\MappingRegistry;
@@ -17,11 +18,12 @@ use Nvl\Activity\Tests\OwnershipTestCase;
 use Nvl\Activity\Tests\Stubs\TestActivityMapping;
 use Nvl\Ownership\Services\OwnershipRunner;
 use Nvl\Ownership\Services\OwnershipWriter;
+use Nvl\Ownership\Tests\Fixtures\OptsIntoAdoptedSchemaReuse;
 use Nvl\Ownership\ValueObjects\OwnershipAssignment;
 use Nvl\Support\Enums\SystemActor;
 use Nvl\Support\Ownership\Exceptions\OwnershipViolation;
 
-uses(OwnershipTestCase::class);
+uses(OwnershipTestCase::class, OptsIntoAdoptedSchemaReuse::class);
 
 it('captures audit facts and groups subject or causer queries inside their native owner', function (): void {
     app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
@@ -90,7 +92,7 @@ it('keeps retention deletion inside the canonical source write fence', function 
             ->and(DB::table($fact->getTable())->where('id', $fact->getKey())->exists())->toBeTrue();
 
     });
-});
+})->group('fresh-adoption');
 
 it('keeps automatic create update and deleted-subject evidence in the captured owner', function (): void {
     app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
@@ -128,4 +130,26 @@ it('records an owned actor deleting its own record inside the captured owner', f
             ->and($fact->owner_scope_key)->toBe(ActivityLog::query()->where('event', 'created')->sole()->owner_scope_key);
     });
     $runner->run(OwnershipCompany::query()->findOrFail(8), $operator, fn () => expect(ActivityLog::query()->count())->toBe(0));
+});
+
+it('hydrates ownership columns on registered owned causers and skips deletion capture on unmapped models', function (): void {
+    $runner = app(OwnershipRunner::class);
+    $operator = OwnershipActor::query()->firstOrFail();
+
+    $runner->run(OwnershipCompany::query()->findOrFail(7), $operator, function (): void {
+        $causer = app(OwnershipWriter::class)->create(
+            OwnershipSubject::class,
+            fn (OwnershipAssignment $assignment): OwnershipSubject => OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => 41, 'name' => 'Owned Causer']),
+        );
+
+        $canonical = app(ActivityOwnershipGuard::class)->canonicalCauser($causer);
+        expect($canonical->getRawOriginal('owner_scope_key'))->toBeString()->not->toBe('');
+
+        $unmapped = app(OwnershipWriter::class)->create(
+            OwnershipSubject::class,
+            fn (OwnershipAssignment $assignment): OwnershipSubject => OwnershipSubject::query()->create([...$assignment->attributes(), 'id' => 42, 'name' => 'Unmapped']),
+        );
+        $unmapped->delete();
+        expect(ActivityLog::query()->where('event', 'deleted')->count())->toBe(0);
+    });
 });
