@@ -5,6 +5,8 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [7.3.0] - 2026-11-17
+
 ### Fixed
 
 - Subject existence queries (`whereHas`, `whereDoesntHave`, `withCount` on `activitiesAsSubject`) work on a PostgreSQL table adopted with `uuid` morph ids: adoption now converts `subject_id` and `causer_id` to `varchar(255)`.
@@ -19,6 +21,12 @@ All notable changes to `nvl/activity` are documented here.
 
 - Activity schema adoption has a fourth step, `morph_ids`, between timestamps and indexes, and its adapter version is 2. `ActivitySchemaAdopter` plans include `widen_morph_ids`.
 - Index, timestamp precision and concurrent envelope delivery tests now also run on PostgreSQL.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- implement the Final spec audit for one release
+<!-- NVL GENERATED CHANGES END -->
 
 ## [7.2.0] - 2026-11-16
 
