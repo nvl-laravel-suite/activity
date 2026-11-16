@@ -21,12 +21,15 @@ use Nvl\Support\Enums\SystemActor;
  *
  * @phpstan-import-type Plan from ActivitySchemaAdopter
  *
- * @phpstan-type SchemaState array{add_batch_uuid:bool,widen_timestamps:list<string>,missing_indexes:array<string,list<string>>,conflicts:list<string>}
+ * @phpstan-type SchemaState array{add_batch_uuid:bool,widen_timestamps:list<string>,widen_morph_ids:list<string>,missing_indexes:array<string,list<string>>,conflicts:list<string>}
  */
 final readonly class ActivitySchemaInspector
 {
     /** Timestamp columns PostgreSQL adoption widens to microsecond precision. */
     public const array TIMESTAMPS = ['created_at', 'updated_at'];
+
+    /** Morph identifier columns PostgreSQL adoption widens from native uuid to the varchar Activity compares as text. */
+    public const array MORPH_IDS = ['causer_id', 'subject_id'];
 
     private const array REQUIRED_COLUMNS = [
         'id', 'log_name', 'description', 'subject_type', 'subject_id', 'event',
@@ -74,7 +77,8 @@ final readonly class ActivitySchemaInspector
 
     /**
      * Read the full table and return the reviewable plan. The fingerprint covers the historical rows and the
-     * required columns, normalised so adding batch_uuid, widening timestamps and adding indexes leave it unchanged.
+     * required columns, normalised so adding batch_uuid, widening timestamps and morph ids and adding indexes leave it
+     * unchanged.
      *
      * @return Plan
      */
@@ -90,6 +94,9 @@ final readonly class ActivitySchemaInspector
         if ($connection->getDriverName() === 'pgsql') {
             foreach (self::TIMESTAMPS as $column) {
                 $base[$column]['type'] = 'timestamp without time zone';
+            }
+            foreach (self::MORPH_IDS as $column) {
+                unset($base[$column]['type'], $base[$column]['type_name'], $base[$column]['collation']);
             }
         }
         ksort($base);
@@ -129,8 +136,9 @@ final readonly class ActivitySchemaInspector
         return [
             'table' => $table, 'fingerprint' => hash_final($hash), 'rows' => $rows,
             'add_batch_uuid' => $state['add_batch_uuid'], 'widen_timestamps' => $state['widen_timestamps'],
-            'missing_indexes' => $state['missing_indexes'], 'conflicts' => $conflicts,
-            'ready' => $hasBatch && $state['widen_timestamps'] === [] && $state['missing_indexes'] === [] && $conflicts === [],
+            'widen_morph_ids' => $state['widen_morph_ids'], 'missing_indexes' => $state['missing_indexes'], 'conflicts' => $conflicts,
+            'ready' => $hasBatch && $state['widen_timestamps'] === [] && $state['widen_morph_ids'] === []
+                && $state['missing_indexes'] === [] && $conflicts === [],
         ];
     }
 
@@ -146,16 +154,24 @@ final readonly class ActivitySchemaInspector
         $indexes = $schema->getIndexes($table);
         $this->assertLegacyShape($columns, $indexes, $connection->getDriverName());
         [$missing, $conflicts] = $this->planIndexes($connection, $table, $indexes);
-        $widen = [];
+        $widen = $morphIds = [];
         if ($connection->getDriverName() === 'pgsql') {
             foreach (self::TIMESTAMPS as $column) {
                 if (preg_match('/^timestamp\([0-5]\) without time zone$/D', $columns[$column]['type']) === 1) {
                     $widen[] = $column;
                 }
             }
+            foreach (self::MORPH_IDS as $column) {
+                if ($columns[$column]['type_name'] === 'uuid') {
+                    $morphIds[] = $column;
+                }
+            }
         }
 
-        return ['add_batch_uuid' => ! isset($columns['batch_uuid']), 'widen_timestamps' => $widen, 'missing_indexes' => $missing, 'conflicts' => $conflicts];
+        return [
+            'add_batch_uuid' => ! isset($columns['batch_uuid']), 'widen_timestamps' => $widen, 'widen_morph_ids' => $morphIds,
+            'missing_indexes' => $missing, 'conflicts' => $conflicts,
+        ];
     }
 
     /**
@@ -193,6 +209,25 @@ final readonly class ActivitySchemaInspector
         $grammar = $connection->getQueryGrammar();
         $alterations = array_map(
             static fn (string $column): string => 'ALTER COLUMN '.$grammar->wrap($column).' TYPE timestamp(6) without time zone',
+            $columns,
+        );
+        $connection->statement('ALTER TABLE '.$grammar->wrapTable($table).' '.implode(', ', $alterations));
+    }
+
+    /**
+     * Convert the given PostgreSQL uuid morph id columns to the varchar(255) native Activity storage uses, so morph
+     * relations and filters compare text with text, in one statement.
+     *
+     * @param  list<string>  $columns
+     */
+    public function widenMorphIds(Connection $connection, string $table, array $columns): void
+    {
+        if ($columns === []) {
+            return;
+        }
+        $grammar = $connection->getQueryGrammar();
+        $alterations = array_map(
+            static fn (string $column): string => 'ALTER COLUMN '.$grammar->wrap($column).' TYPE varchar(255) USING '.$grammar->wrap($column).'::text',
             $columns,
         );
         $connection->statement('ALTER TABLE '.$grammar->wrapTable($table).' '.implode(', ', $alterations));

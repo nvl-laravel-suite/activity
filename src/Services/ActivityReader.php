@@ -255,8 +255,30 @@ final readonly class ActivityReader
             $this->ownership->relatedQuery($query);
         }
         $model = $query->getModel();
+        $createdAt = $model->qualifyColumn('created_at');
+        $query->reorder();
+        // PostgreSQL sorts nulls first when descending; keep undated records behind recent ones as SQLite does.
+        if ($model->getConnection()->getDriverName() === 'pgsql') {
+            $sql = $query->getQuery()->getGrammar()->wrap($createdAt).' DESC NULLS LAST';
+            $this->assertSafeNullsLastSql($sql);
+            $query->orderByRaw($sql);
+        } else {
+            $query->orderByDesc($createdAt);
+        }
 
-        return $query->reorder()->orderByDesc($model->qualifyColumn('created_at'))->orderByDesc($model->getQualifiedKeyName())->limit($limit)->get();
+        return $query->orderByDesc($model->getQualifiedKeyName())->limit($limit)->get();
+    }
+
+    /**
+     * Accept only a grammar-wrapped column followed by the fixed ordering.
+     *
+     * @phpstan-assert literal-string $sql
+     */
+    private function assertSafeNullsLastSql(string $sql): void
+    {
+        if (preg_match('/^[A-Za-z0-9_."]+ DESC NULLS LAST$/D', $sql) !== 1) {
+            throw new InvalidArgumentException('Activity source ordering produced unsafe SQL.');
+        }
     }
 
     /** Apply a deterministic cursor without skipping legacy rows with null timestamps. */
@@ -426,10 +448,12 @@ final readonly class ActivityReader
             is_int($configuredScanLimit) ? $configuredScanLimit : 5000,
         ));
 
-        // Read the newest attributed facts through the timestamp index instead of aggregating the whole log.
-        $latestCausers = ActivityModelRegistry::query()
+        // Read the newest attributed facts the actor may see through the timestamp index instead of aggregating the whole log.
+        $causerFacts = ActivityModelRegistry::query()
             ->where('causer_type', $user->getMorphClass())
-            ->whereNotNull('causer_id')
+            ->whereNotNull('causer_id');
+        $this->policies->visible($causerFacts, $actor, $this->access);
+        $latestCausers = $causerFacts
             ->newestFirst()
             ->limit($scanLimit)
             ->get(['causer_id'])

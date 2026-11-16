@@ -24,3 +24,12 @@ Target PHP 8.4, Laravel 13, Testbench 11 for development, and native NVL Activit
 - Automatic redaction now matches whole key segments: `token`, `api_token`, `accessToken` and `password_hash` are redacted, while `token_count`, `authorization_status` and `secretary_id` are stored. Declare any other sensitive field in the event policy's `redacted_fields`.
 
 Drain obsolete queued payloads and restart workers before deploying changed contracts. No migration rewrites historical audit rows or transfers their owner. Review historical credentials separately; new recording redacts credential keys.
+
+## Unreleased
+
+- Activity schema adoption converts PostgreSQL `uuid` morph ids (`subject_id`, `causer_id`) to `varchar(255)` in a new `morph_ids` step; the conversion rewrites the table under its lock. The adapter version changes to 2, so an unfinished `nvl:adopt activity` run planned with 7.2.0 is refused: abandon the unfinished 7.2.0 run with `nvl:adopt activity abandon --run=<id>`, then plan and apply again. Activated runs are unaffected. On PostgreSQL an `ActivitySchemaAdopter` fingerprint reviewed with 7.2.0 also changes. A table already activated with `uuid` morph ids keeps them; convert them with `ALTER TABLE … ALTER COLUMN subject_id TYPE varchar(255) USING subject_id::text` (and `causer_id`) before using `whereHas('activitiesAsSubject')`.
+- Plans returned by `ActivitySchemaAdopter` contain a `widen_morph_ids` list.
+- `new ActivityPurgeCriteria(...)` throws `ActivityPurgeCriteriaException` for invalid criteria: neither or both of `days` and `before`, non-positive days, an unparseable date, or `after` not earlier than the cutoff.
+- Causer suggestions omit causers known only from facts the actor may not read.
+- Service reads return soft-deleted subjects when `nvl-activity.reads.include_soft_deleted_subjects` is true; previously only the model relation honoured it.
+- Activity search now uses Core's `TextMatcher` binding; a host that rebinds it changes Activity search too.

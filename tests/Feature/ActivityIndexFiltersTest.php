@@ -43,6 +43,14 @@ test('activity search treats wildcard and escape characters as literal text', fu
     expect(app(ActivityReader::class)->cursor(['search' => $term], SystemActor::Background)['items']->pluck('id')->all())->toBe([$match->id]);
 })->with(['%', '_', '!', '\\', "'", 'Пример']);
 
+test('activity search folds Bulgarian case on every supported database', function (string $term): void {
+    $match = ActivityLog::query()->create(['description' => 'Пример Запис', 'event' => 'created']);
+    ActivityLog::query()->create(['description' => 'Друго събитие', 'event' => 'created']);
+
+    expect(app(ActivityReader::class)->paginate(['search' => $term], SystemActor::Background)->pluck('id')->all())->toBe([$match->id])
+        ->and(app(ActivityReader::class)->cursor(['search' => $term], SystemActor::Background)['items']->pluck('id')->all())->toBe([$match->id]);
+})->with(['пример', 'ЗАПИС', 'пРиМеР зАпИс']);
+
 test('activity search rejects invalid raw terms on both public read paths', function (string $term): void {
     expect(fn () => app(ActivityReader::class)->paginate(['search' => $term], SystemActor::Background))->toThrow(InvalidArgumentException::class)
         ->and(fn () => app(ActivityReader::class)->causers(SystemActor::Background, $term))->toThrow(InvalidArgumentException::class);

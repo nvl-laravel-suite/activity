@@ -19,18 +19,19 @@ use Nvl\Support\Enums\SystemActor;
 /**
  * Completes an unowned Spatie v5 audit table in place through nvl:adopt, one checkpointed DDL step at a time.
  *
- * Steps run in order: add batch_uuid, widen PostgreSQL timestamps, add indexes. Each batch takes the PostgreSQL
- * table lock and commits its DDL with its checkpoint, so only transactional DDL is used (plain CREATE INDEX, never
- * CONCURRENTLY). Every batch ensures a fixed list of changes and skips those already present, so counts stay stable
- * on resume. The fingerprint reuses the shared review, which hashes the historical rows and the required columns
- * normalised (batch_uuid excluded, timestamp precision ignored, indexes left out), so the adapter's own DDL never
- * invalidates the reviewed plan between apply and resume.
+ * Steps run in order: add batch_uuid, widen PostgreSQL timestamps, widen PostgreSQL uuid morph ids to varchar, add
+ * indexes. Each batch takes the PostgreSQL table lock and commits its DDL with its checkpoint, so only transactional
+ * DDL is used (plain CREATE INDEX, never CONCURRENTLY). Every batch ensures a fixed list of changes and skips those
+ * already present, so counts stay stable on resume, and a resumed run first confirms every change behind its stored
+ * cursor is still present. The fingerprint reuses the shared review, which hashes the historical rows and the
+ * required columns normalised (batch_uuid excluded, timestamp precision and morph id type ignored, indexes left out),
+ * so the adapter's own DDL never invalidates the reviewed plan between apply and resume.
  *
  * @internal Hosts run it through `php artisan nvl:adopt activity`.
  */
 final class ActivitySchemaAdoptionAdapter extends AdoptionAdapter
 {
-    public const string Version = '1';
+    public const string Version = '2';
 
     /**
      * @param  array<string, mixed>  $options  Activity adoption takes no manifest options
@@ -109,6 +110,7 @@ final class ActivitySchemaAdoptionAdapter extends AdoptionAdapter
         match ($batch->step) {
             'batch_uuid' => $this->schema->addColumnsAndIndexes($connection, $table, $state['add_batch_uuid'] && $names !== [], []),
             'timestamps' => $this->schema->widenTimestamps($connection, $table, array_values(array_intersect($state['widen_timestamps'], $names))),
+            'morph_ids' => $this->schema->widenMorphIds($connection, $table, array_values(array_intersect($state['widen_morph_ids'], $names))),
             'indexes' => $this->schema->addColumnsAndIndexes($connection, $table, false, array_intersect_key($state['missing_indexes'], array_flip($names))),
             default => throw new AdoptionException("Activity adoption has no step [{$batch->step}]."),
         };
@@ -116,12 +118,44 @@ final class ActivitySchemaAdoptionAdapter extends AdoptionAdapter
         return null;
     }
 
+    /**
+     * Refuse a checkpoint once a committed change at or before its cursor was reverted, for example a dropped index.
+     */
+    public function assertCheckpoint(AdoptionStep $step, ?array $cursor, int $processed): void
+    {
+        [$connection, $table] = $this->schema->target();
+        $this->schema->lock($connection, $table);
+        if ($cursor !== null) {
+            $step->assertCursor($cursor);
+        }
+        $committed = $cursor === null ? [] : array_values(array_filter(
+            array_column($this->changes($connection, $table, $step->id), 'name'),
+            static fn (string $name): bool => strcmp($name, (string) $cursor['name']) <= 0,
+        ));
+        if (count($committed) !== $processed) {
+            throw new AdoptionException("Adoption checkpoint of step [{$step->id}] counts {$processed} changes, but its cursor covers ".count($committed).'.');
+        }
+        $state = $this->schema->state($connection, $table);
+        $outstanding = match ($step->id) {
+            'batch_uuid' => $state['add_batch_uuid'] ? ['batch_uuid'] : [],
+            'timestamps' => $state['widen_timestamps'],
+            'morph_ids' => $state['widen_morph_ids'],
+            'indexes' => array_keys($state['missing_indexes']),
+            default => throw new AdoptionException("Activity adoption has no step [{$step->id}]."),
+        };
+        $reverted = array_values(array_intersect($committed, $outstanding));
+        if ($reverted !== []) {
+            throw new AdoptionException("Adoption checkpoint of step [{$step->id}] is behind reverted schema change [{$reverted[0]}].");
+        }
+    }
+
     public function verify(AdoptionPlan $plan): AdoptionVerification
     {
         [$connection, $table] = $this->schema->target();
         $review = $this->schema->review($connection, $table);
         $schema = $connection->getSchemaBuilder();
-        $outstanding = (int) $review['add_batch_uuid'] + count($review['widen_timestamps']) + count($review['missing_indexes']);
+        $outstanding = (int) $review['add_batch_uuid'] + count($review['widen_timestamps']) + count($review['widen_morph_ids'])
+            + count($review['missing_indexes']);
 
         return new AdoptionVerification($outstanding, 0, 0, AdoptionPlan::digest([
             'history' => $review['fingerprint'],
@@ -138,7 +172,8 @@ final class ActivitySchemaAdoptionAdapter extends AdoptionAdapter
         return [
             new AdoptionStep('batch_uuid', [], ['name']),
             new AdoptionStep('timestamps', ['batch_uuid'], ['name']),
-            new AdoptionStep('indexes', ['timestamps'], ['name']),
+            new AdoptionStep('morph_ids', ['timestamps'], ['name']),
+            new AdoptionStep('indexes', ['morph_ids'], ['name']),
         ];
     }
 
@@ -153,6 +188,9 @@ final class ActivitySchemaAdoptionAdapter extends AdoptionAdapter
             'batch_uuid' => [['name' => 'batch_uuid']],
             'timestamps' => $connection->getDriverName() === 'pgsql'
                 ? array_map(static fn (string $column): array => ['name' => $column], ActivitySchemaInspector::TIMESTAMPS)
+                : [],
+            'morph_ids' => $connection->getDriverName() === 'pgsql'
+                ? array_map(static fn (string $column): array => ['name' => $column], ActivitySchemaInspector::MORPH_IDS)
                 : [],
             'indexes' => array_map(
                 static fn (string $name, array $columns): array => ['name' => $name, 'columns' => $columns],

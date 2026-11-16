@@ -15,7 +15,7 @@ use Nvl\Support\Enums\SystemActor;
  *
  * @api
  *
- * @phpstan-type Plan array{table:string,fingerprint:string,rows:int,add_batch_uuid:bool,widen_timestamps:list<string>,missing_indexes:array<string,list<string>>,conflicts:list<string>,ready:bool}
+ * @phpstan-type Plan array{table:string,fingerprint:string,rows:int,add_batch_uuid:bool,widen_timestamps:list<string>,widen_morph_ids:list<string>,missing_indexes:array<string,list<string>>,conflicts:list<string>,ready:bool}
  */
 final readonly class ActivitySchemaAdopter
 {
@@ -47,6 +47,7 @@ final readonly class ActivitySchemaAdopter
                 return $plan;
             }
             $this->schema->widenTimestamps($connection, $table, $plan['widen_timestamps']);
+            $this->schema->widenMorphIds($connection, $table, $plan['widen_morph_ids']);
             $this->schema->addColumnsAndIndexes($connection, $table, $plan['add_batch_uuid'], $plan['missing_indexes']);
 
             return $this->ready($connection, $table, $fingerprint);

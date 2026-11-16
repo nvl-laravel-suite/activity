@@ -107,13 +107,13 @@ Capture validates/authorizes mapped events before model mutation where Laravel p
 
 `cursor($filters, $actor, $cursor = null)` returns `['items' => EloquentCollection, 'next_cursor' => ?string]` without a total-count query. It accepts the same filters except `page` and orders by timestamp then UUID, preserving microseconds and ties. Pass the returned opaque cursor unchanged; keep the same filters across pages. `find($id, $actor)` returns an authorized fact or null for missing/hidden identities.
 
-Activity and causer search terms contain at most 200 UTF-8 characters, without NUL bytes. `%`, `_`, backslashes and the SQL escape marker are literal text. Case behavior follows the supported database's existing LIKE policy. Substring search can still scan many stored rows; prefer `cursor` for search interfaces to avoid a total-count query, combine exact event/subject/date filters, and apply host request budgets. A page-size cap is not a database scan bound.
+Activity and causer search terms contain at most 200 UTF-8 characters, without NUL bytes. `%`, `_`, backslashes and the SQL escape marker are literal text. Matching is case-insensitive through Core's `TextMatcher`, so non-ASCII text such as Bulgarian folds on SQLite and on PostgreSQL under any database collation, including C. Substring search can still scan many stored rows; prefer `cursor` for search interfaces to avoid a total-count query, combine exact event/subject/date filters, and apply host request budgets. A page-size cap is not a database scan bound.
 
-`timeline()` returns a Laravel collection of native models ordered by creation instant, descending morph type and descending native key within that type (numeric for integer keys, lexical for string keys). Source storage and its declared key type must agree, including sortable timestamps and string-key collation. It accepts limits 1–1000, scans at most 5000 base facts in batches of 100, and may return fewer results when the scan bound is reached. Historical visibility and noisy-only updates are filtered before the final limit. Equal timestamps retain distinct events. Missing historical relations safely yield null in service reads.
+`timeline()` returns a Laravel collection of native models ordered by creation instant, descending morph type and descending native key within that type (numeric for integer keys, lexical for string keys). Source storage and its declared key type must agree, including sortable timestamps and string-key collation. It accepts limits 1–1000, scans at most 5000 base facts in batches of 100, and may return fewer results when the scan bound is reached. Historical visibility and noisy-only updates are filtered before the final limit. Equal timestamps retain distinct events. Missing historical relations safely yield null in service reads. Service reads load soft-deleted subjects only when `nvl-activity.reads.include_soft_deleted_subjects` is true; causers always include them.
 
 Custom sources implement `ActivityTimelineSource::query(Model|ActivitySubjectReference): Builder` and `supersedes(): array`. Pass at most ten sources to `timeline(..., sources: [$comments])`. Each source supplies its own subject constraint and canonical database `created_at` ordering; Activity adds native owner admission, a stable key tie-break and an independent row limit. Source models and columns remain consumer-owned. Supersession only applies when that source returns visible rows. Consumers own custom source authorization, sensitive-field selection and presentation. Do not return an unbounded materialized collection or a presentation DTO.
 
-`causers()` searches historical identities, validates integer/UUID/ULID keys, and retains soft-deleted causers where supported. Results are native models with only the primary key and available `name`, `email`, `first_name`, `last_name` columns. Suggestions come from the newest `causer_suggestions.scan_limit` attributed facts, read through the timestamp index. Safe relation hydration batches queries per model type and preserves ownership predicates; schema/admission probes remain fresh and are distinct from protected row-loading budgets.
+`causers()` searches historical identities the actor may see under the event audience policies, validates integer/UUID/ULID keys, and retains soft-deleted causers where supported. Results are native models with only the primary key and available `name`, `email`, `first_name`, `last_name` columns. Suggestions come from the newest `causer_suggestions.scan_limit` attributed facts, read through the timestamp index. Safe relation hydration batches queries per model type and preserves ownership predicates; schema/admission probes remain fresh and are distinct from protected row-loading budgets.
 
 ## Semantic rendering
 
@@ -128,8 +128,9 @@ Review `plan($actor)` and its fingerprint, row count, and conflicts. Apply the
 approved fingerprint with `apply($actor, $fingerprint)`, then call
 `verify($actor, $fingerprint)` before running the native migrations and
 switching application capture. The adopter preserves IDs, dates and JSON facts.
-It adds missing native indexes and `batch_uuid`, and widens PostgreSQL timestamp
-precision where needed. Reuse the same reviewed plan after an interrupted
+It adds missing native indexes and `batch_uuid`, widens PostgreSQL timestamp
+precision, and converts PostgreSQL `uuid` morph ids (`subject_id`, `causer_id`) to the
+native `varchar(255)` where needed, so subject existence queries compare text with text. Reuse the same reviewed plan after an interrupted
 attempt if the source facts have stayed unchanged. Enable native Ownership
 through its own reviewed adoption workflow after schema adoption.
 
@@ -137,7 +138,7 @@ Alternatively, for checkpointed batches with an explicit activate step, start wi
 
 ## Retention and recovery
 
-`ActivityPurgeDispatcher::dispatch(ActivityPurgeCriteria $criteria, Authenticatable|SystemActor $actor): int` authorizes and queues one bounded job in the currently admitted owner scope. `count($criteria, $actor): int` previews that same scope. `ActivityPurgeCriteria` validates days/date ranges and allowlisted filters. Important evidence is protected unless explicitly included.
+`ActivityPurgeDispatcher::dispatch(ActivityPurgeCriteria $criteria, Authenticatable|SystemActor $actor): int` authorizes and queues one bounded job in the currently admitted owner scope. `count($criteria, $actor): int` previews that same scope. `ActivityPurgeCriteria` validates on construction, including direct `new ActivityPurgeCriteria(...)`: exactly one of `days` (positive) or `before`, parseable dates, and `after` earlier than the cutoff. It also validates allowlisted filters. Important evidence is protected unless explicitly included.
 
 Job dispatch and `ActivityLogPurgeQueued` publication follow the Activity connection's outer commit; rollback discards both. These local callbacks are not a durable outbox: a process crash after commit can lose a retention request. Once queued, `PurgeActivityLogsJob` retains captured native ownership, partition-specific locking, bounded chunks, exception backoff, lock-contention retry and failure reporting. One run deletes at most 10,000 rows, releases its lock and dispatches a continuation carrying its cursor, so a run stays far below the job timeout. Hosts run reviewed per-owner scopes; there is no implicit global worklist or Tenancy fallback.
 

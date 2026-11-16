@@ -2,12 +2,19 @@
 
 declare(strict_types=1);
 
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Nvl\Activity\Contracts\ActivityAuthorization;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Services\ActivityPolicyRegistry;
 use Nvl\Activity\Services\ActivityReader;
+use Nvl\Activity\Support\ActivityEventPolicy;
+use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Tests\Stubs\AbstractTestActivitySubject;
 use Nvl\Activity\Tests\Stubs\TestActivityCauser;
 use Nvl\Activity\Tests\Stubs\TestSoftDeletedActivityCauser;
@@ -284,3 +291,46 @@ test('causer suggestions scan a bounded number of the newest facts instead of ag
         ->and($statements)->toHaveCount(1)
         ->and($statements[0])->toContain('limit 3')->not->toContain('group by')->not->toContain('max(');
 });
+
+test('restricted facts do not reveal causers', function (): void {
+    Schema::create('activity_test_causers', function (Blueprint $table): void {
+        $table->increments('causer_key');
+        $table->string('name');
+    });
+    config(['nvl-activity.causer_suggestions.model' => TestActivityCauser::class]);
+    $policies = new ActivityPolicyRegistry;
+    $policies->register(new ActivityEventPolicy('reviewed'));
+    $policies->register(new ActivityEventPolicy('audit.admin', audience: 'administrative'));
+    app()->instance(ActivityPolicyRegistry::class, $policies);
+    app()->instance(ActivityAuthorization::class, new class implements ActivityAuthorization
+    {
+        public function authorize(Authenticatable|SystemActor $actor, string $ability, Model|ActivitySubjectReference|null $subject = null): void
+        {
+            if ($ability === 'read_all') {
+                throw new AuthorizationException;
+            }
+        }
+    });
+    $visible = TestActivityCauser::query()->create(['name' => 'Visible reviewer']);
+    $hidden = TestActivityCauser::query()->create(['name' => 'Hidden administrator']);
+    ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $visible->getMorphClass(), 'causer_id' => $visible->getKey(), 'event' => 'reviewed', 'created_at' => '2026-11-01 10:00:00']);
+    ActivityLog::query()->create(['description' => 'audited', 'causer_type' => $hidden->getMorphClass(), 'causer_id' => $hidden->getKey(), 'event' => 'audit.admin', 'created_at' => '2026-11-02 10:00:00']);
+
+    expect(app(ActivityReader::class)->causers(SystemActor::Background)->modelKeys())->toBe([$visible->getKey()])
+        ->and(app(ActivityReader::class)->causers(SystemActor::Background, 'administrator')->modelKeys())->toBe([]);
+});
+
+test('causer suggestions fold Bulgarian case on every supported database', function (string $term): void {
+    Schema::create('activity_test_causers', function (Blueprint $table): void {
+        $table->increments('causer_key');
+        $table->string('name');
+    });
+    config(['nvl-activity.causer_suggestions.model' => TestActivityCauser::class]);
+    $match = TestActivityCauser::query()->create(['name' => 'Иван Петров']);
+    $other = TestActivityCauser::query()->create(['name' => 'Мария Георгиева']);
+    foreach ([$match, $other] as $causer) {
+        ActivityLog::query()->create(['description' => 'reviewed', 'causer_type' => $causer->getMorphClass(), 'causer_id' => $causer->getKey(), 'event' => 'created']);
+    }
+
+    expect(app(ActivityReader::class)->causers(SystemActor::Background, $term)->modelKeys())->toBe([$match->getKey()]);
+})->with(['иван', 'ПЕТРОВ', 'иВаН пЕтРоВ']);

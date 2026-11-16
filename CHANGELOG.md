@@ -5,6 +5,21 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Subject existence queries (`whereHas`, `whereDoesntHave`, `withCount` on `activitiesAsSubject`) work on a PostgreSQL table adopted with `uuid` morph ids: adoption now converts `subject_id` and `causer_id` to `varchar(255)`.
+- Causer suggestions apply event audience policies before the scan limit, so restricted facts no longer reveal their causers.
+- Activity and causer search fold case through Core's `TextMatcher`, so Bulgarian and other non-ASCII text matches on SQLite and under a C-collated PostgreSQL database.
+- Finite timeline sources select recent records before undated ones on PostgreSQL (`DESC NULLS LAST`).
+- Service reads honour `nvl-activity.reads.include_soft_deleted_subjects` when loading subjects.
+- A directly constructed `ActivityPurgeCriteria` is validated; negative days no longer produce a future cutoff that purges recent activity.
+- A resumed `nvl:adopt activity` run refuses a checkpoint whose committed schema change was reverted, for example a dropped index.
+
+### Changed
+
+- Activity schema adoption has a fourth step, `morph_ids`, between timestamps and indexes, and its adapter version is 2. `ActivitySchemaAdopter` plans include `widen_morph_ids`.
+- Index, timestamp precision and concurrent envelope delivery tests now also run on PostgreSQL.
+
 ## [7.2.0] - 2026-11-16
 
 ### Added

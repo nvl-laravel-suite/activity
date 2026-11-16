@@ -13,6 +13,7 @@ $committed = [__DIR__.'/Feature/ActivityModelCaptureTest.php', __DIR__.'/Feature
 $spatie = [__DIR__.'/Feature/SpatieActivityCaptureIntegrationTest.php'];
 $recipes = [__DIR__.'/Feature/ActivityTimelineRecipeTest.php'];
 uses(CommittedTestCase::class)->in(...$committed);
+uses(CommittedTestCase::class)->in('Concurrency');
 uses(SpatieIntegrationTestCase::class)->in(...$spatie);
 uses(TimelineRecipeTestCase::class)->in(...$recipes);
 uses(TestCase::class)->in(...array_diff(glob(__DIR__.'/Feature/*Test.php') ?: [], $committed, $spatie, $recipes));

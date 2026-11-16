@@ -43,7 +43,7 @@ final class ActivityRelationLoader
         }
 
         $this->loadRelation($activities, 'causer', 'causer_type', 'causer_id', includeSoftDeleted: true);
-        $this->loadRelation($activities, 'subject', 'subject_type', 'subject_id');
+        $this->loadRelation($activities, 'subject', 'subject_type', 'subject_id', includeSoftDeleted: (bool) config('nvl-activity.reads.include_soft_deleted_subjects', false));
     }
 
     /**

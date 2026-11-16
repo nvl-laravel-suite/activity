@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Services\ActivitySchemaAdopter;
 use Nvl\Activity\Services\ActivitySchemaInspector;
+use Nvl\Activity\Tests\Stubs\TestUuidActivityModelSubject;
 use Nvl\Support\Adoption\AdoptionCoordinator;
 use Nvl\Support\Adoption\AdoptionException;
 use Nvl\Support\Adoption\AdoptionProgress;
@@ -50,6 +51,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
+    Schema::dropIfExists('activity_uuid_subjects');
     Schema::dropIfExists('activity_log');
     config()->set('nvl-activity.tables.log', ActivityTables::ActivityLog);
 });
@@ -94,8 +96,8 @@ it('resumes after an interruption between DDL steps with the reviewed fingerprin
     $pgsql = DB::connection()->getDriverName() === 'pgsql';
 
     expect($plan->collisions)->toBe([])
-        ->and(array_map(static fn ($step): string => $step->id, $plan->steps))->toBe(['batch_uuid', 'timestamps', 'indexes'])
-        ->and($plan->expected)->toBe(['batch_uuid' => 1, 'timestamps' => $pgsql ? 2 : 0, 'indexes' => $pgsql ? 6 : 5])
+        ->and(array_map(static fn ($step): string => $step->id, $plan->steps))->toBe(['batch_uuid', 'timestamps', 'morph_ids', 'indexes'])
+        ->and($plan->expected)->toBe(['batch_uuid' => 1, 'timestamps' => $pgsql ? 2 : 0, 'morph_ids' => $pgsql ? 2 : 0, 'indexes' => $pgsql ? 6 : 5])
         ->and(Schema::hasColumn('activity_log', 'batch_uuid'))->toBeFalse()
         ->and(DB::table(AdoptionStore::Runs)->count())->toBe(0);
 
@@ -111,6 +113,7 @@ it('resumes after an interruption between DDL steps with the reviewed fingerprin
         ->and(Schema::hasColumn('activity_log', 'batch_uuid'))->toBeTrue()
         ->and($progress?->steps['batch_uuid']['complete'])->toBeTrue()
         ->and($progress?->steps['timestamps']['complete'])->toBeTrue()
+        ->and($progress?->steps['morph_ids']['complete'])->toBeTrue()
         ->and($progress?->steps['indexes'])->toBe(['cursor' => ['name' => $firstIndexBatch[1]], 'processed' => 2, 'expected' => $plan->expected['indexes'], 'complete' => false])
         ->and(activitySchemaHistory())->toBe($history);
     $state = app(ActivitySchemaInspector::class)->state(DB::connection(), 'activity_log');
@@ -126,6 +129,7 @@ it('resumes after an interruption between DDL steps with the reviewed fingerprin
     sort($missing);
     expect($state['add_batch_uuid'])->toBeFalse()
         ->and($state['widen_timestamps'])->toBe([])
+        ->and($state['widen_morph_ids'])->toBe([])
         ->and($missing)->toBe($rolledBack)
         ->and($rolledBack)->toHaveCount(1)
         ->and(array_column(Schema::getIndexes('activity_log'), 'name'))->not->toContain($rolledBack[0]);
@@ -182,7 +186,7 @@ it('adopts through nvl:adopt without changing history and completes every index'
     sort($adopted);
     expect(activitySchemaAdoptedIndexes())->toBe($adopted)
         ->and(app(ActivitySchemaInspector::class)->state(DB::connection(), 'activity_log'))->toMatchArray([
-            'add_batch_uuid' => false, 'widen_timestamps' => [], 'missing_indexes' => [], 'conflicts' => [],
+            'add_batch_uuid' => false, 'widen_timestamps' => [], 'widen_morph_ids' => [], 'missing_indexes' => [], 'conflicts' => [],
         ]);
     if (DB::connection()->getDriverName() === 'pgsql') {
         $definition = DB::selectOne('SELECT pg_get_indexdef(?::regclass) AS definition', ['activity_log_newest_first_index'])->definition;
@@ -201,4 +205,59 @@ it('refuses to resume once history changed behind the reviewed plan', function (
 
     expect(fn () => activitySchemaCoordinator()->apply($plan->fingerprint, 2, $runId))
         ->toThrow(AdoptionException::class, 'changed since review');
+});
+
+it('refuses to resume once a committed schema change behind the checkpoint was reverted', function (Closure $revert, string $change): void {
+    $plan = activitySchemaCoordinator()->plan();
+    activitySchemaFailOnIndex(2);
+    expect(fn () => activitySchemaCoordinator()->apply($plan->fingerprint, 2))->toThrow(RuntimeException::class);
+    $runId = (string) DB::table(AdoptionStore::Runs)->value('id');
+    $created = array_values(array_intersect(
+        array_slice(array_keys(collect(app(ActivitySchemaInspector::class)->requiredIndexes(DB::connection(), 'activity_log'))->sortKeys()->all()), 0, 2),
+        array_column(Schema::getIndexes('activity_log'), 'name'),
+    ));
+    $reverted = $change === 'index' ? $created[0] : 'batch_uuid';
+    expect($created)->toHaveCount(1);
+
+    $revert($reverted);
+
+    // The reviewed fingerprint ignores the adapter's own DDL, so only the checkpoint check can notice the revert.
+    expect(activitySchemaCoordinator()->plan()->fingerprint)->toBe($plan->fingerprint)
+        ->and(fn () => activitySchemaCoordinator()->apply($plan->fingerprint, 2, $runId))
+        ->toThrow(AdoptionException::class, "is behind reverted schema change [{$reverted}]");
+    // Nothing was rewound or re-created behind the cursor.
+    expect(array_column(Schema::getIndexes('activity_log'), 'name'))->not->toContain($reverted)
+        ->and(Schema::hasColumn('activity_log', 'batch_uuid'))->toBe($change === 'index')
+        ->and(DB::table(AdoptionStore::Runs)->value('status'))->toBe(AdoptionProgress::Failed);
+})->with([
+    'index behind an incomplete cursor' => [static fn (string $name) => Schema::table('activity_log', fn (Blueprint $table) => $table->dropIndex($name)), 'index'],
+    'column from a completed step' => [static fn (string $name) => Schema::table('activity_log', fn (Blueprint $table) => $table->dropColumn($name)), 'column'],
+]);
+
+it('answers subject existence queries on adopted UUID morph columns', function (): void {
+    Schema::create('activity_uuid_subjects', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('name');
+    });
+    $plan = activitySchemaCoordinator()->plan();
+    expect(activitySchemaCoordinator()->apply($plan->fingerprint, 10)->state)->toBe(AdoptionProgress::Applied);
+    $logged = TestUuidActivityModelSubject::query()->create(['name' => 'Logged']);
+    $silent = TestUuidActivityModelSubject::query()->create(['name' => 'Silent']);
+    foreach (['019c46ed-4f77-71a8-a741-216bad57d940', '019c46ed-4f77-71a8-a741-216bad57d941'] as $id) {
+        DB::table('activity_log')->insert([
+            'id' => $id, 'log_name' => 'native', 'description' => 'Adopted subject', 'event' => 'updated',
+            'subject_type' => $logged->getMorphClass(), 'subject_id' => $logged->getKey(),
+            'created_at' => '2025-06-01 10:00:00', 'updated_at' => '2025-06-01 10:00:00',
+        ]);
+    }
+
+    expect(TestUuidActivityModelSubject::query()->whereHas('activitiesAsSubject')->pluck('id')->all())->toBe([$logged->getKey()])
+        ->and(TestUuidActivityModelSubject::query()->whereDoesntHave('activitiesAsSubject')->pluck('id')->all())->toBe([$silent->getKey()])
+        ->and(TestUuidActivityModelSubject::query()->withCount('activitiesAsSubject')->orderBy('name')->pluck('activities_as_subject_count', 'name')->all())
+        ->toBe(['Logged' => 2, 'Silent' => 0])
+        ->and($logged->activitiesAsSubject()->count())->toBe(2);
+    if (DB::connection()->getDriverName() === 'pgsql') {
+        expect(collect(Schema::getColumns('activity_log'))->whereIn('name', ['subject_id', 'causer_id'])->pluck('type')->unique()->all())
+            ->toBe(['character varying(255)']);
+    }
 });

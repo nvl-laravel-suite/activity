@@ -574,13 +574,13 @@ final readonly class Nvl\Activity\Services\ActivitySchemaAdopter
 public function __construct(Nvl\Activity\Services\ActivityAccess $access, Nvl\Activity\Ownership\ActivityOwnershipGuard $ownership): mixed
 public function apply(Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor $actor, string $fingerprint): array
 @return Plan
-resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
+resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, widen_morph_ids: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
 public function plan(Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor $actor): array
 @return Plan
-resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
+resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, widen_morph_ids: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
 public function verify(Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor $actor, string $fingerprint): array
 @return Plan
-resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
+resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, widen_morph_ids: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
 ```
 
 ## Nvl\Activity\Services\HeadlineRenderer
@@ -761,6 +761,8 @@ public function __construct(?int $days=null, ?string $before=null, ?string $afte
 @param list<string> $subjectIds
 @param list<string> $causerTypes
 @param list<string> $causerIds
+@throws ActivityPurgeCriteriaException
+resolved @throws Nvl\Activity\Exceptions\ActivityPurgeCriteriaException
 public function afterCutoff(): ?Carbon\CarbonImmutable
 public function cutoff(): Carbon\CarbonImmutable
 public static function fromConsoleOptions(array $options, bool $forceSystemOnly=false, ?int $defaultDays=null): self

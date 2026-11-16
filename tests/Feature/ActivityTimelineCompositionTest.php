@@ -73,6 +73,14 @@ test('timestamp peers preserve distinct events', function (): void {
     expect(app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'one'), SystemActor::Background))->toHaveCount(2);
 });
 
+test('finite sources select recent records before undated records', function (): void {
+    $undated = TestTimelineSourceRecord::query()->create(['subject_id' => 'one', 'event' => 'imported', 'created_at' => null]);
+    $recent = TestTimelineSourceRecord::query()->create(['subject_id' => 'one', 'event' => 'commented', 'created_at' => '2026-08-01 13:00:00']);
+    $rows = app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'one'), SystemActor::Background, 1, [activityTimelineSource()]);
+
+    expect($rows->all())->toHaveCount(1)->and($rows[0]->is($recent))->toBeTrue()->and($rows[0]->is($undated))->toBeFalse();
+});
+
 test('merged timelines reject unbounded limits', function (): void {
     expect(fn () => app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'one'), SystemActor::Background, 1001))->toThrow(InvalidArgumentException::class);
 });

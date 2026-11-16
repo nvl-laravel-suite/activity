@@ -106,6 +106,34 @@ test('display reads preserve soft deleted historical causers', function (): void
     }
 });
 
+test('service reads honour the configured soft deleted subject policy', function (bool $includeSoftDeleted): void {
+    Schema::create('activity_soft_deleted_causers', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('email')->nullable();
+        $table->softDeletes();
+    });
+
+    try {
+        config()->set('nvl-activity.reads.include_soft_deleted_subjects', $includeSoftDeleted);
+        $subject = TestSoftDeletedActivityCauser::query()->create(['name' => 'Archived record']);
+        $activity = ActivityLog::query()->create([
+            'log_name' => 'test',
+            'description' => 'Reviewed',
+            'event' => 'reviewed',
+            'subject_type' => $subject->getMorphClass(),
+            'subject_id' => $subject->getKey(),
+        ]);
+        $subject->delete();
+
+        app(ActivityRelationLoader::class)->load(new EloquentCollection([$activity]));
+
+        expect($activity->subject?->getKey())->toBe($includeSoftDeleted ? $subject->getKey() : null);
+    } finally {
+        Schema::dropIfExists('activity_soft_deleted_causers');
+    }
+})->with(['included' => [true], 'excluded' => [false]]);
+
 test('display relations use each related model connection when activity storage is separate', function (): void {
     $storageConnection = 'activity_relation_storage';
     $storageTable = 'activity_relation_log';

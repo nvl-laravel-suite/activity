@@ -93,6 +93,7 @@ test('adopts Spatie v5 audit storage with a reviewed fingerprint and preserves e
         $plan = $adopter->plan($actor);
         expect($plan['rows'])->toBe(1)->and($plan['add_batch_uuid'])->toBeTrue()
             ->and($plan['widen_timestamps'])->toBe(DB::connection()->getDriverName() === 'pgsql' ? ['created_at', 'updated_at'] : [])
+            ->and($plan['widen_morph_ids'])->toBe(DB::connection()->getDriverName() === 'pgsql' ? ['causer_id', 'subject_id'] : [])
             ->and(array_values($plan['missing_indexes']))->toContain(['event', 'created_at'])
             ->and(Schema::hasColumn('activity_log', 'batch_uuid'))->toBeFalse();
 
@@ -433,6 +434,26 @@ test('purge queue actions reject invalid retention before dispatch', function ()
 
     Bus::assertNothingDispatched();
 });
+
+test('invalid direct criteria dispatch neither job nor event', function (Closure $criteria, string $message): void {
+    Bus::fake();
+    Event::fake([ActivityLogPurgeQueued::class]);
+    $recent = ActivityLog::query()->create(['log_name' => 'test', 'description' => 'Recent activity', 'event' => 'synchronized']);
+
+    expect(fn () => app(ActivityPurgeDispatcher::class)->dispatch($criteria(), SystemActor::Background))
+        ->toThrow(ActivityPurgeCriteriaException::class, $message);
+
+    Bus::assertNothingDispatched();
+    Event::assertNotDispatched(ActivityLogPurgeQueued::class);
+    expect($recent->fresh())->not->toBeNull();
+})->with([
+    'negative days' => [static fn (): ActivityPurgeCriteria => new ActivityPurgeCriteria(days: -30), 'Days must be a positive integer.'],
+    'zero days' => [static fn (): ActivityPurgeCriteria => new ActivityPurgeCriteria(days: 0), 'Days must be a positive integer.'],
+    'no cutoff' => [static fn (): ActivityPurgeCriteria => new ActivityPurgeCriteria, 'Purge criteria requires either days or before.'],
+    'both cutoffs' => [static fn (): ActivityPurgeCriteria => new ActivityPurgeCriteria(days: 30, before: '2026-01-01T00:00:00+00:00'), 'Use either --days or --before, not both.'],
+    'unparseable before' => [static fn (): ActivityPurgeCriteria => new ActivityPurgeCriteria(before: 'not-a-date'), 'The --before option must be a valid date/time.'],
+    'inverted range' => [static fn (): ActivityPurgeCriteria => new ActivityPurgeCriteria(before: '2026-01-01T00:00:00+00:00', after: '2026-02-01T00:00:00+00:00'), '--after must be earlier than the effective purge cutoff.'],
+]);
 
 test('doctor rejects incompatible adopted schemas instead of reporting a false healthy state', function (): void {
     $migration = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';

@@ -11,6 +11,8 @@ use Nvl\Activity\Exceptions\ActivityPurgeCriteriaException;
 /**
  * Immutable filter set for activity purge maintenance flows.
  *
+ * Every instance is valid: exactly one cutoff, positive days, parseable dates and a lower bound before the cutoff.
+ *
  * @api
  */
 final readonly class ActivityPurgeCriteria
@@ -22,6 +24,8 @@ final readonly class ActivityPurgeCriteria
      * @param  list<string>  $subjectIds
      * @param  list<string>  $causerTypes
      * @param  list<string>  $causerIds
+     *
+     * @throws ActivityPurgeCriteriaException When the cutoffs or range are invalid
      */
     public function __construct(
         public ?int $days = null,
@@ -35,7 +39,21 @@ final readonly class ActivityPurgeCriteria
         public array $subjectIds = [],
         public array $causerTypes = [],
         public array $causerIds = [],
-    ) {}
+    ) {
+        if ($days !== null && $before !== null) {
+            throw ActivityPurgeCriteriaException::mutuallyExclusiveCutoffs();
+        }
+        if ($days === null && $before === null) {
+            throw ActivityPurgeCriteriaException::unresolvedCutoff();
+        }
+        if ($days !== null && $days < 1) {
+            throw ActivityPurgeCriteriaException::positiveDaysRequired();
+        }
+        $cutoff = $this->cutoff();
+        if ($this->afterCutoff()?->gte($cutoff)) {
+            throw ActivityPurgeCriteriaException::invalidRange();
+        }
+    }
 
     /**
      * Build days-based purge criteria.
@@ -45,10 +63,6 @@ final readonly class ActivityPurgeCriteria
         bool $systemOnly = false,
         bool $includeImportant = false,
     ): self {
-        if ($days < 1) {
-            throw ActivityPurgeCriteriaException::positiveDaysRequired();
-        }
-
         return new self(
             days: $days,
             systemOnly: $systemOnly,
@@ -71,15 +85,11 @@ final readonly class ActivityPurgeCriteria
             $days = $defaultDays;
         }
 
-        if ($days !== null && $before !== null) {
-            throw ActivityPurgeCriteriaException::mutuallyExclusiveCutoffs();
-        }
-
         if ($days === null && $before === null) {
             throw ActivityPurgeCriteriaException::missingCutoff();
         }
 
-        $criteria = new self(
+        return new self(
             days: $days,
             before: $before,
             after: $after,
@@ -92,12 +102,6 @@ final readonly class ActivityPurgeCriteria
             causerTypes: self::normalizeArrayOption($options['causer-type'] ?? []),
             causerIds: self::normalizeArrayOption($options['causer-id'] ?? []),
         );
-
-        if ($criteria->afterCutoff()?->gte($criteria->cutoff())) {
-            throw ActivityPurgeCriteriaException::invalidRange();
-        }
-
-        return $criteria;
     }
 
     /**
@@ -106,7 +110,7 @@ final readonly class ActivityPurgeCriteria
     public function cutoff(): CarbonImmutable
     {
         if ($this->before !== null) {
-            return CarbonImmutable::parse($this->before)->setTimezone(date_default_timezone_get());
+            return self::parseDate($this->before, 'before');
         }
 
         if ($this->days !== null) {
@@ -125,7 +129,19 @@ final readonly class ActivityPurgeCriteria
             return null;
         }
 
-        return CarbonImmutable::parse($this->after)->setTimezone(date_default_timezone_get());
+        return self::parseDate($this->after, 'after');
+    }
+
+    /**
+     * Parse a stored cutoff into the application timezone, reporting an unparseable value as invalid criteria.
+     */
+    private static function parseDate(string $value, string $option): CarbonImmutable
+    {
+        try {
+            return CarbonImmutable::parse($value)->setTimezone(date_default_timezone_get());
+        } catch (InvalidFormatException $exception) {
+            throw ActivityPurgeCriteriaException::invalidDate($option, $exception);
+        }
     }
 
     /**
