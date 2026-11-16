@@ -5,6 +5,8 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [7.2.0] - 2026-11-16
+
 ### Added
 
 - Tested, copyable Comments and Mail Notifications timeline source recipes, plus a generic mail-log recipe with a configurable category column. They live in the repository's `tests/Fixtures/Timeline` and are not part of the installed package.
@@ -14,6 +16,12 @@ All notable changes to `nvl/activity` are documented here.
 
 - Capture-option migration is verified against real Spatie v5; a model using both engines fails at boot.
 - Native capture records a `restored` fact with attributes only, as Spatie v5 does.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- adoption flow, PostgreSQL proof, release health and 7.2 floors
+<!-- NVL GENERATED CHANGES END -->
 
 ## [7.1.0] - 2026-11-16
 
