@@ -5,6 +5,19 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+## [7.1.0] - 2026-11-16
+
+### Highlights
+
+- Adopt legacy activity history and route positional recorder calls through native authorization and actor resolution. Capture model changes and render activity headlines through the native services.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- close NVL consumer adoption and portability gaps
+- Merge pull request #21 from nicolasvlachos/codex/consumer-postgresql-validation
+<!-- NVL GENERATED CHANGES END -->
+
 ## [7.0.3] - 2026-11-13
 
 ### Fixed
