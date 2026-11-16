@@ -75,6 +75,7 @@ These commands are registered by Composer-discovered package providers. Feature-
 Installing an optional library does not grant a policy decision or automatically enable an integration. The manifest suggests:
 
 - `nvl/ownership`: Adds optional model-declared ownership, isolation, adoption and captured worker contexts.
+- `spatie/laravel-activitylog`: Migrate models from Spatie capture with SpatieActivityCaptureAdapter.
 
 ## Verify the consumer
 

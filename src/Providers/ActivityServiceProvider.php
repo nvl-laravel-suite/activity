@@ -7,6 +7,7 @@ namespace Nvl\Activity\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
+use Nvl\Activity\Adoption\ActivitySchemaAdoptionAdapter;
 use Nvl\Activity\Console\Commands\ActivityDoctorCommand;
 use Nvl\Activity\Console\Commands\PurgeActivityLogsCommand;
 use Nvl\Activity\Console\Commands\PurgeSystemActivityLogsCommand;
@@ -29,6 +30,7 @@ use Nvl\Activity\Services\TimelineFilter;
 use Nvl\Activity\Support\ActivityEventPolicy;
 use Nvl\Activity\Support\ModelActivityMappingResolver;
 use Nvl\Ownership\Services\OwnershipAdoptionRegistry;
+use Nvl\Support\Adoption\AdoptionRegistry;
 use Nvl\Support\Doctor\PackageDoctorContributor;
 use Nvl\Support\Globals\GlobalNames;
 use Nvl\Support\Ownership\Contracts\OwnershipIntegratedProvider;
@@ -95,6 +97,7 @@ final class ActivityServiceProvider extends ServiceProvider implements Ownership
     public function boot(): void
     {
         $this->app->make(ActivityModelRegistry::class)->activityLogClass();
+        $this->app->make(AdoptionRegistry::class)->register('activity', ActivitySchemaAdoptionAdapter::class);
         (new ActivityResourceRegistrar)->register($this->app->make(OwnershipResourceRegistry::class), $this->app->make('config')->get('nvl-ownership.enabled') === true);
 
         $this->publishes([

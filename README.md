@@ -85,7 +85,7 @@ and log names. Review the `unsupported` list before adopting an options result.
 Dynamic field discovery, relationship paths, raw field values, custom
 description callbacks and unsupported events require an explicit host mapping.
 Record the reviewed options in the native mapping and replace the Spatie trait
-on that model before enabling NVL capture.
+on that model before enabling NVL capture. A model that uses both traits fails at boot.
 
 Wrap mapped model mutations in an explicit capture scope:
 
@@ -99,7 +99,7 @@ app(ActivityCaptureContext::class)->run($actor, function () use ($order): void {
 });
 ```
 
-Capture validates/authorizes mapped events before model mutation where Laravel provides a before-event, and uses the same explicit actor for the resulting fact. Scope restoration uses `finally`, including nested scopes and reused workers. Mapped capture without a scope fails closed. A host transaction on the shared model/Activity connection makes model and audit writes atomic. Separate Activity storage cannot roll back with a business connection; use a domain outbox for that requirement. Soft restoration emits one `restored` fact. Quiet saves and bulk business-model writes do not emit Eloquent lifecycle events; use explicit semantic recording inside your business transaction for those operations.
+Capture validates/authorizes mapped events before model mutation where Laravel provides a before-event, and uses the same explicit actor for the resulting fact. Scope restoration uses `finally`, including nested scopes and reused workers. Mapped capture without a scope fails closed. A host transaction on the shared model/Activity connection makes model and audit writes atomic. Separate Activity storage cannot roll back with a business connection; use a domain outbox for that requirement. Soft restoration emits one `restored` fact with `attributes` only and an empty `old`, as Spatie v5 does. Quiet saves and bulk business-model writes do not emit Eloquent lifecycle events; use explicit semantic recording inside your business transaction for those operations.
 
 ## Bounded subject references and event filters
 
@@ -132,6 +132,8 @@ It adds missing native indexes and `batch_uuid`, and widens PostgreSQL timestamp
 precision where needed. Reuse the same reviewed plan after an interrupted
 attempt if the source facts have stayed unchanged. Enable native Ownership
 through its own reviewed adoption workflow after schema adoption.
+
+Alternatively, for checkpointed batches with an explicit activate step, start with `php artisan nvl:adopt activity plan`; [UPGRADING](UPGRADING.md) lists the full sequence.
 
 ## Retention and recovery
 

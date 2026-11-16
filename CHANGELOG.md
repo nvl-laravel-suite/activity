@@ -5,6 +5,16 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Tested, copyable Comments and Mail Notifications timeline source recipes, plus a generic mail-log recipe with a configurable category column. They live in the repository's `tests/Fixtures/Timeline` and are not part of the installed package.
+- Adoption runs through nvl:adopt with reviewed, checkpointed batches and an explicit activate step. Committed batches survive a failure. Keep writers stopped until verify and activate pass. Activity schema adoption runs as three steps (add `batch_uuid`, widen timestamps, add indexes); each step's DDL commits with its checkpoint under the PostgreSQL table lock, and the plan fingerprint accepts the adapter's own schema changes. `ActivitySchemaAdopter` keeps its single-transaction behaviour.
+
+### Changed
+
+- Capture-option migration is verified against real Spatie v5; a model using both engines fails at boot.
+- Native capture records a `restored` fact with attributes only, as Spatie v5 does.
+
 ## [7.1.0] - 2026-11-16
 
 ### Highlights

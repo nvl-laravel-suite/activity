@@ -61,7 +61,7 @@ Context/diffs are bounded JSON records (64 KiB per record with bounded depth). N
 
 Add `HasModelActivity` to host models and register one `ActivityMapping` per exact class in `MappingRegistry`. Its `modelClass`, `entityLabel`, `subjectLabel`, `logName`, `captureOptions`, field label/value and event template methods define semantics; see the API contract. Return `new ActivityCaptureOptions(['name', 'status'])` with explicit fields, optional lifecycle event list and `onlyDirty`. No wildcard or third-party logging options.
 
-Wrap changes in `ActivityCaptureContext::run($actor, fn () => ...)`. Native capture authorizes before the business mutation where an Eloquent before-event exists, restores scope in `finally`, remains silent for unmapped/empty changes and emits one restored fact. Quiet saves and bulk business SQL do not emit model events; record a deliberate semantic fact for those paths. Avoid duplicating automatically captured CRUD facts manually.
+Wrap changes in `ActivityCaptureContext::run($actor, fn () => ...)`. Native capture authorizes before the business mutation where an Eloquent before-event exists, restores scope in `finally`, remains silent for unmapped/empty changes and emits one restored fact with `attributes` only and an empty `old`. A model that also uses Spatie's `LogsActivity` fails at boot. Quiet saves and bulk business SQL do not emit model events; record a deliberate semantic fact for those paths. Avoid duplicating automatically captured CRUD facts manually.
 
 `LabelResolver` supplies semantic entity and field labels. `ActivityDiffBuilder::build` returns `key`, `label`, `old`, `new`, and `description` arrays. `HeadlineRenderer::resolveHeadline` returns plain text. `resolveHeadlineParts` exposes the localized template and typed placeholders for host resources to assemble segments.
 
@@ -79,21 +79,13 @@ Identical retries return the same Activity row; conflicting facts under the same
 
 `timeline(subject, actor, limit:100, sources:[])` permits 1–1000 results, at most ten `ActivityTimelineSource` query sources and a 5000-row base scan. Each source supplies subject constraints, source authorization, safe columns and sortable canonical `created_at` storage. Activity adds owner admission, stable key tie-breaks and independent bounds; supersession applies only when the source returns visible facts. Source timestamps and declared key types must agree with database ordering. Consumers own merged-source presentation.
 
-For a Comments source, build a query on the registered comment model after
-authorizing the established commentable. Match its `commentable_type` and
-`commentable_id`, then apply the actor's comment visibility before selecting
-the comment ID, safe display copy and `created_at`. A public source can use
-the model's `publiclyVisible()` scope alongside authorization for the commentable.
-It can supersede `comment.created` when independent rows represent those
-same events.
+Copy a tested source rather than writing one from prose. Each authorizes before it constrains the subject and selects only safe columns:
 
-For a Mail Notifications source tied to the same model, use the configured
-tracked notification model. Match the actor-admitted `notifiable_type`
-and `notifiable_id`. Select `id`, `created_at`, `message_category`, and
-`status` for a delivery summary. Keep recipient addresses and provider metadata
-out of that projection. Return an empty supersession list when the Activity
-events still carry distinct business meaning. Pass both sources to
-`timeline($subject, $actor, sources: [$comments, $mail])`.
+- [CommentsTimelineSource](https://github.com/nvl-laravel-suite/activity/blob/main/tests/Fixtures/Timeline/CommentsTimelineSource.php): comments the actor and audience may list; supersedes `comment.created` when visible rows exist.
+- [MailNotificationsTimelineSource](https://github.com/nvl-laravel-suite/activity/blob/main/tests/Fixtures/Timeline/MailNotificationsTimelineSource.php): delivery status and `message_category` from Mail Notifications; supersedes nothing.
+- [GenericMailLogTimelineSource](https://github.com/nvl-laravel-suite/activity/blob/main/tests/Fixtures/Timeline/GenericMailLogTimelineSource.php): the same for a host mail table.
+
+Using your own mail table? Use the generic source and set its category column. Pass sources as `timeline($subject, $actor, sources: [$comments, $mail])`.
 
 `causers(actor, search:null, limit:10)` returns fixed safe identity projections including supported soft-deleted historical actors. It scans the newest `causer_suggestions.scan_limit` attributed facts. Relation hydration batches by model type while retaining fresh admission; count protected data queries separately from schema/admission probes.
 

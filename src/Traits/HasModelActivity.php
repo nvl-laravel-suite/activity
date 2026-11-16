@@ -43,6 +43,14 @@ trait HasModelActivity
 
     protected static function bootHasModelActivity(): void
     {
+        try {
+            self::assertSingleActivityEngine(static::class);
+        } catch (\LogicException $exception) {
+            // Let the next instantiation boot again and report this error, not "while it is being booted".
+            unset(static::$booting[static::class]);
+
+            throw $exception;
+        }
         static::deleting(static function (Model $subject): void {
             $mapping = ModelActivityMappingResolver::forModel($subject);
             $options = $mapping?->captureOptions();
@@ -58,10 +66,7 @@ trait HasModelActivity
                 if ($options === null || ! in_array($event, $options->events, true)) {
                     return;
                 }
-                $traits = class_uses_recursive($model);
-                if (isset($traits['Spatie\\Activitylog\\Models\\Concerns\\LogsActivity']) || isset($traits['Spatie\\Activitylog\\Traits\\LogsActivity'])) {
-                    throw new \LogicException('Remove the Spatie logging trait before enabling native capture on this model.');
-                }
+                self::assertSingleActivityEngine($model::class);
                 if ($event === 'updated' && self::isActivityRestoration($model)) {
                     return;
                 }
@@ -73,7 +78,7 @@ trait HasModelActivity
                         || ($old[$field] !== $value && ! $model->originalIsEquivalent(explode('.', $field, 2)[0])), ARRAY_FILTER_USE_BOTH);
                     $old = array_intersect_key($old, $values);
                 }
-                if ($event === 'created') {
+                if ($event === 'created' || $event === 'restored') {
                     $old = [];
                 } elseif ($event === 'deleted') {
                     $old = $values;
@@ -114,6 +119,19 @@ trait HasModelActivity
                     'attributes' => $changes['attributes'], 'old' => $changes['old'], 'resolve_changes' => false,
                 ], app(ActivityCaptureContext::class)->actor());
             });
+        }
+    }
+
+    /**
+     * Reject a model that also uses Spatie capture, so both engines never record the same change.
+     *
+     * @param  class-string  $class
+     */
+    private static function assertSingleActivityEngine(string $class): void
+    {
+        $traits = class_uses_recursive($class);
+        if (isset($traits['Spatie\\Activitylog\\Models\\Concerns\\LogsActivity']) || isset($traits['Spatie\\Activitylog\\Traits\\LogsActivity'])) {
+            throw new \LogicException('Remove the Spatie logging trait before enabling native capture on this model.');
         }
     }
 
