@@ -63,7 +63,7 @@ Add `HasModelActivity` to host models and register one `ActivityMapping` per exa
 
 Wrap changes in `ActivityCaptureContext::run($actor, fn () => ...)`. Native capture authorizes before the business mutation where an Eloquent before-event exists, restores scope in `finally`, remains silent for unmapped/empty changes and emits one restored fact. Quiet saves and bulk business SQL do not emit model events; record a deliberate semantic fact for those paths. Avoid duplicating automatically captured CRUD facts manually.
 
-`LabelResolver` supplies semantic entity/field labels. `ActivityDiffBuilder::build` returns a collection of arrays with `key`, `label`, `old`, `new`, `description`; `HeadlineRenderer::resolveHeadline` returns plain text. Host resources build visual segments. Translated labels use the host's selected locale; historical identity/occurrence facts remain unchanged.
+`LabelResolver` supplies semantic entity and field labels. `ActivityDiffBuilder::build` returns `key`, `label`, `old`, `new`, and `description` arrays. `HeadlineRenderer::resolveHeadline` returns plain text. `resolveHeadlineParts` exposes the localized template and typed placeholders for host resources to assemble segments.
 
 ## Immutable outbox delivery
 
@@ -78,6 +78,22 @@ Identical retries return the same Activity row; conflicting facts under the same
 `cursor(filters, actor, cursor:null)` uses the same filters except `page`; it returns native `items` and nullable opaque `next_cursor` without total count. Preserve filters and cursor unchanged; timestamps retain microseconds and UUID tie-breaks. `find(id, actor)` returns null for missing/inaccessible records.
 
 `timeline(subject, actor, limit:100, sources:[])` permits 1–1000 results, at most ten `ActivityTimelineSource` query sources and a 5000-row base scan. Each source supplies subject constraints, source authorization, safe columns and sortable canonical `created_at` storage. Activity adds owner admission, stable key tie-breaks and independent bounds; supersession applies only when the source returns visible facts. Source timestamps and declared key types must agree with database ordering. Consumers own merged-source presentation.
+
+For a Comments source, build a query on the registered comment model after
+authorizing the established commentable. Match its `commentable_type` and
+`commentable_id`, then apply the actor's comment visibility before selecting
+the comment ID, safe display copy and `created_at`. A public source can use
+the model's `publiclyVisible()` scope alongside authorization for the commentable.
+It can supersede `comment.created` when independent rows represent those
+same events.
+
+For a Mail Notifications source tied to the same model, use the configured
+tracked notification model. Match the actor-admitted `notifiable_type`
+and `notifiable_id`. Select `id`, `created_at`, `message_category`, and
+`status` for a delivery summary. Keep recipient addresses and provider metadata
+out of that projection. Return an empty supersession list when the Activity
+events still carry distinct business meaning. Pass both sources to
+`timeline($subject, $actor, sources: [$comments, $mail])`.
 
 `causers(actor, search:null, limit:10)` returns fixed safe identity projections including supported soft-deleted historical actors. It scans the newest `causer_suggestions.scan_limit` attributed facts. Relation hydration batches by model type while retaining fresh admission; count protected data queries separately from schema/admission probes.
 

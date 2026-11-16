@@ -33,7 +33,7 @@ Audiences are `authorized` (the host read permission), `administrative`, `subjec
 
 ## Authorize direct operations
 
-Bind `Nvl\Activity\Contracts\ActivityAuthorization` in the host container. Its `authorize(Authenticatable|SystemActor $actor, string $ability, Model|ActivitySubjectReference|null $subject = null): void` method must deny unauthorized `record`, `read`, `timeline`, `causers` and `purge` operations by throwing. Missing bindings deny access, including background calls. Pass a persisted authenticatable explicitly or `Nvl\Support\Enums\SystemActor::Background`; null, scalar actor IDs and ambient HTTP authentication never grant authority.
+Bind `Nvl\Activity\Contracts\ActivityAuthorization` in the host container. Its `authorize(Authenticatable|SystemActor $actor, string $ability, Model|ActivitySubjectReference|null $subject = null): void` method must deny unauthorized `record`, `read`, `timeline`, `causers`, `purge` and `adopt` operations by throwing. Missing bindings deny access, including background calls. Pass a persisted authenticatable explicitly or `Nvl\Support\Enums\SystemActor::Background`; null, scalar actor IDs and ambient HTTP authentication never grant authority.
 
 ```php
 use Nvl\Activity\Services\ActivityRecorder;
@@ -61,6 +61,13 @@ $causers = app(ActivityReader::class)->causers($actor, search: 'Ada', limit: 10)
 
 Context and diffs are JSON-safe records, with a 64 KiB limit per record and bounded nesting. Null context means an empty record. Omitted diff arrays infer saved model changes for update/status events; explicit null suppresses that side and disables inference. `resolve_changes: false` disables inference. Canonical diffs live only in `attribute_changes` (`attributes` and `old`); `properties` holds context and classifications. Credentials with password, secret, token, API-key, authorization or cookie keys are recursively replaced with `[REDACTED]`. Business metadata keys keep their original spelling.
 
+[PositionalActivityRecorder](src/Services/PositionalActivityRecorder.php) adapts
+legacy service or facade calls to the same native recorder. Bind
+[ActivityActorResolver](src/Contracts/ActivityActorResolver.php) for legacy
+actor IDs or an omitted actor. A resolver supplies an authenticatable principal,
+and native authorization still applies. Background authority requires the
+explicit enum. A supplied source must agree with the resolved principal.
+
 ## Immutable delivery and transaction guarantees
 
 `ActivityRecorder::recordEnvelope(ActivityRecordEnvelope $envelope): ActivityLog` delivers an already-authorized immutable fact. Use it for a domain outbox, not for untrusted HTTP payloads. Its UUID, subject reference, optional causer reference/scalar historical actor ID, event, log name, exact occurrence time and JSON facts define delivery identity. Identical retries return the same row. Reusing an ID with different facts fails, including changes to redacted source values. Historical subjects and actors can be deleted: delivery never rehydrates them as execution authority. Current ownership admission is still mandatory.
@@ -69,7 +76,16 @@ Both recording operations transact on the Activity model's actual connection and
 
 ## Automatic model capture
 
-Use `HasModelActivity` on host models and register a concrete `ActivityMapping` with `MappingRegistry`. Implement `captureOptions(): ActivityCaptureOptions` with explicit fields, for example `new ActivityCaptureOptions(['name', 'status'])`. Options admit `created`, `updated`, `deleted`, `restored` and default to dirty fields only. The mapping separately supplies `logName()` and semantic labels. Unmapped models and empty changes remain silent.
+Use `HasModelActivity` on host models and register a concrete `ActivityMapping` with `MappingRegistry`. Implement `captureOptions(): ActivityCaptureOptions` with explicit fields, for example `new ActivityCaptureOptions(['name', 'status'])`. Options admit `created`, `updated`, `deleted`, `restored`. Dirty-only capture and empty-change suppression are the defaults. The mapping supplies semantic labels and the default `logName()`, which an explicit capture option can override.
+
+[SpatieActivityCaptureAdapter](src/Services/SpatieActivityCaptureAdapter.php)
+reviews Spatie v5 `LogOptions` along with each model's effective lifecycle
+events. It maps explicit fields and exclusions, dirty and empty-change flags,
+and log names. Review the `unsupported` list before adopting an options result.
+Dynamic field discovery, relationship paths, raw field values, custom
+description callbacks and unsupported events require an explicit host mapping.
+Record the reviewed options in the native mapping and replace the Spatie trait
+on that model before enabling NVL capture.
 
 Wrap mapped model mutations in an explicit capture scope:
 
@@ -101,7 +117,21 @@ Custom sources implement `ActivityTimelineSource::query(Model|ActivitySubjectRef
 
 ## Semantic rendering
 
-`MappingRegistry`, `LabelResolver`, `HeadlineRenderer` and `ActivityDiffBuilder` retain model-specific labels, shared event templates, consumer placeholders, scalar/structured diffs and technical-noise suppression. `HeadlineRenderer::resolveHeadline()` returns plain text; it names at most five changed fields and quotes at most 255 characters of a value, so escape it for the output context like any other text. `ActivityDiffBuilder::build()` returns a collection of documented arrays containing `key`, `label`, `old`, `new`, `description`. Consumers create visual segments and resources themselves.
+`MappingRegistry`, `LabelResolver`, `HeadlineRenderer` and `ActivityDiffBuilder` retain model-specific labels, shared event templates, consumer placeholders, scalar/structured diffs and technical-noise suppression. `HeadlineRenderer::resolveHeadline()` returns plain text. `resolveHeadlineParts()` returns the localized template and typed placeholder text for host segments, including the anchor identity on the actor placeholder. Headlines name at most five changed fields and quote up to 255 characters of a value. Escape the text for its output context. `ActivityDiffBuilder::build()` returns a collection of arrays containing `key`, `label`, `old`, `new`, `description`.
+
+### Adopt a Spatie v5 table
+
+Use [ActivitySchemaAdopter](src/Services/ActivitySchemaAdopter.php) with
+`nvl-activity.tables.log` set to the existing table on the Activity connection.
+Back up the data, stop capture writers, and authorize `adopt` for the operator.
+Review `plan($actor)` and its fingerprint, row count, and conflicts. Apply the
+approved fingerprint with `apply($actor, $fingerprint)`, then call
+`verify($actor, $fingerprint)` before running the native migrations and
+switching application capture. The adopter preserves IDs, dates and JSON facts.
+It adds missing native indexes and `batch_uuid`, and widens PostgreSQL timestamp
+precision where needed. Reuse the same reviewed plan after an interrupted
+attempt if the source facts have stayed unchanged. Enable native Ownership
+through its own reviewed adoption workflow after schema adoption.
 
 ## Retention and recovery
 

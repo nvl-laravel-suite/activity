@@ -40,7 +40,7 @@ final class HeadlineRenderer
      * @param  string  $actorName  Actor display name
      * @param  string|int|null  $causerId  Actor identifier for semantic rendering
      * @param  Collection<int, array{key:string,label:string,old:?string,new:?string,description:string}>  $changeDetails  Filtered change details
-     * @return string Flat semantic headline; consumers own visual segments.
+     * @return string Flat semantic headline.
      */
     public function resolveHeadline(
         string $event,
@@ -49,6 +49,24 @@ final class HeadlineRenderer
         string|int|null $causerId,
         Collection $changeDetails,
     ): string {
+        $parts = $this->resolveHeadlineParts($event, $activity, $actorName, $causerId, $changeDetails);
+
+        return $this->renderTemplate($parts['template'], $parts['placeholders']);
+    }
+
+    /**
+     * Resolve the localized template and semantic placeholder values for a native fact.
+     *
+     * @param  Collection<int, array{key:string,label:string,old:?string,new:?string,description:string}>  $changeDetails
+     * @return array{template:string,placeholders:array<string,array{type:string,text:string,causerId?:string|int|null}>}
+     */
+    public function resolveHeadlineParts(
+        string $event,
+        Activity $activity,
+        string $actorName,
+        string|int|null $causerId,
+        Collection $changeDetails,
+    ): array {
         $entityType = mb_strtolower($this->labelResolver->resolveEntityTypeLabel($activity));
         $basePlaceholders = $this->basePlaceholders(
             actorName: $actorName,
@@ -63,7 +81,7 @@ final class HeadlineRenderer
             basePlaceholders: $basePlaceholders,
         );
 
-        return $this->renderTemplate($template, $placeholders);
+        return ['template' => $template, 'placeholders' => $placeholders];
     }
 
     /**

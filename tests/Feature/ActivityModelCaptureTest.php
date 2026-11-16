@@ -16,6 +16,7 @@ use Nvl\Activity\Services\ActivityCaptureContext;
 use Nvl\Activity\Services\ActivityPolicyRegistry;
 use Nvl\Activity\Services\ActivityRecorder;
 use Nvl\Activity\Services\MappingRegistry;
+use Nvl\Activity\Services\SpatieActivityCaptureAdapter;
 use Nvl\Activity\Support\ActivityCaptureOptions;
 use Nvl\Activity\Support\ActivityEventPolicy;
 use Nvl\Activity\Tests\Stubs\TestActivityAccount;
@@ -59,6 +60,59 @@ test('registered mappings own automatic model capture options and log names', fu
             ->toBe(['name' => 'Initial name']);
 
     });
+});
+
+test('reviews Spatie v5 options and uses the supported capture flags with one engine', function (): void {
+    $legacy = new class
+    {
+        public ?string $logName = 'legacy-capture';
+
+        public bool $logEmptyChanges = true;
+
+        public bool $logFillable = false;
+
+        public bool $logOnlyDirty = true;
+
+        public bool $logUnguarded = false;
+
+        public array $logAttributes = ['name', 'secret'];
+
+        public array $logExceptAttributes = ['secret'];
+
+        public array $dontLogIfAttributesChangedOnly = [];
+
+        public array $attributeRawValues = [];
+
+        public ?Closure $descriptionForEvent = null;
+    };
+    $adapter = app(SpatieActivityCaptureAdapter::class);
+    $review = $adapter->review($legacy, ['updated']);
+    expect($review['unsupported'])->toBe([])
+        ->and($review['options']->fields)->toBe(['name'])
+        ->and($review['options']->events)->toBe(['updated'])
+        ->and($review['options']->onlyDirty)->toBeTrue()
+        ->and($review['options']->suppressEmpty)->toBeFalse()
+        ->and($review['options']->logName)->toBe('legacy-capture');
+
+    app(MappingRegistry::class)->register(new TestActivityMapping(
+        TestActivitySubjectWithHasModelActivity::class, capture: $review['options'],
+    ));
+    Schema::table('activity_mapping_subjects', fn (Blueprint $table) => $table->string('other')->nullable());
+    app(ActivityCaptureContext::class)->run(SystemActor::Background, function (): void {
+        $subject = TestActivitySubjectWithHasModelActivity::query()->create(['name' => 'before']);
+        $subject->update(['name' => 'after']);
+        $subject->forceFill(['other' => 'untracked'])->save();
+    });
+    expect(ActivityLog::query()->pluck('log_name')->all())->toBe(['legacy-capture', 'legacy-capture'])
+        ->and(ActivityLog::query()->get()->map(fn (ActivityLog $log) => $log->attribute_changes?->get('attributes'))->all())
+        ->toEqualCanonicalizing([['name' => 'after'], []]);
+
+    $legacy->logFillable = true;
+    $legacy->attributeRawValues = ['name'];
+    expect($adapter->review($legacy, ['updated', 'retrieved']))->toBe([
+        'options' => null,
+        'unsupported' => ['logFillable', 'attributeRawValues', 'events.retrieved'],
+    ]);
 });
 
 test('native changes use their dedicated column without a legacy properties fallback', function (): void {

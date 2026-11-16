@@ -22,6 +22,7 @@ final class TestActivityMapping implements ActivityMapping
         private readonly array $templates = [
             'consumer_event' => ':actor recorded :value for this :subject.',
         ],
+        private readonly ?ActivityCaptureOptions $capture = null,
     ) {}
 
     public function modelClass(): string
@@ -48,7 +49,7 @@ final class TestActivityMapping implements ActivityMapping
 
     public function captureOptions(): ActivityCaptureOptions
     {
-        return new ActivityCaptureOptions(['name']);
+        return $this->capture ?? new ActivityCaptureOptions(['name']);
     }
 
     public function fieldLabel(string $key): string

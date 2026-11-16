@@ -7,6 +7,15 @@
         "Nvl\\Activity\\Database\\Seeders\\": "database/seeders"
     },
     "symbols": {
+        "Nvl\\Activity\\Contracts\\ActivityActorResolver": {
+            "kind": "interface",
+            "file": "src/Contracts/ActivityActorResolver.php",
+            "methods": [
+                "resolve"
+            ],
+            "properties": [],
+            "constants": []
+        },
         "Nvl\\Activity\\Contracts\\ActivityAuthorization": {
             "kind": "interface",
             "file": "src/Contracts/ActivityAuthorization.php",
@@ -441,6 +450,18 @@
             "properties": [],
             "constants": []
         },
+        "Nvl\\Activity\\Services\\ActivitySchemaAdopter": {
+            "kind": "class",
+            "file": "src/Services/ActivitySchemaAdopter.php",
+            "methods": [
+                "__construct",
+                "apply",
+                "plan",
+                "verify"
+            ],
+            "properties": [],
+            "constants": []
+        },
         "Nvl\\Activity\\Services\\HeadlineRenderer": {
             "kind": "class",
             "file": "src/Services/HeadlineRenderer.php",
@@ -448,7 +469,8 @@
                 "__construct",
                 "buildChangedText",
                 "buildSummary",
-                "resolveHeadline"
+                "resolveHeadline",
+                "resolveHeadlineParts"
             ],
             "properties": [],
             "constants": []
@@ -483,6 +505,25 @@
             "properties": [],
             "constants": []
         },
+        "Nvl\\Activity\\Services\\PositionalActivityRecorder": {
+            "kind": "class",
+            "file": "src/Services/PositionalActivityRecorder.php",
+            "methods": [
+                "__construct",
+                "record"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "Nvl\\Activity\\Services\\SpatieActivityCaptureAdapter": {
+            "kind": "class",
+            "file": "src/Services/SpatieActivityCaptureAdapter.php",
+            "methods": [
+                "review"
+            ],
+            "properties": [],
+            "constants": []
+        },
         "Nvl\\Activity\\Support\\ActivityCaptureOptions": {
             "kind": "class",
             "file": "src/Support/ActivityCaptureOptions.php",
@@ -492,7 +533,9 @@
             "properties": [
                 "events",
                 "fields",
-                "onlyDirty"
+                "logName",
+                "onlyDirty",
+                "suppressEmpty"
             ],
             "constants": []
         },

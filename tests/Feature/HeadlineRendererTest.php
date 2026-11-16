@@ -54,7 +54,11 @@ test('status headlines resolve semantic target segments from structured properti
         changeDetails: collect(),
     );
 
-    expect($headline)->toBe('Ada Lovelace changed the status to Pending Approval.');
+    $parts = headline_test_renderer()->resolveHeadlineParts('status_transition', $activity, 'Ada Lovelace', 'operator-1', collect());
+    expect($headline)->toBe('Ada Lovelace changed the status to Pending Approval.')
+        ->and($parts['template'])->toContain(':actor')
+        ->and($parts['placeholders']['actor'])->toBe(['type' => 'actor', 'text' => 'Ada Lovelace', 'causerId' => 'operator-1'])
+        ->and($parts['placeholders']['status']['text'])->toBe('Pending Approval');
 });
 
 test('updated headlines expose semantic field and value segments', function (): void {

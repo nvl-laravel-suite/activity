@@ -6,6 +6,7 @@ Search for the relevant fully qualified service or contract and read only its ma
 
 ## Symbols
 
+- `Nvl\Activity\Contracts\ActivityActorResolver`
 - `Nvl\Activity\Contracts\ActivityAuthorization`
 - `Nvl\Activity\Contracts\ActivityMapping`
 - `Nvl\Activity\Contracts\ActivityTimelineSource`
@@ -32,9 +33,12 @@ Search for the relevant fully qualified service or contract and read only its ma
 - `Nvl\Activity\Services\ActivityReader`
 - `Nvl\Activity\Services\ActivityRecorder`
 - `Nvl\Activity\Services\ActivityRelationLoader`
+- `Nvl\Activity\Services\ActivitySchemaAdopter`
 - `Nvl\Activity\Services\HeadlineRenderer`
 - `Nvl\Activity\Services\LabelResolver`
 - `Nvl\Activity\Services\MappingRegistry`
+- `Nvl\Activity\Services\PositionalActivityRecorder`
+- `Nvl\Activity\Services\SpatieActivityCaptureAdapter`
 - `Nvl\Activity\Support\ActivityCaptureOptions`
 - `Nvl\Activity\Support\ActivityCauserReference`
 - `Nvl\Activity\Support\ActivityEventPolicy`
@@ -42,6 +46,13 @@ Search for the relevant fully qualified service or contract and read only its ma
 - `Nvl\Activity\Support\ActivityRecordEnvelope`
 - `Nvl\Activity\Support\ActivitySubjectReference`
 - `Nvl\Activity\Traits\HasModelActivity`
+
+## Nvl\Activity\Contracts\ActivityActorResolver
+
+```text
+interface Nvl\Activity\Contracts\ActivityActorResolver
+public abstract function resolve(Illuminate\Database\Eloquent\Model|string|int|null $actor): ?Illuminate\Contracts\Auth\Authenticatable
+```
 
 ## Nvl\Activity\Contracts\ActivityAuthorization
 
@@ -556,6 +567,22 @@ public function load(Illuminate\Database\Eloquent\Collection $activities): void
 resolved @param Illuminate\Database\Eloquent\Collection<int, Nvl\Activity\Models\ActivityLog> $activities
 ```
 
+## Nvl\Activity\Services\ActivitySchemaAdopter
+
+```text
+final readonly class Nvl\Activity\Services\ActivitySchemaAdopter
+public function __construct(Nvl\Activity\Services\ActivityAccess $access, Nvl\Activity\Ownership\ActivityOwnershipGuard $ownership): mixed
+public function apply(Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor $actor, string $fingerprint): array
+@return Plan
+resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
+public function plan(Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor $actor): array
+@return Plan
+resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
+public function verify(Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor $actor, string $fingerprint): array
+@return Plan
+resolved @return array{table: string, fingerprint: string, rows: int, add_batch_uuid: bool, widen_timestamps: list<string>, missing_indexes: array<string, list<string>>, conflicts: list<string>, ready: bool}
+```
+
 ## Nvl\Activity\Services\HeadlineRenderer
 
 ```text
@@ -579,6 +606,10 @@ resolved @param Nvl\Activity\Models\ActivityLog $activity
 @param Collection<int, array{key: string, label: string, old: ?string, new: ?string, description: string}> $changeDetails
 resolved @param Illuminate\Support\Collection<int, array{key: string, label: string, old: ?string, new: ?string, description: string}> $changeDetails
 @return string
+public function resolveHeadlineParts(string $event, Nvl\Activity\Models\ActivityLog $activity, string $actorName, string|int|null $causerId, Illuminate\Support\Collection $changeDetails): array
+@param Collection<int, array{key: string, label: string, old: ?string, new: ?string, description: string}> $changeDetails
+resolved @param Illuminate\Support\Collection<int, array{key: string, label: string, old: ?string, new: ?string, description: string}> $changeDetails
+@return array{template: string, placeholders: array<string, array{type: string, text: string, causerId?: (string | int | null)}>}
 ```
 
 ## Nvl\Activity\Services\LabelResolver
@@ -647,18 +678,41 @@ public function register(Nvl\Activity\Contracts\ActivityMapping $mapping): void
 resolved @param Nvl\Activity\Contracts\ActivityMapping $mapping
 ```
 
+## Nvl\Activity\Services\PositionalActivityRecorder
+
+```text
+final readonly class Nvl\Activity\Services\PositionalActivityRecorder
+public function __construct(Nvl\Activity\Services\ActivityRecorder $recorder, ?Nvl\Activity\Contracts\ActivityActorResolver $actors=null): mixed
+public function record(?Illuminate\Database\Eloquent\Model $subject, string|BackedEnum $event, string $description, array $context=[], ?array $attributes=null, ?array $old=null, Illuminate\Contracts\Auth\Authenticatable|Nvl\Support\Enums\SystemActor|Illuminate\Database\Eloquent\Model|string|int|null $actor=null, ?string $logName=null, string|BackedEnum|null $source=null, string|BackedEnum|null $visibility=\Nvl\Activity\Enums\ActivityVisibility::Timeline, string|BackedEnum|null $importance=\Nvl\Activity\Enums\ActivityImportance::Normal, bool $resolveChanges=true): Nvl\Activity\Models\ActivityLog
+@param array<string, mixed> $context
+@param (array<string, mixed> | null) $attributes
+@param (array<string, mixed> | null) $old
+```
+
+## Nvl\Activity\Services\SpatieActivityCaptureAdapter
+
+```text
+final class Nvl\Activity\Services\SpatieActivityCaptureAdapter
+public function review(object $options, array $events): array
+@param array<array-key, mixed> $events
+@return array{options: ?ActivityCaptureOptions, unsupported: list<string>}
+resolved @return array{options: ?Nvl\Activity\Support\ActivityCaptureOptions, unsupported: list<string>}
+```
+
 ## Nvl\Activity\Support\ActivityCaptureOptions
 
 ```text
 final readonly class Nvl\Activity\Support\ActivityCaptureOptions
-public function __construct(array $fields, array $events=['created', 'updated', 'deleted', 'restored'], bool $onlyDirty=true): mixed
+public function __construct(array $fields, array $events=['created', 'updated', 'deleted', 'restored'], bool $onlyDirty=true, bool $suppressEmpty=true, ?string $logName=null): mixed
 @param array<array-key, mixed> $fields
 @param array<array-key, mixed> $events
 public readonly array $events
 @var list<string>
 public readonly array $fields
 @var list<string>
+public readonly ?string $logName
 public readonly bool $onlyDirty
+public readonly bool $suppressEmpty
 ```
 
 ## Nvl\Activity\Support\ActivityCauserReference

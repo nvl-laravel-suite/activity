@@ -23,12 +23,20 @@ final readonly class ActivityCaptureOptions
      * @param  array<array-key,mixed>  $fields
      * @param  array<array-key,mixed>  $events
      */
-    public function __construct(array $fields, array $events = ['created', 'updated', 'deleted', 'restored'], public bool $onlyDirty = true)
-    {
+    public function __construct(
+        array $fields,
+        array $events = ['created', 'updated', 'deleted', 'restored'],
+        public bool $onlyDirty = true,
+        public bool $suppressEmpty = true,
+        public ?string $logName = null,
+    ) {
         $this->fields = self::names($fields);
         $this->events = self::names($events);
         if (array_diff($this->events, ['created', 'updated', 'deleted', 'restored']) !== []) {
             throw new InvalidArgumentException('Unsupported Activity capture lifecycle event.');
+        }
+        if ($logName !== null && (trim($logName) === '' || mb_strlen($logName) > 255 || str_contains($logName, "\0"))) {
+            throw new InvalidArgumentException('Activity capture log names require 1 to 255 non-blank characters.');
         }
     }
 

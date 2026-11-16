@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\SQLiteConnection;
 use Illuminate\Queue\Jobs\FakeJob;
@@ -11,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
+use Nvl\Activity\Contracts\ActivityActorResolver;
 use Nvl\Activity\Definitions\Tables\ActivityTables;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
@@ -24,8 +28,11 @@ use Nvl\Activity\Providers\ActivityServiceProvider;
 use Nvl\Activity\Services\ActivityDoctor;
 use Nvl\Activity\Services\ActivityPurgeDispatcher;
 use Nvl\Activity\Services\ActivityReader;
+use Nvl\Activity\Services\ActivitySchemaAdopter;
+use Nvl\Activity\Services\PositionalActivityRecorder;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Activity\Support\ActivitySubjectReference;
+use Nvl\Activity\Tests\Stubs\TestActivityAccount;
 use Nvl\Support\Enums\SystemActor;
 use Nvl\Support\Ownership\Contracts\OwnershipBoundary;
 
@@ -42,10 +49,100 @@ test('the package migration rejects an incompatible existing activity table', fu
         expect(fn () => DB::transaction(static fn () => $migration->up()))
             ->toThrow(LogicException::class, 'cannot be baselined; missing columns')
             ->and(Schema::hasColumn(ActivityTables::ActivityLog, 'legacy_marker'))->toBeTrue();
+        expect(fn () => app(ActivitySchemaAdopter::class)->plan(SystemActor::Background))
+            ->toThrow(LogicException::class, 'missing columns');
     } finally {
         Schema::drop(ActivityTables::ActivityLog);
         $migration->up();
     }
+});
+
+test('adopts Spatie v5 audit storage with a reviewed fingerprint and preserves every fact', function (): void {
+    config()->set('nvl-activity.tables.log', 'activity_log');
+    Schema::create('activity_log', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('log_name')->nullable()->index();
+        $table->text('description');
+        $table->nullableUuidMorphs('subject', 'legacy_activity_subject');
+        $table->nullableUuidMorphs('causer', 'legacy_activity_causer');
+        $table->string('event')->nullable();
+        $table->json('properties')->nullable();
+        $table->json('attribute_changes')->nullable();
+        $table->timestamps();
+    });
+    try {
+        $row = [
+            'id' => '019c46ed-4f77-71a8-a741-216bad57d93c',
+            'log_name' => 'legacy', 'description' => 'Persistent snapshot', 'event' => 'updated',
+            'subject_type' => 'catalog-item', 'subject_id' => '019c46ed-4f77-71a8-a741-216bad57d93a',
+            'causer_type' => null, 'causer_id' => null,
+            'properties' => '{"visibility":"audit_only","context":{"reference":"keep"}}',
+            'attribute_changes' => '{"attributes":{"name":"after"},"old":{"name":"before"}}',
+            'created_at' => '2025-05-12 10:20:30.123456', 'updated_at' => '2025-05-12 10:20:31.123456',
+        ];
+        DB::table('activity_log')->insert($row);
+        DB::statement('CREATE INDEX legacy_activity_event_subset ON activity_log (event, created_at) WHERE event IS NULL');
+        $snapshot = (array) DB::table('activity_log')->sole();
+        $adopter = app(ActivitySchemaAdopter::class);
+        $actor = SystemActor::Background;
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            Schema::table('activity_log', fn (Blueprint $table) => $table->index(['created_at', 'id'], 'activity_log_newest_first_index'));
+            expect($adopter->plan($actor)['conflicts'])->toBe(['index activity_log_newest_first_index has incompatible order']);
+            Schema::table('activity_log', fn (Blueprint $table) => $table->dropIndex('activity_log_newest_first_index'));
+        }
+        $plan = $adopter->plan($actor);
+        expect($plan['rows'])->toBe(1)->and($plan['add_batch_uuid'])->toBeTrue()
+            ->and($plan['widen_timestamps'])->toBe(DB::connection()->getDriverName() === 'pgsql' ? ['created_at', 'updated_at'] : [])
+            ->and(array_values($plan['missing_indexes']))->toContain(['event', 'created_at'])
+            ->and(Schema::hasColumn('activity_log', 'batch_uuid'))->toBeFalse();
+
+        DB::table('activity_log')->update(['description' => 'Unreviewed change']);
+        expect(fn () => $adopter->apply($actor, $plan['fingerprint']))->toThrow(LogicException::class, 'fingerprint');
+        expect(Schema::hasColumn('activity_log', 'batch_uuid'))->toBeFalse();
+        DB::table('activity_log')->update(['description' => $row['description']]);
+
+        // Resume with the first additive schema change already installed.
+        Schema::table('activity_log', fn (Blueprint $table) => $table->uuid('batch_uuid')->nullable());
+        expect($adopter->apply($actor, $plan['fingerprint'])['ready'])->toBeTrue()
+            ->and($adopter->apply($actor, $plan['fingerprint'])['ready'])->toBeTrue()
+            ->and($adopter->verify($actor, $plan['fingerprint'])['ready'])->toBeTrue()
+            ->and((array) DB::table('activity_log')->sole())->toBe([...$snapshot, 'batch_uuid' => null]);
+        $baseline = require dirname(__DIR__, 2).'/database/migrations/2026_07_25_090858_nvl_activity_create_activity_log_table.php';
+        $baseline->up();
+        $new = [...$row, 'id' => '019c46ed-4f77-71a8-a741-216bad57d93d'];
+        DB::table('activity_log')->insert($new);
+        expect(DB::table('activity_log')->where('id', $new['id'])->value('created_at'))->toBe($new['created_at']);
+    } finally {
+        Schema::dropIfExists('activity_log');
+        config()->set('nvl-activity.tables.log', ActivityTables::ActivityLog);
+    }
+});
+
+test('requires an actor from the positional recorder and preserves native authorization', function (): void {
+    $recorder = app(PositionalActivityRecorder::class);
+    expect(fn () => $recorder->record(null, 'created', 'anonymous'))
+        ->toThrow(AuthorizationException::class);
+    expect(ActivityLog::query()->count())->toBe(0);
+
+    $account = new TestActivityAccount;
+    Schema::create($account->getTable(), fn (Blueprint $table) => $table->id());
+    $actor = $account->newQuery()->forceCreate(['id' => 27]);
+    app()->instance(ActivityActorResolver::class, new class($actor) implements ActivityActorResolver
+    {
+        public function __construct(private Authenticatable $actor) {}
+
+        public function resolve(Model|string|int|null $actor): ?Authenticatable
+        {
+            return $actor === null || $actor === 'legacy-operator' ? $this->actor : null;
+        }
+    });
+    $recorder = app(PositionalActivityRecorder::class);
+    $row = $recorder->record(null, 'created', 'authorized', logName: 'legacy');
+    expect((string) $row->causer_id)->toBe('27')
+        ->and($row->log_name)->toBe('legacy')
+        ->and($row->properties->get('source'))->toBe(ActivitySource::User->value)
+        ->and(fn () => $recorder->record(null, 'created', 'unsupported', actor: 'legacy-operator', source: 'system'))
+        ->toThrow(InvalidArgumentException::class);
 });
 
 test('the package baselines native canonical storage without rewriting facts', function (): void {

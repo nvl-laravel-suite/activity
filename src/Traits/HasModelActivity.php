@@ -38,7 +38,7 @@ use Nvl\Support\Enums\SystemActor;
  */
 trait HasModelActivity
 {
-    /** @var array<string,array{attributes:array<string,mixed>,old:array<string,mixed>,deletedActor:?ActivityCauserReference}> */
+    /** @var array<string,array{attributes:array<string,mixed>,old:array<string,mixed>,deletedActor:?ActivityCauserReference,logName:string}> */
     private array $nativeActivityChanges = [];
 
     protected static function bootHasModelActivity(): void
@@ -58,6 +58,10 @@ trait HasModelActivity
                 if ($options === null || ! in_array($event, $options->events, true)) {
                     return;
                 }
+                $traits = class_uses_recursive($model);
+                if (isset($traits['Spatie\\Activitylog\\Models\\Concerns\\LogsActivity']) || isset($traits['Spatie\\Activitylog\\Traits\\LogsActivity'])) {
+                    throw new \LogicException('Remove the Spatie logging trait before enabling native capture on this model.');
+                }
                 if ($event === 'updated' && self::isActivityRestoration($model)) {
                     return;
                 }
@@ -75,13 +79,17 @@ trait HasModelActivity
                     $old = $values;
                     $values = [];
                 }
-                if ($values === [] && $old === []) {
+                if ($options->suppressEmpty && $values === [] && $old === []) {
                     return;
                 }
                 $actor = app(ActivityCaptureContext::class)->actor();
                 app(ActivityAccess::class)->authorize($actor, 'record', $model);
                 app(ActivityPolicyRegistry::class)->get($event)->prepare($model->getMorphClass(), $actor instanceof Model ? $actor->getMorphClass() : null, $actor instanceof SystemActor, $values, $old, []);
-                $model->nativeActivityChanges[$event] = ['attributes' => $values, 'old' => $old, 'deletedActor' => $event === 'deleted' ? self::actorDeletingItself($actor, $model) : null];
+                $model->nativeActivityChanges[$event] = [
+                    'attributes' => $values, 'old' => $old,
+                    'deletedActor' => $event === 'deleted' ? self::actorDeletingItself($actor, $model) : null,
+                    'logName' => $options->logName ?? $mapping->logName(),
+                ];
             });
             static::registerModelEvent($event, static function (self $model) use ($event): void {
                 $changes = $model->nativeActivityChanges[$event] ?? null;
@@ -89,21 +97,20 @@ trait HasModelActivity
                 if ($changes === null) {
                     return;
                 }
-                $mapping = ModelActivityMappingResolver::forModel($model);
                 $deletedActor = $changes['deletedActor'];
                 if ($deletedActor !== null) {
                     app(ActivityOwnershipGuard::class)->consumeDeletingSubject($model);
                     app(ActivityRecorder::class)->recordEnvelope(new ActivityRecordEnvelope(
                         id: ActivityModelRegistry::newInstance()->newUniqueId(),
                         subject: new ActivitySubjectReference($deletedActor->type, $deletedActor->id), causer: $deletedActor,
-                        event: $event, logName: trim($mapping?->logName() ?? '') ?: 'default', occurredAt: CarbonImmutable::now(),
+                        event: $event, logName: trim($changes['logName']) ?: 'default', occurredAt: CarbonImmutable::now(),
                         attributes: $changes['attributes'], old: $changes['old'],
                     ));
 
                     return;
                 }
                 app(ActivityRecorder::class)->record([
-                    'subject' => $event === 'created' ? (clone $model)->syncOriginal() : $model, 'event' => $event, 'log_name' => $mapping?->logName() ?? 'default',
+                    'subject' => $event === 'created' ? (clone $model)->syncOriginal() : $model, 'event' => $event, 'log_name' => $changes['logName'],
                     'attributes' => $changes['attributes'], 'old' => $changes['old'], 'resolve_changes' => false,
                 ], app(ActivityCaptureContext::class)->actor());
             });
