@@ -23,6 +23,7 @@ use Nvl\Activity\Exceptions\ActivityConfigurationException;
 use Nvl\Activity\Ownership\ActivityMorphTo;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
 use Nvl\Activity\Services\ActivityModelRegistry;
+use Nvl\Activity\Support\ActivityInstantCast;
 use Nvl\Support\Config\PackageStorage;
 use Nvl\Support\Ownership\Contracts\Ownable;
 use Nvl\Support\Ownership\Traits\HasOwnership;
@@ -99,7 +100,26 @@ class ActivityLog extends Model implements Ownable
      */
     protected function casts(): array
     {
-        return ['properties' => 'collection', 'attribute_changes' => 'collection'];
+        return [
+            'properties' => 'collection', 'attribute_changes' => 'collection',
+            'created_at' => ActivityInstantCast::class, 'updated_at' => ActivityInstantCast::class,
+        ];
+    }
+
+    /**
+     * Leave the timestamps to their UTC instant cast; Laravel's date handling would first format them as a wall clock.
+     *
+     * @return list<string>
+     */
+    public function getDates(): array
+    {
+        return [];
+    }
+
+    /** Take a fresh timestamp as a UTC instant. */
+    public function freshTimestamp(): Carbon
+    {
+        return Carbon::now('UTC');
     }
 
     protected function newBaseQueryBuilder(): QueryBuilder

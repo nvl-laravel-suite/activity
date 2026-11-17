@@ -5,6 +5,16 @@ All notable changes to `nvl/activity` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- `created_at` and `updated_at` are stored as UTC instants (`Y-m-d H:i:s.u`, no offset, in the `timestamp(6)` columns) and read back as UTC `Carbon` instances, for direct records, envelopes and model capture alike. Date filters, date-range scopes, purge cutoffs, retention cutoffs and merged-timeline ordering compare UTC instants. The application-timezone wall clock repeated inside a daylight-saving overlap, so newest-first order, `created_at_from` / `created_at_to` filters and purge cutoffs could be wrong by up to an hour there. Hosts with a non-UTC `app.timezone` must convert existing rows; see UPGRADING.
+
+### Fixed
+
+- Finite timeline sources on PostgreSQL accept tables whose quoted names need quoting, such as `audit-events`; the ordering guard previously rejected them as unsafe SQL.
+- `ActivityReader::paginate()` and `cursor()` reject `event`, `events`, `subject_type`, `subject_id` and `causer_id` filters containing a NUL byte or invalid UTF-8 with `InvalidArgumentException`. PostgreSQL truncated the filter at the NUL byte, so `causer_id` `"one\0two"` returned the rows of causer `one`, and failed on invalid UTF-8 with a raw SQLSTATE 22021 error.
+- `ActivityRecorder::record()` descriptions and log names, `ActivityRecordEnvelope` events, log names and scalar actor IDs, and `ActivitySubjectReference` types and identifiers reject invalid UTF-8 instead of failing in PostgreSQL with SQLSTATE 22021.
+
 ## [7.3.0] - 2026-11-17
 
 ### Fixed

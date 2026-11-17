@@ -23,6 +23,9 @@ final readonly class ActivitySubjectReference
         if (str_contains($type, "\0") || (is_string($id) && str_contains($id, "\0"))) {
             throw new InvalidArgumentException('Activity subject references may not contain NUL bytes.');
         }
+        if (! mb_check_encoding($type, 'UTF-8') || (is_string($id) && ! mb_check_encoding($id, 'UTF-8'))) {
+            throw new InvalidArgumentException('Activity subject references must be valid UTF-8.');
+        }
 
         $type = trim($type);
         $id = is_string($id) ? trim($id) : $id;

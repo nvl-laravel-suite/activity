@@ -55,7 +55,7 @@ function activityLogBindings(Closure $operation): array
     return $bindings;
 }
 
-test('envelope facts are stored in the application timezone like every other fact', function (): void {
+test('envelope facts are stored as UTC instants like every other fact', function (): void {
     activityInApplicationTimezone('Europe/Sofia', function (): void {
         $this->travelTo(CarbonImmutable::parse('2026-11-11T09:00:00+00:00'));
         $direct = app(ActivityRecorder::class)->record(['event' => 'reviewed'], SystemActor::Background);
@@ -66,21 +66,22 @@ test('envelope facts are stored in the application timezone like every other fac
 
         $fact = app(ActivityRecorder::class)->recordEnvelope($envelope);
 
-        expect($fact->getRawOriginal('created_at'))->toBe('2026-11-11 12:00:00.250000')
+        expect($fact->getRawOriginal('created_at'))->toBe('2026-11-11 10:00:00.250000')
+            ->and($direct->fresh()->getRawOriginal('created_at'))->toStartWith('2026-11-11 09:00:00')
             ->and($fact->fresh()->created_at->equalTo($envelope->occurredAt))->toBeTrue()
             ->and(ActivityLog::query()->newestFirst()->pluck('id')->all())->toBe([$fact->id, $direct->id])
             ->and(app(ActivityRecorder::class)->recordEnvelope($envelope)->is($fact))->toBeTrue();
     });
 });
 
-test('an envelope stored with the legacy UTC wall clock is recognised on retry without admitting another instant', function (): void {
+test('an envelope stored with the legacy application-timezone wall clock is recognised on retry without admitting another instant', function (): void {
     activityInApplicationTimezone('Europe/Sofia', function (): void {
         $envelope = fn (string $occurredAt): ActivityRecordEnvelope => new ActivityRecordEnvelope(
             id: '0193f0a0-7c3e-7000-8000-000000000001', subject: new ActivitySubjectReference('tasks.task', 'task-1'), causer: null,
             event: 'reviewed', logName: 'audit', occurredAt: CarbonImmutable::parse($occurredAt),
         );
         $fact = app(ActivityRecorder::class)->recordEnvelope($envelope('2026-11-11T10:00:00.250000+00:00'));
-        DB::table($fact->getTable())->where('id', $fact->id)->update(['created_at' => '2026-11-11 10:00:00.250000', 'updated_at' => '2026-11-11 10:00:00.250000']);
+        DB::table($fact->getTable())->where('id', $fact->id)->update(['created_at' => '2026-11-11 12:00:00.250000', 'updated_at' => '2026-11-11 12:00:00.250000']);
 
         expect(app(ActivityRecorder::class)->recordEnvelope($envelope('2026-11-11T10:00:00.250000+00:00'))->is($fact))->toBeTrue()
             ->and(fn () => app(ActivityRecorder::class)->recordEnvelope($envelope('2026-11-11T08:00:00.250000+00:00')))
@@ -265,4 +266,25 @@ test('uuid subject existence queries and joined activity ordering qualify column
         ->all();
 
     expect($joinedIds)->toBe([$fact->id]);
+});
+
+test('facts recorded inside a repeated daylight-saving hour keep their instants, order, filters and purge cutoffs', function (): void {
+    activityInApplicationTimezone('Europe/Sofia', function (): void {
+        // 2026-10-25: Sofia repeats 03:00-04:00 local; 00:30Z is 03:30 EEST and 01:10Z is 03:10 EET.
+        $this->travelTo(CarbonImmutable::parse('2026-10-25T00:30:00+00:00'));
+        $first = app(ActivityRecorder::class)->record(['event' => 'reviewed'], SystemActor::Background);
+        $this->travelTo(CarbonImmutable::parse('2026-10-25T01:10:00+00:00'));
+        $second = app(ActivityRecorder::class)->record(['event' => 'reviewed'], SystemActor::Background);
+        $third = app(ActivityRecorder::class)->recordEnvelope(new ActivityRecordEnvelope(
+            id: (string) Str::uuid(), subject: new ActivitySubjectReference('tasks.task', 'task-1'), causer: null,
+            event: 'reviewed', logName: 'audit', occurredAt: CarbonImmutable::parse('2026-10-25T01:20:00+00:00'),
+        ));
+        $boundary = '2026-10-25T01:00:00+00:00';
+
+        expect(ActivityLog::query()->newestFirst()->pluck('id')->all())->toBe([$third->id, $second->id, $first->id])
+            ->and($first->fresh()->created_at->equalTo(CarbonImmutable::parse('2026-10-25T00:30:00+00:00')))->toBeTrue()
+            ->and($second->fresh()->created_at->equalTo(CarbonImmutable::parse('2026-10-25T01:10:00+00:00')))->toBeTrue()
+            ->and(app(ActivityReader::class)->paginate(['created_at_from' => $boundary], SystemActor::Background)->pluck('id')->all())->toBe([$third->id, $second->id])
+            ->and(ActivityLog::query()->applyPurgeCriteria(new ActivityPurgeCriteria(before: $boundary, includeImportant: true))->pluck('id')->all())->toBe([$first->id]);
+    });
 });

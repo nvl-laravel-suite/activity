@@ -81,6 +81,42 @@ test('finite sources select recent records before undated records', function ():
     expect($rows->all())->toHaveCount(1)->and($rows[0]->is($recent))->toBeTrue()->and($rows[0]->is($undated))->toBeFalse();
 });
 
+test('finite sources on tables with quoted identifiers order recent records first', function (): void {
+    Schema::create('audit-events', function (Blueprint $table): void {
+        $table->id();
+        $table->string('subject_id');
+        $table->string('event');
+        $table->string('created_at')->nullable();
+    });
+    $record = new class extends Model
+    {
+        protected $table = 'audit-events';
+
+        protected $guarded = [];
+
+        public $timestamps = false;
+    };
+    $record->newQuery()->create(['subject_id' => 'one', 'event' => 'imported', 'created_at' => null]);
+    $recent = $record->newQuery()->create(['subject_id' => 'one', 'event' => 'audited', 'created_at' => '2026-08-01 13:00:00']);
+    $source = new class($record) implements ActivityTimelineSource
+    {
+        public function __construct(private Model $record) {}
+
+        public function query(Model|ActivitySubjectReference $subject): Builder
+        {
+            return $this->record->newQuery()->where('subject_id', $subject instanceof Model ? $subject->getKey() : $subject->id);
+        }
+
+        public function supersedes(): array
+        {
+            return [];
+        }
+    };
+    $rows = app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'one'), SystemActor::Background, 1, [$source]);
+
+    expect($rows->all())->toHaveCount(1)->and($rows[0]->is($recent))->toBeTrue();
+});
+
 test('merged timelines reject unbounded limits', function (): void {
     expect(fn () => app(ActivityReader::class)->timeline(new ActivitySubjectReference('external', 'one'), SystemActor::Background, 1001))->toThrow(InvalidArgumentException::class);
 });

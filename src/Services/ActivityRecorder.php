@@ -18,6 +18,7 @@ use Nvl\Activity\Enums\ActivityVisibility;
 use Nvl\Activity\Exceptions\ActivityRecordingException;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
+use Nvl\Activity\Support\ActivityInstantCast;
 use Nvl\Activity\Support\ActivityMetadata;
 use Nvl\Activity\Support\ActivityRecordEnvelope;
 use Nvl\Activity\Support\ActivitySubjectReference;
@@ -81,23 +82,23 @@ final class ActivityRecorder
         }
     }
 
-    /** Express the occurrence as the application-timezone wall clock Eloquent stores for every other fact. */
+    /** Store the occurrence as the UTC instant every fact uses. */
     private function storedOccurrence(ActivityRecordEnvelope $envelope): CarbonImmutable
     {
-        return $envelope->occurredAt->setTimezone(date_default_timezone_get());
+        return $envelope->occurredAt->utc();
     }
 
     /**
-     * The wall clocks one occurrence may be stored as: the application timezone, and the UTC
-     * wall clock written by releases that predate the application-timezone convention.
+     * The wall clocks one occurrence may be stored as: UTC, and the application-timezone wall
+     * clock written by releases before facts were stored in UTC.
      *
      * @return list<string>
      */
     private function storedOccurrenceForms(ActivityRecordEnvelope $envelope): array
     {
         return [
-            $this->storedOccurrence($envelope)->format('Y-m-d H:i:s.u'),
-            $envelope->occurredAt->utc()->format('Y-m-d H:i:s.u'),
+            ActivityInstantCast::format($envelope->occurredAt),
+            $envelope->occurredAt->setTimezone(date_default_timezone_get())->format(ActivityInstantCast::FORMAT),
         ];
     }
 
@@ -183,7 +184,7 @@ final class ActivityRecorder
         if ($event instanceof BackedEnum) {
             $event = $event->value;
         }
-        if (! is_string($event) || trim($event) === '' || mb_strlen($event) > 255 || str_contains($event, "\0")) {
+        if (! is_string($event) || ! mb_check_encoding($event, 'UTF-8') || trim($event) === '' || mb_strlen($event) > 255 || str_contains($event, "\0")) {
             throw new InvalidArgumentException('Activity events require 1 to 255 non-blank characters.');
         }
         $event = trim($event);
@@ -256,7 +257,7 @@ final class ActivityRecorder
     /** Validate optional descriptive text without converting caller objects; TEXT columns hold 65,535 bytes. */
     private function text(mixed $value, int $limit): string
     {
-        if (! is_string($value) || str_contains($value, "\0") || mb_strlen($value) > $limit || strlen($value) > 65535) {
+        if (! is_string($value) || ! mb_check_encoding($value, 'UTF-8') || str_contains($value, "\0") || mb_strlen($value) > $limit || strlen($value) > 65535) {
             throw new InvalidArgumentException('Invalid Activity descriptive text.');
         }
 

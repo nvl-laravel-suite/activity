@@ -66,3 +66,14 @@ test('page offsets that cannot be represented are rejected instead of wrapping t
     expect(fn () => app(ActivityReader::class)->paginate(['page' => PHP_INT_MAX, 'per_page' => 100], SystemActor::Background))
         ->toThrow(InvalidArgumentException::class, 'Activity pagination values are outside their bounds.');
 });
+
+test('activity exact text filters reject text no stored value can hold instead of matching a truncated prefix', function (string $filter, string $text): void {
+    ActivityLog::query()->create(['description' => 'row', 'event' => 'created', 'subject_type' => 'record', 'subject_id' => 'one', 'causer_id' => 'one']);
+
+    expect(fn () => app(ActivityReader::class)->paginate([$filter => $text], SystemActor::Background))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => app(ActivityReader::class)->cursor([$filter => $text], SystemActor::Background))->toThrow(InvalidArgumentException::class);
+})->with(['event', 'subject_type', 'subject_id', 'causer_id'])->with(['NUL byte' => ["one\0two"], 'invalid UTF-8' => ["one\xFF"]]);
+
+test('activity event list filters reject text no stored value can hold', function (string $text): void {
+    expect(fn () => app(ActivityReader::class)->paginate(['events' => ['created', $text]], SystemActor::Background))->toThrow(InvalidArgumentException::class);
+})->with(['NUL byte' => ["created\0x"], 'invalid UTF-8' => ["created\xFF"]]);

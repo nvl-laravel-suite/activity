@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Nvl\Activity\Builders;
 
-use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,6 +11,7 @@ use InvalidArgumentException;
 use Nvl\Activity\Enums\ActivityImportance;
 use Nvl\Activity\Enums\ActivitySource;
 use Nvl\Activity\Models\ActivityLog;
+use Nvl\Activity\Support\ActivityInstantCast;
 use Nvl\Activity\Support\ActivityPurgeCriteria;
 use Nvl\Activity\Support\ActivitySearch;
 use Nvl\Support\Ownership\Traits\ScopesOwnedBuilderWrites;
@@ -107,10 +107,10 @@ final class ActivityLogBuilder extends Builder
         return $this->where('created_at', '>=', $this->storedTimestamp($cutoff));
     }
 
-    /** Format an instant as the application-timezone wall clock Eloquent stores for every fact. */
+    /** Format an instant as the UTC wall clock every fact is stored with; offset-less text is read in the application timezone. */
     private function storedTimestamp(DateTimeInterface|string $instant): string
     {
-        return CarbonImmutable::parse($instant)->setTimezone(date_default_timezone_get())->format('Y-m-d H:i:s.u');
+        return ActivityInstantCast::format($instant);
     }
 
     /**

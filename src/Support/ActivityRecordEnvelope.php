@@ -37,7 +37,7 @@ final readonly class ActivityRecordEnvelope
         }
 
         foreach (['event' => $event, 'logName' => $logName] as $field => $value) {
-            if ($value === '' || $value !== trim($value) || str_contains($value, "\0") || mb_strlen($value) > 255) {
+            if ($value === '' || ! mb_check_encoding($value, 'UTF-8') || $value !== trim($value) || str_contains($value, "\0") || mb_strlen($value) > 255) {
                 throw new InvalidArgumentException("Activity envelope {$field} must contain 1 to 255 non-blank characters.");
             }
         }
@@ -46,7 +46,7 @@ final readonly class ActivityRecordEnvelope
             throw new InvalidArgumentException('Activity envelopes cannot combine native and scalar causers.');
         }
 
-        if ($scalarActorId !== null && ($scalarActorId === '' || $scalarActorId !== trim($scalarActorId)
+        if ($scalarActorId !== null && ($scalarActorId === '' || ! mb_check_encoding($scalarActorId, 'UTF-8') || $scalarActorId !== trim($scalarActorId)
             || str_contains($scalarActorId, "\0") || mb_strlen($scalarActorId) > 255)) {
             throw new InvalidArgumentException('Activity envelope scalar actor IDs must contain 1 to 255 non-blank characters.');
         }

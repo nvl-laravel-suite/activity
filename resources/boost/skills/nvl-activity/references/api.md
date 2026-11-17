@@ -410,7 +410,10 @@ public static function forSubjectTimeline(string $subjectType, string|int|array 
 @param (string | int | list<(string | int)>) $subjectId
 public function fresh(mixed $with=[]): ?static
 @param (array<array-key, mixed> | string) $with
+public function freshTimestamp(): Illuminate\Support\Carbon
 public function getConnectionName(): ?string
+public function getDates(): array
+@return list<string>
 #[Override()]
 public function getRelationValue(mixed $key): mixed
 public function getTable(): string

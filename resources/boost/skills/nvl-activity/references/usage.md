@@ -73,7 +73,7 @@ Identical retries return the same Activity row; conflicting facts under the same
 
 ## Bounded read selection
 
-`paginate(filters, actor)` supports `search`, `event`, `events` (maximum 100), `causer_id`, `subject_type`, `subject_id`, `subjects` (maximum 100 exact references), `subject_or_causer`, `created_at_from`, `created_at_to`, `per_page` (1–100), `page`. Empty `subjects` matches nothing. Dates accept `DateTimeInterface|string|null`, and reversed ranges reject. Exact subject pairs prevent accidental cross-type identity matches.
+`paginate(filters, actor)` supports `search`, `event`, `events` (maximum 100), `causer_id`, `subject_type`, `subject_id`, `subjects` (maximum 100 exact references), `subject_or_causer`, `created_at_from`, `created_at_to`, `per_page` (1–100), `page`. Empty `subjects` matches nothing. Dates accept `DateTimeInterface|string|null`, and reversed ranges reject. Facts store `created_at`/`updated_at` as UTC instants; offset-less date strings are read in the application timezone. Exact subject pairs prevent accidental cross-type identity matches.
 
 `cursor(filters, actor, cursor:null)` uses the same filters except `page`; it returns native `items` and nullable opaque `next_cursor` without total count. Preserve filters and cursor unchanged; timestamps retain microseconds and UUID tie-breaks. `find(id, actor)` returns null for missing/inaccessible records.
 

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
 use LogicException;
 use Nvl\Activity\Support\ActivityEventPolicy;
+use Nvl\Activity\Support\ActivityInstantCast;
 use Nvl\Support\Enums\SystemActor;
 
 /**
@@ -112,10 +113,7 @@ final class ActivityPolicyRegistry
             $query->whereRaw('1 = 0');
             foreach ($policies as $policy) {
                 if ($policy->retentionDays !== null) {
-                    $cutoff = now()
-                        ->subDays($policy->retentionDays)
-                        ->setTimezone(date_default_timezone_get())
-                        ->format('Y-m-d H:i:s.u');
+                    $cutoff = ActivityInstantCast::format(now()->subDays($policy->retentionDays));
                     $query->orWhere(fn (Builder $event) => $event->where('event', $policy->event)->where('created_at', '<', $cutoff));
                 }
             }

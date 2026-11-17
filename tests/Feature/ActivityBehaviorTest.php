@@ -408,3 +408,14 @@ test('label resolution handles structured values and all canonical status payloa
         ->and($invalidStatus)->toBeNull()
         ->and($blankStatus)->toBeNull();
 });
+
+test('native recording rejects text that is not valid UTF-8 instead of failing in the database', function (string $field): void {
+    $entry = ['event' => 'reviewed', $field => "review\xFF"];
+
+    expect(fn () => app(ActivityRecorder::class)->record($entry, SystemActor::Background))->toThrow(InvalidArgumentException::class)
+        ->and(ActivityLog::query()->count())->toBe(0);
+})->with(['event', 'description', 'log_name']);
+
+test('native subject references reject identities that are not valid UTF-8', function (string $type, string $id): void {
+    expect(fn () => new ActivitySubjectReference($type, $id))->toThrow(InvalidArgumentException::class);
+})->with(['type' => ["record\xFF", 'one'], 'identifier' => ['record', "one\xFF"]]);

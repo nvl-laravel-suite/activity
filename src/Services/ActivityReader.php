@@ -20,6 +20,7 @@ use Nvl\Activity\Builders\ActivityLogBuilder;
 use Nvl\Activity\Contracts\ActivityTimelineSource;
 use Nvl\Activity\Models\ActivityLog;
 use Nvl\Activity\Ownership\ActivityOwnershipGuard;
+use Nvl\Activity\Support\ActivityInstantCast;
 use Nvl\Activity\Support\ActivitySearch;
 use Nvl\Activity\Support\ActivitySubjectReference;
 use Nvl\Activity\Support\ModelKeyIdentifierValidator;
@@ -217,14 +218,26 @@ final readonly class ActivityReader
         }
         $this->relations->load($base);
 
-        return $rows->concat($base)->sort(function (Model $a, Model $b): int {
-            $left = $a->getRawOriginal('created_at');
-            $right = $b->getRawOriginal('created_at');
-            $left = is_string($left) ? CarbonImmutable::parse($left)->utc()->format('Y-m-d H:i:s.u') : '';
-            $right = is_string($right) ? CarbonImmutable::parse($right)->utc()->format('Y-m-d H:i:s.u') : '';
+        $merged = $rows->concat($base);
+        $instants = [];
+        foreach ($merged as $row) {
+            $instants[spl_object_id($row)] = $this->timelineInstant($row);
+        }
 
-            return strcmp($right, $left) ?: $this->compareTimelineIdentity($a, $b);
-        })->take($limit)->values();
+        return $merged->sort(fn (Model $a, Model $b): int => strcmp($instants[spl_object_id($b)], $instants[spl_object_id($a)])
+            ?: $this->compareTimelineIdentity($a, $b))->take($limit)->values();
+    }
+
+    /**
+     * Return one timeline row's instant as stored UTC text: facts cast from UTC, source records through
+     * their own casts or, uncast, in the application timezone. Reading through a clone keeps the cast
+     * cache from rewriting the row's raw attributes.
+     */
+    private function timelineInstant(Model $row): string
+    {
+        $value = (clone $row)->getAttribute('created_at');
+
+        return $value instanceof DateTimeInterface || is_string($value) ? ActivityInstantCast::format($value) : '';
     }
 
     /** Match each source's native primary-key SQL order within a stable morph-type order. */
@@ -270,13 +283,15 @@ final readonly class ActivityReader
     }
 
     /**
-     * Accept only a grammar-wrapped column followed by the fixed ordering.
+     * Accept only a grammar-wrapped column followed by the fixed ordering. Each segment is a
+     * double-quoted identifier with embedded quotes doubled, so names such as "audit-events" pass
+     * while nothing can escape the identifier.
      *
      * @phpstan-assert literal-string $sql
      */
     private function assertSafeNullsLastSql(string $sql): void
     {
-        if (preg_match('/^[A-Za-z0-9_."]+ DESC NULLS LAST$/D', $sql) !== 1) {
+        if (preg_match('/^"(?:[^"]|"")+"(?:\."(?:[^"]|"")+")* DESC NULLS LAST$/D', $sql) !== 1) {
             throw new InvalidArgumentException('Activity source ordering produced unsafe SQL.');
         }
     }
@@ -362,13 +377,23 @@ final readonly class ActivityReader
             throw new InvalidArgumentException('Activity text filters require strings.');
         }
 
-        return $value;
+        return $value === null ? null : $this->storableText($value);
     }
 
     private function identifier(mixed $value): string|int|null
     {
         if ($value !== null && ! is_string($value) && ! is_int($value)) {
             throw new InvalidArgumentException('Activity identifiers must be scalar strings or integers.');
+        }
+
+        return is_string($value) ? $this->storableText($value) : $value;
+    }
+
+    /** Reject filter text no stored value can equal: PostgreSQL truncates it at a NUL byte and refuses invalid UTF-8. */
+    private function storableText(string $value): string
+    {
+        if (! mb_check_encoding($value, 'UTF-8') || str_contains($value, "\0")) {
+            throw new InvalidArgumentException('Activity filters require valid UTF-8 text without NUL bytes.');
         }
 
         return $value;
